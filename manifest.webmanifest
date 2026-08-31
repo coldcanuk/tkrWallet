@@ -1,0 +1,17 @@
+{
+  "name": "tkrWallet",
+  "short_name": "tkrWallet",
+  "description": "Open-source signer for tkrSwap. tkrpik index cards, scoreboard, and Beaver Nickels.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f3f0e6",
+  "theme_color": "#1c1917",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
