@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "tkrWallet",
+  "version": "0.1.0",
+  "description": "Open-source tkrWallet. Signs tkrSwap routes. Shows tkrpik cards, scoreboard, and Beaver Nickels.",
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "tkrWallet"
+  },
+  "icons": {
+    "128": "icon.svg"
+  },
+  "host_permissions": [
+    "https://tkrpik.com/*",
+    "https://tkrswap.com/*"
+  ]
+}
