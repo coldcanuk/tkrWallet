@@ -6,6 +6,11 @@ tkrWallet is a **PWA** and a **Chrome extension**. It is a client signer, not a 
 
 This repository succeeds the private `customwallet` tree (`https://git.actvite.com/chuck/customwallet`), which is archived. Do not hold customer funds here.
 
+GitHub Copilot code review is **not** enabled on this public repo. Do not
+request Copilot as a reviewer and do not wait for it. Copilot Lite reviews
+the private `coldcanuk/tickerpicker` tree (tkrpik / tkrSwap) only. Work in
+a git worktree; never commit on `main`.
+
 Login is an injected-wallet connect (`#wallet-login`). Holdings open tkrSwap with `token_in` / `from_address` / `source_chain_id`. The wallet never auto-executes and never embeds `/api/quote`.
 
 tkrpik index cards, the public scoreboard, and Beaver Nickels are fetched from `https://tkrpik.com/api/public/game` (same ledger the private game uses). Swaps never shop vendors inside this repo — they open tkrSwap.
