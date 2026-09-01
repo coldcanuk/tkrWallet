@@ -7,11 +7,11 @@ assert.ok(wallet.GAME_URL.indexOf("/api/public/game") !== -1);
 assert.ok(wallet.GAME_URL.indexOf("tkrpik.com") !== -1);
 assert.ok(wallet.LOGIN_URL.indexOf("/login") !== -1);
 assert.strictEqual(typeof wallet.login, "function");
-assert.strictEqual(typeof wallet.bravoHref, "function");
+assert.strictEqual(typeof wallet.swapHref, "function");
 
 const html = fs.readFileSync(__filename.replace("app_test.js", "index.html"), "utf8");
 assert.ok(html.indexOf('id="wallet-login"') !== -1);
-assert.ok(html.indexOf("BRAVO") !== -1);
+assert.ok(html.indexOf("Holdings") !== -1);
 assert.ok(html.indexOf("You sign every fill") !== -1);
 assert.ok(html.toLowerCase().indexOf("we never custody") === -1);
 
@@ -21,17 +21,17 @@ assert.ok(src.indexOf("tkrswap.com") !== -1);
 assert.ok(src.indexOf("take_profit") === -1);
 assert.ok(src.indexOf("stop_loss") === -1);
 assert.ok(src.indexOf("auto-execute") === -1);
-assert.ok(src.indexOf("BRAVO") !== -1);
+assert.ok(src.indexOf("swapHref") !== -1);
 assert.ok(src.indexOf("wallet-login") !== -1);
 
-const href = wallet.bravoHref({
-  kind: "BRAVO",
+const href = wallet.swapHref({
+  kind: "holding",
   symbol: "ETH",
   address: "0x1111111111111111111111111111111111111111",
   chain_id: 1,
 });
 assert.ok(href.indexOf("https://tkrswap.com/") === 0);
-assert.ok(href.indexOf("card=BRAVO") !== -1);
+assert.ok(href.indexOf("token_in=") !== -1);
 assert.ok(href.indexOf("token_in=ETH") !== -1);
 assert.ok(href.indexOf("from_address=0x1111111111111111111111111111111111111111") !== -1);
 assert.ok(href.indexOf("source_chain_id=1") !== -1);
@@ -61,13 +61,13 @@ const fake = {
 };
 
 wallet.login(fake).then(function (holding) {
-  assert.strictEqual(holding.kind, "BRAVO");
+  assert.strictEqual(holding.kind, "holding");
   assert.strictEqual(holding.symbol, "ETH");
   assert.strictEqual(holding.address, "0x2222222222222222222222222222222222222222");
   assert.strictEqual(holding.chain_id, 1);
   assert.ok(Math.abs(holding.amount - 1) < 0.0001);
   const listed = wallet.applyHoldings([holding]);
-  assert.strictEqual(listed[0].kind, "BRAVO");
+  assert.strictEqual(listed[0].kind, "holding");
   console.log("ok");
 }).catch(function (err) {
   console.error(err);

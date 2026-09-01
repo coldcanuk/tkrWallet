@@ -22,10 +22,10 @@
     }
   }
 
-  function bravoHref(holding) {
+  function swapHref(holding) {
     holding = holding || {};
     var params = new URLSearchParams();
-    params.set("card", "BRAVO");
+    
     params.set("token_in", holding.symbol || "ETH");
     if (holding.address) {
       params.set("from_address", holding.address);
@@ -92,14 +92,14 @@
     );
   }
 
-  function renderBravo(holdings) {
+  function renderHoldings(holdings) {
     var box = el("bravo-holdings");
     if (!box) {
       return;
     }
     box.textContent = "";
     if (!holdings || !holdings.length) {
-      box.textContent = "No holdings yet. Connect a wallet to list BRAVO.";
+      box.textContent = "No holdings yet. Connect a wallet to list them.";
       return;
     }
     holdings.forEach(function (holding) {
@@ -107,7 +107,7 @@
       row.setAttribute("data-bravo", holding.symbol || "ETH");
       var amount = Number(holding.amount || 0);
       var label =
-        "BRAVO " +
+        "Holding " +
         (holding.symbol || "ETH") +
         " · " +
         amount.toFixed(4) +
@@ -115,7 +115,7 @@
         String(holding.address || "").slice(0, 10);
       row.appendChild(document.createTextNode(label + " "));
       var a = document.createElement("a");
-      a.href = bravoHref(holding);
+      a.href = swapHref(holding);
       a.textContent = "Start tkrSwap";
       row.appendChild(a);
       box.appendChild(row);
@@ -132,7 +132,7 @@
 
   function applyHoldings(holdings) {
     holdings = holdings || [];
-    renderBravo(holdings);
+    renderHoldings(holdings);
     return holdings;
   }
 
@@ -177,7 +177,7 @@
         ]).then(function (pair) {
           var chainId = parseInt(pair[0], 16) || 1;
           var holding = {
-            kind: "BRAVO",
+            kind: "holding",
             symbol: "ETH",
             token: NATIVE_ETH,
             chain_id: chainId,
@@ -214,7 +214,7 @@
     applyHoldings: applyHoldings,
     loadGame: loadGame,
     login: login,
-    bravoHref: bravoHref,
+    swapHref: swapHref,
   };
 
   if (typeof module === "object" && module.exports) {
