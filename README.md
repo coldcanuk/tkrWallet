@@ -47,3 +47,7 @@ Open `index.html` (or any static host). Install when the browser offers it. `man
 
 No Lightning node. No hosted hot wallet. No billing BTC then sending ERC-20 from inventory.
 No tickerpicker secrets. No aggregator clients.
+
+## Systems map
+
+See [`docs/systems/README.md`](docs/systems/README.md) (`docs/systems/tkrwallet.mmd`).
