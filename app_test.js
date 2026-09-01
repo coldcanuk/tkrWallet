@@ -187,7 +187,19 @@ wallet.login(fake).then(function (holding) {
       }).then(function (got) {
         assert.strictEqual(got.status, 501);
         assert.strictEqual(got.body.status, "plan-only");
-        console.log("ok");
+        return wallet.attachHosted(function () {
+          return Promise.resolve({
+            ok: false,
+            status: 401,
+            json: function () {
+              return Promise.resolve({ status: "sign-in", detail: "Sign in on tkrpik to attach a hosted wallet. Keys stay off tkrWallet." });
+            },
+          });
+        }).then(function (unauth) {
+          assert.strictEqual(unauth.status, 401);
+          assert.strictEqual(unauth.body.status, "sign-in");
+          console.log("ok");
+        });
       });
     });
   });

@@ -379,8 +379,19 @@
         });
       })
       .then(function (got) {
-        var detail = (got.body && (got.body.detail || got.body.status)) || "Hosted wallets are paid plan-only.";
-        text(el("hosted-attach-status"), detail + " Keys stay off tkrWallet.");
+        var st = got && got.body && got.body.status;
+        var detail = (got.body && got.body.detail) || "";
+        if (got.status === 401 || st === "sign-in") {
+          detail = detail || "Sign in on tkrpik (paid) to attach. Keys stay off tkrWallet.";
+        } else if (got.status === 402 || st === "paid-required") {
+          detail = detail || "Paid tkrSwap is required to attach a hosted wallet.";
+        } else {
+          detail = detail || (st || "Hosted wallets are paid plan-only.");
+          if (detail.indexOf("Keys stay off") === -1) {
+            detail = detail + " Keys stay off tkrWallet.";
+          }
+        }
+        text(el("hosted-attach-status"), detail);
         return got;
       })
       .catch(function () {
