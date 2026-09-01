@@ -48,6 +48,7 @@ assert.strictEqual(shown.card_id, "card-9");
 assert.strictEqual(shown.mode, "split");
 assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=SPLIT").mode, "split");
 assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=pwned").mode, "consolidate");
+assert.strictEqual(wallet.applyBatchQuery("?batch_card=%20%20"), null);
 assert.ok(wallet.batchHref("card-1", "nope").indexOf("mode=consolidate") !== -1);
 
 const applied = wallet.applyGame({

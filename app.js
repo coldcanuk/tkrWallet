@@ -124,7 +124,7 @@
     } catch (e) {
       return null;
     }
-    var card = q.get("batch_card");
+    var card = String(q.get("batch_card") || "").trim();
     if (!card) {
       return null;
     }
