@@ -3,9 +3,12 @@ const fs = require("fs");
 const wallet = require("./app.js");
 
 assert.strictEqual(wallet.SWAP_URL, "https://tkrswap.com/");
-assert.ok(wallet.GAME_URL.indexOf("/api/public/game") !== -1);
+assert.strictEqual(wallet.SHELL_URL, "https://tkrpik.com");
+assert.ok(wallet.GAME_URL.indexOf("/v1/snapshot") !== -1);
 assert.ok(wallet.GAME_URL.indexOf("tkrpik.com") !== -1);
+assert.ok(wallet.HOSTED_ATTACH_URL.indexOf("/v1/hosted-wallet/attach") !== -1);
 assert.ok(wallet.LOGIN_URL.indexOf("/login") !== -1);
+assert.ok(wallet.GAME_URL.indexOf("/api/public/game") === -1);
 assert.strictEqual(typeof wallet.login, "function");
 assert.strictEqual(typeof wallet.swapHref, "function");
 
@@ -15,11 +18,16 @@ assert.ok(html.indexOf("Holdings") !== -1);
 assert.ok(html.indexOf("Consolidate / split") !== -1);
 assert.ok(html.indexOf('id="batch-intent"') !== -1);
 assert.ok(html.indexOf("You sign every fill") !== -1);
+assert.ok(html.indexOf("hosted-attach-btn") !== -1);
 assert.ok(html.toLowerCase().indexOf("we never custody") === -1);
 
 const src = fs.readFileSync(__filename.replace("app_test.js", "app.js"), "utf8");
 assert.ok(src.indexOf("/api/quote") === -1, "wallet must not embed a second quote client");
 assert.ok(src.indexOf("tkrswap.com") !== -1);
+assert.ok(src.indexOf("/v1/snapshot") !== -1);
+["li.fi", "1inch", "jup.ag", "0x.org", "alchemy", "helius", "blockscout", "stripe.com", "pass show", "tickerpicker/", "LIFI_", "ALCHEMY_"].forEach(function (needle) {
+  assert.ok(src.toLowerCase().indexOf(needle.toLowerCase()) === -1, "vendor or pass string " + needle);
+});
 assert.ok(src.indexOf("take_profit") === -1);
 assert.ok(src.indexOf("stop_loss") === -1);
 assert.ok(src.indexOf("auto-execute") === -1);
@@ -138,7 +146,21 @@ wallet.login(fake).then(function (holding) {
     assert.ok(solHref.indexOf("token_in=SOL") !== -1);
     assert.ok(solHref.indexOf("source_chain_id=900001") !== -1);
     assert.ok(src.indexOf("/api/quote") === -1);
-    console.log("ok");
+    return wallet.attachHosted(function (url, opts) {
+      assert.ok(String(url).indexOf("/v1/hosted-wallet/attach") !== -1);
+      assert.strictEqual(opts.method, "POST");
+      return Promise.resolve({
+        ok: false,
+        status: 501,
+        json: function () {
+          return Promise.resolve({ status: "plan-only", detail: "Hosted wallets are paid. Keys stay off tkrWallet. Security review required." });
+        },
+      });
+    }).then(function (got) {
+      assert.strictEqual(got.status, 501);
+      assert.strictEqual(got.body.status, "plan-only");
+      console.log("ok");
+    });
   });
 }).catch(function (err) {
   console.error(err);
