@@ -93,7 +93,7 @@
   }
 
   function renderHoldings(holdings) {
-    var box = el("bravo-holdings");
+    var box = el("holdings-list");
     if (!box) {
       return;
     }
@@ -104,7 +104,7 @@
     }
     holdings.forEach(function (holding) {
       var row = document.createElement("p");
-      row.setAttribute("data-bravo", holding.symbol || "ETH");
+      row.setAttribute("data-holding", holding.symbol || "ETH");
       var amount = Number(holding.amount || 0);
       var label =
         "Holding " +
