@@ -19,7 +19,7 @@
   <body>
     <main>
       <h1>tkrWallet</h1>
-      <p>Open-source signer. You hold the keys. tkrSwap is on. You sign every fill.</p>
+      <p>Open-source signer. You hold the keys. Quotes and fills go through tkrShell. You sign every fill.</p>
       <section id="wallet-login" data-wallet-login>
         <h2>Login</h2>
         <p>Connect an injected wallet. This never auto-executes a swap. Ledger signs on tkrpik.</p>
@@ -41,8 +41,16 @@
       </section>
       <section data-tkrswap-routing>
         <h2>tkrSwap routing</h2>
-        <p>Quotes and fills go through the tkrSwap desk. You sign every fill.</p>
+        <p>Quotes, swaps, and index snapshots go through tkrShell. This app does not call aggregators or hold vendor keys.</p>
         <p><a href="https://tkrswap.com/">Open tkrSwap</a> · <a href="https://tkrpik.com/swap">tkrpik.com/swap</a></p>
+      </section>
+      <section data-hosted-wallet>
+        <h2>Hosted wallet</h2>
+        <p>Paid attach through tkrShell after review. tkrWallet never stores a hosted key.</p>
+        <p>
+          <button type="button" id="hosted-attach-btn">Attach hosted wallet</button>
+        </p>
+        <p id="hosted-attach-status">Not attached. Plan-only.</p>
       </section>
       <section data-tkrpik-cards>
         <h2>tkrpik index cards</h2>

@@ -1,7 +1,9 @@
 (function (root) {
-  var GAME_URL = "https://tkrpik.com/api/public/game";
+  var SHELL_URL = "https://tkrpik.com";
+  var GAME_URL = SHELL_URL + "/v1/snapshot";
+  var HOSTED_ATTACH_URL = SHELL_URL + "/v1/hosted-wallet/attach";
   var SWAP_URL = "https://tkrswap.com/";
-  var LOGIN_URL = "https://tkrpik.com/login?next=tkrswap";
+  var LOGIN_URL = SHELL_URL + "/login?next=tkrswap";
   var NATIVE_ETH = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
   var SOLANA_CHAIN = 900001;
   var SOLANA_RPC = "https://api.mainnet-beta.solana.com";
@@ -354,6 +356,42 @@
       });
   }
 
+  function attachHosted(fetchFn) {
+    fetchFn = fetchFn || fetch;
+    text(el("hosted-attach-status"), "Asking tkrShell…");
+    return fetchFn(HOSTED_ATTACH_URL, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: "{}",
+    })
+      .then(function (res) {
+        return res.json().then(function (body) {
+          return { ok: res.ok, status: res.status, body: body || {} };
+        }).catch(function () {
+          return { ok: res.ok, status: res.status, body: {} };
+        });
+      })
+      .then(function (got) {
+        var detail = (got.body && (got.body.detail || got.body.status)) || "Hosted wallets are paid plan-only.";
+        text(el("hosted-attach-status"), detail + " Keys stay off tkrWallet.");
+        return got;
+      })
+      .catch(function () {
+        text(el("hosted-attach-status"), "tkrShell unreachable. Hosted attach stays plan-only. Keys stay off tkrWallet.");
+        return null;
+      });
+  }
+
+  function bindHosted() {
+    var btn = el("hosted-attach-btn");
+    if (!btn) {
+      return;
+    }
+    btn.addEventListener("click", function () {
+      attachHosted();
+    });
+  }
+
   function login(provider) {
     provider = provider || (typeof window !== "undefined" ? window.ethereum : null);
     if (!provider || typeof provider.request !== "function") {
@@ -426,13 +464,16 @@
   }
 
   var api = {
+    SHELL_URL: SHELL_URL,
     GAME_URL: GAME_URL,
+    HOSTED_ATTACH_URL: HOSTED_ATTACH_URL,
     SWAP_URL: SWAP_URL,
     LOGIN_URL: LOGIN_URL,
     NATIVE_ETH: NATIVE_ETH,
     applyGame: applyGame,
     applyHoldings: applyHoldings,
     loadGame: loadGame,
+    attachHosted: attachHosted,
     login: login,
     listSolanaHoldings: listSolanaHoldings,
     SOLANA_CHAIN: SOLANA_CHAIN,
@@ -449,11 +490,13 @@
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", function () {
           bindLogin();
+          bindHosted();
           loadGame();
           applyBatchQuery();
         });
       } else {
         bindLogin();
+        bindHosted();
         loadGame();
         applyBatchQuery();
       }
