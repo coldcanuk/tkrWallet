@@ -101,10 +101,18 @@
     }
   }
 
+  function normalizeMode(mode) {
+    mode = String(mode || "").toLowerCase();
+    if (mode === "split") {
+      return "split";
+    }
+    return "consolidate";
+  }
+
   function batchHref(cardId, mode) {
     var params = new URLSearchParams();
     params.set("batch_card", cardId || "");
-    params.set("mode", mode || "consolidate");
+    params.set("mode", normalizeMode(mode));
     var join = SWAP_URL.indexOf("?") >= 0 ? "&" : "?";
     return SWAP_URL + join + params.toString();
   }
@@ -120,7 +128,7 @@
     if (!card) {
       return null;
     }
-    var mode = q.get("mode") || "consolidate";
+    var mode = normalizeMode(q.get("mode"));
     var box = el("batch-intent");
     text(
       box,
