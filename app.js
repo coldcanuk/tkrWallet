@@ -1,6 +1,7 @@
 (function (root) {
   var SHELL_URL = "https://tkrpik.com";
   var GAME_URL = SHELL_URL + "/v1/snapshot";
+  var GAME_FALLBACK_URL = SHELL_URL + "/api/public/game";
   var HOSTED_ATTACH_URL = SHELL_URL + "/v1/hosted-wallet/attach";
   var SWAP_URL = "https://tkrswap.com/";
   var LOGIN_URL = SHELL_URL + "/login?next=tkrswap";
@@ -338,14 +339,20 @@
     return holdings;
   }
 
+  function fetchGame(fetchFn, url) {
+    return fetchFn(url, { headers: { Accept: "application/json" } }).then(function (res) {
+      if (!res.ok) {
+        throw new Error("HTTP " + res.status);
+      }
+      return res.json();
+    });
+  }
+
   function loadGame(fetchFn) {
     fetchFn = fetchFn || fetch;
-    return fetchFn(GAME_URL, { headers: { Accept: "application/json" } })
-      .then(function (res) {
-        if (!res.ok) {
-          throw new Error("HTTP " + res.status);
-        }
-        return res.json();
+    return fetchGame(fetchFn, GAME_URL)
+      .catch(function () {
+        return fetchGame(fetchFn, GAME_FALLBACK_URL);
       })
       .then(applyGame)
       .catch(function () {
@@ -466,6 +473,7 @@
   var api = {
     SHELL_URL: SHELL_URL,
     GAME_URL: GAME_URL,
+    GAME_FALLBACK_URL: GAME_FALLBACK_URL,
     HOSTED_ATTACH_URL: HOSTED_ATTACH_URL,
     SWAP_URL: SWAP_URL,
     LOGIN_URL: LOGIN_URL,

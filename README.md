@@ -12,9 +12,10 @@ RPC. It never holds tickerpicker `pass` paths or vendor API keys
 Blockscout, Stripe).
 
 Index cards, the public scoreboard, and Beaver Nickels come from
-`GET /v1/snapshot` (tkrpik source of truth). Quotes, swaps, fill-status,
-and hosted-wallet attach go through tkrShell. Hosted attach is plan-only
-and returns no keys.
+`GET /v1/snapshot` (tkrpik source of truth). If that verb is not on the
+live tunnel yet, the wallet falls back to `GET /api/public/game` on the
+same host. Quotes, swaps, fill-status, and hosted-wallet attach go
+through tkrShell. Hosted attach is plan-only and returns no keys.
 
 This repository succeeds the private `customwallet` tree
 (`https://git.actvite.com/chuck/customwallet`), which is archived. Do

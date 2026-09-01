@@ -6,6 +6,7 @@ assert.strictEqual(wallet.SWAP_URL, "https://tkrswap.com/");
 assert.strictEqual(wallet.SHELL_URL, "https://tkrpik.com");
 assert.ok(wallet.GAME_URL.indexOf("/v1/snapshot") !== -1);
 assert.ok(wallet.GAME_URL.indexOf("tkrpik.com") !== -1);
+assert.ok(wallet.GAME_FALLBACK_URL.indexOf("/api/public/game") !== -1);
 assert.ok(wallet.HOSTED_ATTACH_URL.indexOf("/v1/hosted-wallet/attach") !== -1);
 assert.ok(wallet.LOGIN_URL.indexOf("/login") !== -1);
 assert.ok(wallet.GAME_URL.indexOf("/api/public/game") === -1);
@@ -146,20 +147,48 @@ wallet.login(fake).then(function (holding) {
     assert.ok(solHref.indexOf("token_in=SOL") !== -1);
     assert.ok(solHref.indexOf("source_chain_id=900001") !== -1);
     assert.ok(src.indexOf("/api/quote") === -1);
-    return wallet.attachHosted(function (url, opts) {
-      assert.ok(String(url).indexOf("/v1/hosted-wallet/attach") !== -1);
-      assert.strictEqual(opts.method, "POST");
-      return Promise.resolve({
-        ok: false,
-        status: 501,
-        json: function () {
-          return Promise.resolve({ status: "plan-only", detail: "Hosted wallets are paid. Keys stay off tkrWallet. Security review required." });
-        },
+    return wallet.loadGame(function (url) {
+      if (String(url).indexOf("/v1/snapshot") !== -1) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: function () {
+            return Promise.resolve({});
+          },
+        });
+      }
+      if (String(url).indexOf("/api/public/game") !== -1) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: function () {
+            return Promise.resolve({
+              source: "tkrpik",
+              beaver_nickels: 3,
+              index_cards: [],
+              scoreboard: [],
+            });
+          },
+        });
+      }
+      return Promise.reject(new Error("unexpected " + url));
+    }).then(function (data) {
+      assert.strictEqual(data.beaver_nickels, 3);
+      return wallet.attachHosted(function (url, opts) {
+        assert.ok(String(url).indexOf("/v1/hosted-wallet/attach") !== -1);
+        assert.strictEqual(opts.method, "POST");
+        return Promise.resolve({
+          ok: false,
+          status: 501,
+          json: function () {
+            return Promise.resolve({ status: "plan-only", detail: "Hosted wallets are paid. Keys stay off tkrWallet. Security review required." });
+          },
+        });
+      }).then(function (got) {
+        assert.strictEqual(got.status, 501);
+        assert.strictEqual(got.body.status, "plan-only");
+        console.log("ok");
       });
-    }).then(function (got) {
-      assert.strictEqual(got.status, 501);
-      assert.strictEqual(got.body.status, "plan-only");
-      console.log("ok");
     });
   });
 }).catch(function (err) {
