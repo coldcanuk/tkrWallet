@@ -1,4 +1,4 @@
-const CACHE = "tkrwallet-v2";
+const CACHE = "tkrwallet-v3";
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(["./", "./index.html", "./app.js", "./manifest.webmanifest"])));
 });

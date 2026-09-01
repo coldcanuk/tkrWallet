@@ -1,10 +1,12 @@
 # tkrWallet
 
-GPLv3 open-source wallet for the tkrpik / tkrSwap funnel.
+GPLv3 open-source wallet for the tkrpik / tkrSwap funnel/
 
 tkrWallet is a **PWA** and a **Chrome extension**. It is a client signer, not a custodian. Swaps route through [tkrSwap](https://tkrswap.com) (`https://tkrpik.com/swap`). Index cards, the public scoreboard, and Beaver Nickels come from tkrpik.
 
 This repository succeeds the private `customwallet` tree (`https://git.actvite.com/chuck/customwallet`), which is archived. Do not hold customer funds here.
+
+Login is an injected-wallet connect (`#wallet-login`). BRAVO holdings open tkrSwap with `token_in` / `from_address` / `source_chain_id`. The wallet never auto-executes and never embeds `/api/quote`.
 
 tkrpik index cards, the public scoreboard, and Beaver Nickels are fetched from `https://tkrpik.com/api/public/game` (same ledger the private game uses). Swaps never shop vendors inside this repo — they open tkrSwap.
 
