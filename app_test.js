@@ -56,6 +56,13 @@ const fake = {
     if (args.method === "eth_getBalance") {
       return Promise.resolve("0xde0b6b3a7640000");
     }
+    if (args.method === "eth_call") {
+      const data = ((args.params || [])[0] || {}).data || "";
+      if (data.indexOf("0x70a08231") === 0) {
+        return Promise.resolve("0xf4240");
+      }
+      return Promise.resolve("0x0");
+    }
     return Promise.reject(new Error("unexpected " + args.method));
   },
 };
@@ -66,8 +73,21 @@ wallet.login(fake).then(function (holding) {
   assert.strictEqual(holding.address, "0x2222222222222222222222222222222222222222");
   assert.strictEqual(holding.chain_id, 1);
   assert.ok(Math.abs(holding.amount - 1) < 0.0001);
-  const listed = wallet.applyHoldings([holding]);
+  const listed = wallet.applyHoldings([
+    holding,
+    {
+      kind: "holding",
+      symbol: "USDC",
+      token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      chain_id: 1,
+      address: holding.address,
+      amount: 1,
+    },
+  ]);
   assert.strictEqual(listed[0].kind, "holding");
+  assert.strictEqual(listed[1].symbol, "USDC");
+  const usdcHref = wallet.swapHref(listed[1]);
+  assert.ok(usdcHref.indexOf("token_in=USDC") !== -1);
   console.log("ok");
 }).catch(function (err) {
   console.error(err);
