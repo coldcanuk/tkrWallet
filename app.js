@@ -3,6 +3,85 @@
   var SWAP_URL = "https://tkrswap.com/";
   var LOGIN_URL = "https://tkrpik.com/login?next=tkrswap";
   var NATIVE_ETH = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+  var TOKEN_CATALOG = {
+    1: [
+      { symbol: "ETH", decimals: 18 },
+      { symbol: "WETH", address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", decimals: 18 },
+      { symbol: "USDC", address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", decimals: 6 },
+      { symbol: "USDT", address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", decimals: 6 },
+    ],
+    8453: [
+      { symbol: "ETH", decimals: 18 },
+      { symbol: "WETH", address: "0x4200000000000000000000000000000000000006", decimals: 18 },
+      { symbol: "USDC", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", decimals: 6 },
+      { symbol: "USDT", address: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2", decimals: 6 },
+    ],
+  };
+
+  function balanceOfData(addr) {
+    var hex = String(addr || "").toLowerCase().replace(/^0x/, "");
+    while (hex.length < 64) {
+      hex = "0" + hex;
+    }
+    return "0x70a08231" + hex;
+  }
+
+  function hexToAmount(hex, decimals) {
+    try {
+      var n = BigInt(hex || "0x0");
+      var d = BigInt(10) ** BigInt(decimals || 18);
+      return Number(n) / Number(d);
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function listHoldings(provider, address, chainId) {
+    var catalog = TOKEN_CATALOG[chainId] || TOKEN_CATALOG[1];
+    return Promise.all(
+      catalog.map(function (tok) {
+        if (!tok.address) {
+          return provider
+            .request({ method: "eth_getBalance", params: [address, "latest"] })
+            .then(function (wei) {
+              return {
+                kind: "holding",
+                symbol: tok.symbol,
+                token: NATIVE_ETH,
+                chain_id: chainId,
+                address: address,
+                amount: weiToEth(wei),
+              };
+            })
+            .catch(function () {
+              return null;
+            });
+        }
+        return provider
+          .request({
+            method: "eth_call",
+            params: [{ to: tok.address, data: balanceOfData(address) }, "latest"],
+          })
+          .then(function (raw) {
+            return {
+              kind: "holding",
+              symbol: tok.symbol,
+              token: tok.address,
+              chain_id: chainId,
+              address: address,
+              amount: hexToAmount(raw, tok.decimals),
+            };
+          })
+          .catch(function () {
+            return null;
+          });
+      })
+    ).then(function (rows) {
+      return rows.filter(function (row) {
+        return row && Number(row.amount) > 0;
+      });
+    });
+  }
 
   function el(id) {
     return typeof document === "undefined" ? null : document.getElementById(id);
@@ -167,27 +246,34 @@
         if (!address) {
           throw new Error("No account");
         }
-        return Promise.all([
-          provider.request({ method: "eth_chainId" }).catch(function () {
+        return provider
+          .request({ method: "eth_chainId" })
+          .catch(function () {
             return "0x1";
-          }),
-          provider.request({ method: "eth_getBalance", params: [address, "latest"] }).catch(function () {
-            return "0x0";
-          }),
-        ]).then(function (pair) {
-          var chainId = parseInt(pair[0], 16) || 1;
-          var holding = {
-            kind: "holding",
-            symbol: "ETH",
-            token: NATIVE_ETH,
-            chain_id: chainId,
-            address: address,
-            amount: weiToEth(pair[1]),
-          };
-          applyHoldings([holding]);
-          text(el("wallet-login-status"), "Connected " + address + ". You sign every fill.");
-          return holding;
-        });
+          })
+          .then(function (chainHex) {
+            var chainId = parseInt(chainHex, 16) || 1;
+            return listHoldings(provider, address, chainId).then(function (holdings) {
+              if (!holdings.length) {
+                holdings = [
+                  {
+                    kind: "holding",
+                    symbol: "ETH",
+                    token: NATIVE_ETH,
+                    chain_id: chainId,
+                    address: address,
+                    amount: 0,
+                  },
+                ];
+              }
+              applyHoldings(holdings);
+              text(el("wallet-login-status"), "Connected " + address + ". You sign every fill.");
+              var native = holdings.filter(function (h) {
+                return h.symbol === "ETH";
+              })[0];
+              return native || holdings[0];
+            });
+          });
       })
       .catch(function (err) {
         text(el("wallet-login-status"), (err && err.message) || "Wallet login failed.");
