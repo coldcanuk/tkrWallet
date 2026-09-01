@@ -12,6 +12,8 @@ assert.strictEqual(typeof wallet.swapHref, "function");
 const html = fs.readFileSync(__filename.replace("app_test.js", "index.html"), "utf8");
 assert.ok(html.indexOf('id="wallet-login"') !== -1);
 assert.ok(html.indexOf("Holdings") !== -1);
+assert.ok(html.indexOf("Consolidate / split") !== -1);
+assert.ok(html.indexOf('id="batch-intent"') !== -1);
 assert.ok(html.indexOf("You sign every fill") !== -1);
 assert.ok(html.toLowerCase().indexOf("we never custody") === -1);
 
@@ -35,6 +37,21 @@ assert.ok(href.indexOf("token_in=") !== -1);
 assert.ok(href.indexOf("token_in=ETH") !== -1);
 assert.ok(href.indexOf("from_address=0x1111111111111111111111111111111111111111") !== -1);
 assert.ok(href.indexOf("source_chain_id=1") !== -1);
+assert.strictEqual(typeof wallet.batchHref, "function");
+assert.strictEqual(typeof wallet.applyBatchQuery, "function");
+const batch = wallet.batchHref("card-1", "consolidate");
+assert.ok(batch.indexOf("https://tkrswap.com/") === 0);
+assert.ok(batch.indexOf("batch_card=card-1") !== -1);
+assert.ok(batch.indexOf("mode=consolidate") !== -1);
+const shown = wallet.applyBatchQuery("?batch_card=card-9&mode=split");
+assert.strictEqual(shown.card_id, "card-9");
+assert.strictEqual(shown.mode, "split");
+assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=SPLIT").mode, "split");
+assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=pwned").mode, "consolidate");
+assert.strictEqual(wallet.applyBatchQuery("?batch_card=%20%20"), null);
+assert.ok(wallet.batchHref("card-1", "nope").indexOf("mode=consolidate") !== -1);
+assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=split%20").mode, "split");
+assert.strictEqual(wallet.batchHref("  ", "split"), wallet.SWAP_URL);
 
 const applied = wallet.applyGame({
   source: "tkrpik",

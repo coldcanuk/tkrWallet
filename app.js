@@ -101,6 +101,50 @@
     }
   }
 
+  function normalizeMode(mode) {
+    mode = String(mode || "").toLowerCase().trim();
+    if (mode === "split") {
+      return "split";
+    }
+    return "consolidate";
+  }
+
+  function batchHref(cardId, mode) {
+    cardId = String(cardId || "").trim();
+    if (!cardId) {
+      return SWAP_URL;
+    }
+    var params = new URLSearchParams();
+    params.set("batch_card", cardId);
+    params.set("mode", normalizeMode(mode));
+    var join = SWAP_URL.indexOf("?") >= 0 ? "&" : "?";
+    return SWAP_URL + join + params.toString();
+  }
+
+  function applyBatchQuery(search) {
+    var q;
+    try {
+      q = new URLSearchParams(search || (typeof window !== "undefined" ? window.location.search : ""));
+    } catch (e) {
+      return null;
+    }
+    var card = String(q.get("batch_card") || "").trim();
+    if (!card) {
+      return null;
+    }
+    var mode = normalizeMode(q.get("mode"));
+    var box = el("batch-intent");
+    text(
+      box,
+      "tkrSwap " +
+        mode +
+        " intent " +
+        card +
+        ". Quotes stay on tkrSwap. You sign every fill."
+    );
+    return { card_id: card, mode: mode };
+  }
+
   function swapHref(holding) {
     holding = holding || {};
     var params = new URLSearchParams();
@@ -301,6 +345,8 @@
     loadGame: loadGame,
     login: login,
     swapHref: swapHref,
+    batchHref: batchHref,
+    applyBatchQuery: applyBatchQuery,
   };
 
   if (typeof module === "object" && module.exports) {
@@ -312,10 +358,12 @@
         document.addEventListener("DOMContentLoaded", function () {
           bindLogin();
           loadGame();
+          applyBatchQuery();
         });
       } else {
         bindLogin();
         loadGame();
+        applyBatchQuery();
       }
     }
   }
