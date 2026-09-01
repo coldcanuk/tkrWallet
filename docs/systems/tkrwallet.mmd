@@ -1,0 +1,35 @@
+%% tkrWallet client map. Source of truth for this public repo.
+%% Verified against app.js, app_test.js, manifest.json on origin/main (adb19bd).
+%% This tree has no CLI. HTTPS only to tkrShell / desk hosts.
+%% Wallet never learns a vendor hostname it has to call.
+
+flowchart TB
+  subgraph Client["tkrWallet GPLv3"]
+    Pages["GitHub Pages\ncoldcanuk.github.io/tkrWallet"]
+    PWA["PWA\nmanifest.webmanifest + sw.js"]
+    Ext["Chrome extension MV3\nmanifest.json"]
+    JS["app.js signer\nnot a custodian"]
+  end
+
+  Pages --> PWA
+  Pages --> Ext
+  PWA --> JS
+  Ext --> JS
+
+  subgraph Injected["Self-custody"]
+    WStd["wallet-standard / injected\nPhantom MetaMask Brave Uniswap"]
+    RPC["Public chain RPC\napi.mainnet-beta.solana.com"]
+  end
+
+  JS -->|"balances + sign"| WStd
+  JS -->|"self-custody RPC"| RPC
+
+  subgraph Public["tkrpik / tkrSwap public HTTPS"]
+    Shell["https://tkrpik.com\nnginx → tkrshell"]
+    Swap["https://tkrswap.com/\nsame tunnel"]
+  end
+
+  JS -->|"GET /v1/snapshot\nfallback GET /api/public/game"| Shell
+  JS -->|"POST /v1/hosted-wallet/attach\nplan-only, no keys"| Shell
+  JS -->|"open desk with token_in\nfrom_address source_chain_id"| Swap
+  JS -.->|"never embeds /api/quote"| Ban["no vendor APIs\nLi.Fi 1inch Jupiter 0x\nAlchemy Helius Coinbase\nUniswap API Blockscout Stripe"]
