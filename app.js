@@ -3,6 +3,13 @@
   var SWAP_URL = "https://tkrswap.com/";
   var LOGIN_URL = "https://tkrpik.com/login?next=tkrswap";
   var NATIVE_ETH = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+  var SOLANA_CHAIN = 900001;
+  var SOLANA_RPC = "https://api.mainnet-beta.solana.com";
+  var SOLANA_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  var SOLANA_MINTS = {
+    EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { symbol: "USDC", decimals: 6 },
+    Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: { symbol: "USDT", decimals: 6 },
+  };
   var TOKEN_CATALOG = {
     1: [
       { symbol: "ETH", decimals: 18 },
@@ -34,6 +41,76 @@
     } catch (e) {
       return 0;
     }
+  }
+
+  function solanaRpc(method, params, fetchFn) {
+    fetchFn = fetchFn || fetch;
+    return fetchFn(SOLANA_RPC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: method, params: params }),
+    }).then(function (res) {
+      return res.json();
+    }).then(function (body) {
+      if (body && body.error) {
+        throw new Error(body.error.message || "solana rpc");
+      }
+      return body && body.result;
+    });
+  }
+
+  function listSolanaHoldings(pubkey, rpcFn) {
+    pubkey = String(pubkey || "").trim();
+    if (!pubkey) {
+      return Promise.resolve([]);
+    }
+    rpcFn = rpcFn || solanaRpc;
+    return rpcFn("getBalance", [pubkey]).then(function (bal) {
+      var rows = [];
+      var lamports = bal && typeof bal === "object" ? bal.value : bal;
+      if (Number(lamports) > 0) {
+        rows.push({
+          kind: "holding",
+          symbol: "SOL",
+          chain_id: SOLANA_CHAIN,
+          address: pubkey,
+          amount: Number(lamports) / 1e9,
+        });
+      }
+      return rpcFn("getTokenAccountsByOwner", [
+        pubkey,
+        { programId: SOLANA_TOKEN_PROGRAM },
+        { encoding: "jsonParsed" },
+      ]).then(function (got) {
+        var value = (got && got.value) || [];
+        value.forEach(function (acct) {
+          var info = ((((acct || {}).account || {}).data || {}).parsed || {}).info || {};
+          var mint = String(info.mint || "");
+          var known = SOLANA_MINTS[mint];
+          if (!known) {
+            return;
+          }
+          var amt = info.tokenAmount || {};
+          var qty = Number(amt.uiAmount || 0);
+          if (!(qty > 0)) {
+            return;
+          }
+          rows.push({
+            kind: "holding",
+            symbol: known.symbol,
+            token: mint,
+            chain_id: SOLANA_CHAIN,
+            address: pubkey,
+            amount: qty,
+          });
+        });
+        return rows;
+      }).catch(function () {
+        return rows;
+      });
+    }).catch(function () {
+      return [];
+    });
   }
 
   function listHoldings(provider, address, chainId) {
@@ -310,12 +387,25 @@
                   },
                 ];
               }
-              applyHoldings(holdings);
-              text(el("wallet-login-status"), "Connected " + address + ". You sign every fill.");
-              var native = holdings.filter(function (h) {
-                return h.symbol === "ETH";
-              })[0];
-              return native || holdings[0];
+              var phantom =
+                typeof window !== "undefined" &&
+                window.solana &&
+                window.solana.publicKey
+                  ? String(window.solana.publicKey)
+                  : "";
+              var next = phantom
+                ? listSolanaHoldings(phantom).then(function (sol) {
+                    return holdings.concat(sol || []);
+                  })
+                : Promise.resolve(holdings);
+              return next.then(function (all) {
+                applyHoldings(all);
+                text(el("wallet-login-status"), "Connected " + address + ". You sign every fill.");
+                var native = all.filter(function (h) {
+                  return h.symbol === "ETH";
+                })[0];
+                return native || all[0];
+              });
             });
           });
       })
@@ -344,6 +434,8 @@
     applyHoldings: applyHoldings,
     loadGame: loadGame,
     login: login,
+    listSolanaHoldings: listSolanaHoldings,
+    SOLANA_CHAIN: SOLANA_CHAIN,
     swapHref: swapHref,
     batchHref: batchHref,
     applyBatchQuery: applyBatchQuery,
