@@ -13,15 +13,30 @@
       h1 { font-family: Georgia, serif; font-weight: 400; font-size: 2rem; }
       section { background: #faf8f2; border: 1px solid #d4cfbf; border-radius: 1rem; padding: 1rem; }
       a { color: #1c1917; }
+      button { min-height: 44px; font: inherit; padding: 0.5rem 1rem; border-radius: 999px; border: 1px solid #d4cfbf; background: #fff; }
     </style>
   </head>
   <body>
     <main>
       <h1>tkrWallet</h1>
-      <p>Open-source signer. You hold the keys. Swaps use tkrSwap intelligent routing — we never custody funds.</p>
+      <p>Open-source signer. You hold the keys. tkrSwap is on. You sign every fill.</p>
+      <section id="wallet-login" data-wallet-login>
+        <h2>Login</h2>
+        <p>Connect an injected wallet. This never auto-executes a swap. Ledger signs on tkrpik.</p>
+        <p>
+          <button type="button" id="wallet-login-btn">Connect wallet</button>
+          <a href="https://tkrpik.com/login?next=tkrswap">Sign in on tkrpik</a>
+        </p>
+        <p id="wallet-login-status"></p>
+      </section>
+      <section data-holdings id="holdings">
+        <h2>Holdings</h2>
+        <p>Start a tkrSwap from a holding already in this wallet. Quotes stay on tkrSwap.</p>
+        <div id="holdings-list">Connect a wallet to list holdings.</div>
+      </section>
       <section data-tkrswap-routing>
         <h2>tkrSwap routing</h2>
-        <p>Quotes and fills go through the tkrSwap broker desk. Customer-signed. Commission, not inventory.</p>
+        <p>Quotes and fills go through the tkrSwap desk. You sign every fill.</p>
         <p><a href="https://tkrswap.com/">Open tkrSwap</a> · <a href="https://tkrpik.com/swap">tkrpik.com/swap</a></p>
       </section>
       <section data-tkrpik-cards>
