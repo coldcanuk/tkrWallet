@@ -102,7 +102,7 @@
   }
 
   function normalizeMode(mode) {
-    mode = String(mode || "").toLowerCase();
+    mode = String(mode || "").toLowerCase().trim();
     if (mode === "split") {
       return "split";
     }
@@ -110,8 +110,12 @@
   }
 
   function batchHref(cardId, mode) {
+    cardId = String(cardId || "").trim();
+    if (!cardId) {
+      return SWAP_URL;
+    }
     var params = new URLSearchParams();
-    params.set("batch_card", cardId || "");
+    params.set("batch_card", cardId);
     params.set("mode", normalizeMode(mode));
     var join = SWAP_URL.indexOf("?") >= 0 ? "&" : "?";
     return SWAP_URL + join + params.toString();
