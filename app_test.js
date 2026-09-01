@@ -105,7 +105,41 @@ wallet.login(fake).then(function (holding) {
   assert.strictEqual(listed[1].symbol, "USDC");
   const usdcHref = wallet.swapHref(listed[1]);
   assert.ok(usdcHref.indexOf("token_in=USDC") !== -1);
-  console.log("ok");
+  return wallet.listSolanaHoldings("So11111111111111111111111111111111111111112", function (method) {
+    if (method === "getBalance") {
+      return Promise.resolve({ value: 2000000000 });
+    }
+    if (method === "getTokenAccountsByOwner") {
+      return Promise.resolve({
+        value: [
+          {
+            account: {
+              data: {
+                parsed: {
+                  info: {
+                    mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    tokenAmount: { uiAmount: 3, decimals: 6 },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      });
+    }
+    return Promise.resolve(null);
+  }).then(function (sol) {
+    assert.strictEqual(wallet.SOLANA_CHAIN, 900001);
+    assert.strictEqual(sol[0].symbol, "SOL");
+    assert.strictEqual(sol[0].chain_id, 900001);
+    assert.ok(Math.abs(sol[0].amount - 2) < 0.0001);
+    assert.strictEqual(sol[1].symbol, "USDC");
+    const solHref = wallet.swapHref(sol[0]);
+    assert.ok(solHref.indexOf("token_in=SOL") !== -1);
+    assert.ok(solHref.indexOf("source_chain_id=900001") !== -1);
+    assert.ok(src.indexOf("/api/quote") === -1);
+    console.log("ok");
+  });
 }).catch(function (err) {
   console.error(err);
   process.exit(1);
