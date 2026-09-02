@@ -60,6 +60,8 @@ assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=pwned").mode,
 assert.strictEqual(wallet.applyBatchQuery("?batch_card=%20%20"), null);
 assert.ok(wallet.batchHref("card-1", "nope").indexOf("mode=consolidate") !== -1);
 assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=split%20").mode, "split");
+assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=split&gas=1").gas, true);
+assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=split").gas, false);
 assert.strictEqual(wallet.batchHref("  ", "split"), wallet.SWAP_URL);
 
 const applied = wallet.applyGame({

@@ -213,6 +213,7 @@
       return null;
     }
     var mode = normalizeMode(q.get("mode"));
+    var gas = String(q.get("gas") || "").trim() === "1";
     var box = el("batch-intent");
     text(
       box,
@@ -220,9 +221,10 @@
         mode +
         " intent " +
         card +
+        (gas ? " with gas legs" : "") +
         ". Quotes stay on tkrSwap. You sign every fill."
     );
-    return { card_id: card, mode: mode };
+    return { card_id: card, mode: mode, gas: gas };
   }
 
   function swapHref(holding) {
