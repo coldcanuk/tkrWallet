@@ -8,14 +8,18 @@
  *
  * Rebuild from the repo root:  npm run build:css
  */
-@import "tailwindcss";
+/* `source(none)` disables Tailwind's automatic project scan. Without it the
+ * build also reads docs, CI config and tooling, so an unrelated file edit
+ * changes app.css and trips the committed-CSS freshness gate. The scan set is
+ * declared explicitly below instead: app.css is then a pure function of the
+ * files that actually carry class names.
+ *
+ * When you add a source file with classes, add it here too. */
+@import "tailwindcss" source(none);
 
-/* Tailwind scans from this file's directory by default. The app sources live at
- * the repo root, so they must be declared explicitly. Keep this list in step
- * with the files that actually carry class names. */
 @source "../../index.html";
-@source "../../app.js";
 @source "../../ui.js";
+@source "../../app.js";
 
 @theme {
   /* ---- Surfaces: warm dark, carried over from the v1 cream/charcoal identity */
