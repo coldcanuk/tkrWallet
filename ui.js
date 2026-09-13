@@ -141,7 +141,11 @@
 
     var tabs = document.querySelectorAll("[data-nav]");
     for (var j = 0; j < tabs.length; j++) {
-      tabs[j].setAttribute("aria-selected", tabs[j].getAttribute("data-nav") === next ? "true" : "false");
+      if (tabs[j].getAttribute("data-nav") === next) {
+        tabs[j].setAttribute("aria-current", "page");
+      } else {
+        tabs[j].removeAttribute("aria-current");
+      }
     }
     return next;
   }
@@ -172,6 +176,11 @@
   /** Announce a message to assistive tech without stealing focus. */
   function setStatus(message) {
     setText(el("account-status"), message);
+  }
+
+  /** Balance/price updates announce here, separate from connection state. */
+  function setWalletStatus(message) {
+    setText(el("wallet-status"), message);
   }
 
   function setWalletValue(value, currency, note) {
@@ -301,6 +310,7 @@
     go: go,
     setAccount: setAccount,
     setStatus: setStatus,
+    setWalletStatus: setWalletStatus,
     setWalletValue: setWalletValue,
     setCurrency: setCurrency,
     renderTokens: renderTokens,

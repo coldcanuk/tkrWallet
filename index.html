@@ -62,6 +62,7 @@
         </div>
         <!-- Screen readers announce connection state and errors. -->
         <p id="account-status" class="sr-only" role="status" aria-live="polite"></p>
+        <p id="wallet-status" class="sr-only" role="status" aria-live="polite"></p>
       </header>
 
       <!-- Screens -->
@@ -161,28 +162,27 @@
 
       <!-- Bottom navigation -->
       <nav
-        role="tablist"
         aria-label="Sections"
         class="fixed inset-x-0 bottom-0 z-30 border-t border-ink-800 bg-ink-950/95 backdrop-blur"
         style="padding-bottom: var(--safe-b)"
       >
         <div class="mx-auto flex max-w-md">
-          <button type="button" role="tab" data-nav="home" aria-selected="true" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-selected:text-ember-400">
+          <a href="#/home" data-nav="home" aria-current="page"class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-current:text-ember-400">
             <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
             Home
-          </button>
-          <button type="button" role="tab" data-nav="swap" aria-selected="false" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-selected:text-ember-400">
+          </a>
+          <a href="#/swap" data-nav="swap" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-current:text-ember-400">
             <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true"><path d="M4 8h13m0 0-3-3m3 3-3 3M20 16H7m0 0 3-3m-3 3 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Swap
-          </button>
-          <button type="button" role="tab" data-nav="activity" aria-selected="false" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-selected:text-ember-400">
+          </a>
+          <a href="#/activity" data-nav="activity" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-current:text-ember-400">
             <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true"><path d="M12 7v5l3 2M4 12a8 8 0 1 0 8-8 8 8 0 0 0-8 8Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Activity
-          </button>
-          <button type="button" role="tab" data-nav="search" aria-selected="false" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-selected:text-ember-400">
+          </a>
+          <a href="#/search" data-nav="search" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-current:text-ember-400">
             <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
             Search
-          </button>
+          </a>
         </div>
       </nav>
     </div>

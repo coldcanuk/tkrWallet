@@ -102,6 +102,13 @@ test("shell loads the committed CSS and boots from ui.js", function () {
   assert.ok(html.indexOf('src="./ui.js"') !== -1, "missing ui.js boot");
 });
 
+test("navigation uses real links, not an invalid tab pattern", function () {
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('role="tab"') === -1, "role=tab without tabpanels is invalid ARIA");
+  assert.ok(html.indexOf('href="#/home"') !== -1, "missing home link");
+  assert.ok(html.indexOf('id="wallet-status"') !== -1, "missing second live region for balance updates");
+});
+
 test("iOS safe areas and dark theme", function () {
   const html = readFile("index.html");
   assert.ok(html.indexOf("viewport-fit=cover") !== -1, "viewport-fit=cover required");
