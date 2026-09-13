@@ -285,9 +285,12 @@ Vary: Origin
   common way a browser wallet silently fails** — an `OPTIONS` that 404s or 405s
   means the real request is never sent, and the browser reports only a generic
   network error.
-- **Please pin the extension ID.** Add a `key` to `manifest.json` so the
-  `chrome-extension://<id>` origin is stable for an unpacked load; otherwise it
-  varies by install path and cannot be allow-listed. I will generate this.
+- **Extension ID pinned (resolved).** `manifest.json` now carries a generated
+  `key` (public half of a 2048-bit RSA pair, private half gitignored). The
+  resulting ID is **`hkljagpgkenlmfemcddcnhoaddpndldn`**, so the stable popup
+  origin is **`chrome-extension://hkljagpgkenlmfemcddcnhoaddpndldn`**. The edge
+  should allow-list that origin (or use `ACAO: *`, since the extension uses a
+  bearer token rather than cookies).
 
 ---
 

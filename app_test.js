@@ -175,6 +175,24 @@ test("extension description names Scratchpost, not the v1 funnel", function () {
   assert.ok(manifest.description.toLowerCase().indexOf("tkrshell") === -1);
 });
 
+test("extension ships PNG icons and a pinned key", function () {
+  const manifest = JSON.parse(readFile("manifest.json"));
+  ["16", "32", "48", "128"].forEach(function (size) {
+    const p = manifest.icons[size];
+    assert.ok(p && p.indexOf(".svg") === -1, "icons." + size + " must be PNG (Chrome rejects SVG)");
+    assert.ok(fs.existsSync(path.join(ROOT, p)), "missing icon file " + p);
+  });
+  assert.ok(manifest.action.default_icon, "missing action.default_icon");
+  assert.ok(/^[A-Za-z0-9+/=]{300,}$/.test(manifest.key || ""), "missing or malformed key");
+});
+
+test("the CRX private key is ignored and never tracked", function () {
+  const cp = require("child_process");
+  assert.ok(readFile(".gitignore").indexOf("key.pem") !== -1, "key.pem must be gitignored");
+  const tracked = cp.execSync("git ls-files key.pem", { cwd: ROOT }).toString().trim();
+  assert.strictEqual(tracked, "", "key.pem must never be committed");
+});
+
 /* ── manifest.webmanifest: the PWA ──────────────────────────────────────── */
 
 test("PWA manifest colours match the dark theme", function () {

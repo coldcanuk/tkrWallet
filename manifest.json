@@ -5,15 +5,24 @@
   "description": "Self-custody wallet for Scratchpost. You hold the keys.",
   "action": {
     "default_popup": "index.html",
-    "default_title": "tkrWallet"
+    "default_title": "tkrWallet",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
   },
   "icons": {
-    "128": "icon.svg"
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   },
   "host_permissions": [
     "https://tkrwallet.scratchpost.ai/*"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://tkrwallet.scratchpost.ai; img-src 'self' data:; style-src 'self'"
-  }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlkE5kMAg5w+9KNqS6pFskViGG+eastppyfzHyC3+K+TKemU9eeFFyVZ981iufDNRJJ1UsWsxquzcQ6Clm+AUemFYuL5l8bexSH6/85nSYqMPe4ltr1N4ryDdxRgDznvDJCDo3OF/VcxYLoJvDymtQ1SdETG9/IGMl9jgzOyh+kXKFd3q752zSB15Yet4QQD63NmIGBnCbL0NhjyLhSs0+yzjaT+asEgsYRmwQdl7f/z4aRv+VjLczPOl11dREnmYSXBjuLPOlxJgtc0hExt7xi60wufqYXQ32gi4h3IaW0UkW1rNk6P23Qd5/CMqB6HIQklKkse408SYylHOsb+SywIDAQAB"
 }
