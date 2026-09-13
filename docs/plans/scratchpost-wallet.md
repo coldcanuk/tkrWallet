@@ -1,7 +1,8 @@
 # tkrWallet → Scratchpost — Repurposing Plan
 
-**Revision 2.** Status: active — work has begun, see §7.0.
+**Revision 3.** Status: active — M1 and M2 done, see §7.0.
 **Owner:** Charles Pitre.
+**Edge contract:** [`docs/specs/icehut-edge.md`](../specs/icehut-edge.md).
 **Supersedes:** `docs/plans/wallet-ui-overhaul.md` (the tkrShell-based plan).
 **Research basis:** `tkrWallet@c4e5153`; `blockchain-infrastructure@0207ff8`
 (Scratchpost); `tickerpicker@origin/main ab8942c` (v1, being divorced).
@@ -41,9 +42,27 @@ described as "blocked" are now simply **decisions Charles makes** — §9.
 |---|---|---|
 | Backend | `tickerpicker` / `tkrshell` — aggregator-era | **Scratchpost** (`blockchain-infrastructure`) |
 | Shell | tkrShell, an allow-list proxy to an aggregator | **retired** |
-| Wallet talks to | `https://tkrpik.com/v1/*` | the Scratchpost **edge** (does not exist yet — §2) |
+| Edge | `tkrpik.com/v1/*` (tkrshell) | **icehut**, the physical edge server |
+| Wallet origin | `coldcanuk.github.io/tkrWallet` | **`wallet.scratchpost.ai`** (Charles owns the domain; Cloudflare is the registrar) |
+| What the wallet may contact | `tkrpik.com`, `tkrswap.com`, **and `api.mainnet-beta.solana.com`** | **icehut and nothing else — never eva** |
 | Routing | six vendor quote clients in `tickerpicker` | **does not exist yet** (§6.1) |
-| Chain truth | third-party RPC + vendor APIs | **own pruned Reth (ETH) + Base + op-node** |
+| Chain truth | third-party RPC + vendor APIs | own pruned Reth (ETH) + Base + op-node |
+
+### 0.1 The boundary is enforced, not promised
+
+"The wallet never talks to eva" is not a policy note in this plan. Three shipped
+artefacts make it a property of the program:
+
+1. **No RPC passthrough exists** at the edge, so there is no endpoint through
+   which any node could be reached (`docs/specs/icehut-edge.md` §4).
+2. **`connect-src 'self'`** in the CSP means the browser refuses any request from
+   the wallet to another origin. A future contributor cannot add an eva call by
+   accident — it fails in development.
+3. **`host_permissions`** in the extension lists exactly `wallet.scratchpost.ai`.
+
+This also fixes a live v1 defect: the current `app.js:10` hardcodes
+`https://api.mainnet-beta.solana.com` and calls it directly. That is a
+third-party RPC in the trust path of a self-custody wallet, and it goes away.
 
 The wallet's core invariants survive the move unchanged, and that is not a
 coincidence — Scratchpost's charter states the same rule for every customer
@@ -190,21 +209,24 @@ together — and makes an `HttpOnly; SameSite=Strict` cookie usable again, which
 the recommended session mechanism because it keeps tokens out of JavaScript.
 
 ```
-   Browser (mobile-first PWA + extension)
-        │  same origin — no CORS, no preflight
+   Browser — PWA + MV3 extension
+   https://wallet.scratchpost.ai
+        │  same origin — no CORS, no preflight, no third-party cookie
+        │  CSP connect-src 'self' — the browser blocks anything else
         ▼
-   wallet edge nginx        public, TLS, HSTS, per-IP limit_req, static assets
-        │                   serves /<static>  AND  proxies /api/*
+   ══ icehut ══  the physical edge. TLS, HSTS, static assets, /api/*,
+   Cloudflare    rate limits, wallet auth, prices, allow-list.
+   in front      Holds any backend credential SERVER-SIDE.
+        │  LAN/loopback — the wallet never sees this side
         ▼
-   wallet facade            wallet auth, allow-list, per-wallet limits, prices
-   (damshell, §3)           holds the backend API key SERVER-SIDE
-        │  loopback
-        ▼
-   caesar/api :8791         reads
-   caesar/rpc-gateway :8799 signed raw tx only
-        │
-   B2B nginx :8790           LAN/VPN, unchanged
+   Scratchpost brain        caesar/api :8791   reads
+   (damshell replaces       rpc-gateway :8799 signed raw bytes only
+    the tkrshell role)      B2B nginx :8790   unchanged, LAN/VPN
 ```
+
+**The wallet's only counterparty is icehut.** Everything past that line —
+fan-out to the brain, the pruned nodes, the B2B face — is icehut's business.
+`docs/specs/icehut-edge.md` is the contract.
 
 This keeps your spine, keeps the brain off the public internet, and is the
 arrangement browser wallets actually use. Mature architectures run the BFF
@@ -496,10 +518,12 @@ anchor.** The wallet should never imply that routing through it is required.
 | | Milestone | State |
 |---|---|---|
 | ✅ | M1 build skeleton | **Done** — `a4e59ec` |
-| ✅ | M2 design system and app shell | **Done** — `d53c67b`, CSS determinism fix `+1` |
+| ✅ | M2 design system and app shell | **Done** — `d53c67b`, CSS determinism fix `ac7d857` |
+| ✅ | icehut edge **spec** | **Done** — [`docs/specs/icehut-edge.md`](../specs/icehut-edge.md) |
 | ▶ | M3 home, data layer, Beaver Nickels removal | Next |
-| ○ | M0 chain probe | Needs a network path to eva |
-| ○ | M4–M11 | Not started |
+| ○ | M4/M5 icehut edge + facade | Blocked on the spec's six answers |
+| ○ | M0 chain probe | Backend concern; needs a route to eva |
+| ○ | M6–M11 | Not started |
 
 Work happens in the worktree `.worktrees/scratchpost-wallet` on
 `feat/scratchpost-wallet`; `main` stays clean and untouched. `npm run check`
@@ -510,11 +534,15 @@ check.
 browser. It is verified structurally (tests, class resolution, valid CSS) but
 not visually. First task in M3 is to load it and look at it.
 
-### M0 — Chain-plane probe **(O/S)** — *cheap, read-only, unblocks §5*
+### M0 — Chain-plane probe **(O/S)** — *backend concern, NOT a wallet blocker*
 
-Needs a network path to eva. Not blocked by anyone's approval — blocked only by
-the fact that this host cannot reach `192.168.1.79`. Can be run by Charles, or
-by me if given a route/SSH.
+**This does not gate the wallet.** The wallet never talks to eva (§0.1), and EVM
+balances come from the user's own injected provider. The probe matters to
+whatever icehut fans out to for prices and swap — a backend concern, not a
+client one. Re-scoped accordingly.
+
+It still needs a network path to eva, which this host does not have. Can be run
+by Charles, or by me if given a route.
 
 One session against the node **directly** (not through the gateway, whose chain
 selection is broken — §6.2):
@@ -527,11 +555,11 @@ eth_getTransactionReceipt(<old tx>)         → distinguishes --full from --mini
 eth_getLogs(N-20000, N)                     → pins the prune horizon
 ```
 
-Repeat against Base `:9545` to confirm it is up at all (§5.5). Record the measured
-horizon in the wallet's diagnostics rather than hardcoding it.
+Repeat against Base `:9545` to confirm it is up at all (§5.5).
 
 **Exit:** the prune preset, the measured retention horizon, and Base liveness are
-known facts instead of doc assertions.
+known facts instead of doc assertions. This shapes what the backend can promise
+the edge; it does not change the wallet.
 
 ### M1 — Build skeleton **(W)** — ✅ DONE (`a4e59ec`)
 
@@ -565,29 +593,49 @@ into M2 when the tests are next touched.
 - `wallet.js`: per-chain holdings for Ethereum, Base, Solana, Robinhood
   (`4663`, tokens `{ETH, USDG, HOOD}`); explicit `{value}|{unknown}` results so an
   RPC failure never renders as a zero balance.
-- **Balances come from the wallet's own RPC reads**, not the REST API — see
-  §4.1.2 (Sol/RH reads are unwired; there is no balances endpoint at all).
+- **EVM balances come from the injected provider** — MetaMask and friends expose
+  `eth_getBalance` / `eth_call` / `eth_chainId`. This is the user's own
+  infrastructure, not ours, and it is why the wallet never contacts eva.
+- **Solana is the exception:** Phantom exposes no balance RPC, so v1 called a
+  public Solana RPC (`app.js:10`). That leaves the trust path. Either icehut
+  serves it (spec §3.3) or the Solana row goes — decision D10.
+- Delete the hardcoded `SOLANA_RPC` constant and the `solanaRpc` transport from
+  `app.js`; the wallet must ship with **no third-party origin in it at all**.
 - Explicit supported-chain catalog; uncatalogued chains degrade to native-only.
 - **Beaver Nickels removed** from client, tests, docs, both manifests. Client-only
   removal; the server concept is untouched.
-- **Exit:** no `beaver` string in the tkrWallet tree.
+- **Exit:** no `beaver` string, and no non-icehut origin, anywhere in the
+  tkrWallet tree. Both are now testable invariants.
 
-### M4 — Wallet origin and edge **(S)**
-- Decide the wallet hostname and serve the PWA **same-origin** with its API edge
-  (§2.5). Static assets and `/api/*` on one nginx server block; TLS; HSTS.
-- Keep the GitHub repo public; deploy the served copy to the edge.
-- **Exit:** `document.origin` equals the API origin; no CORS needed for any
-  wallet call.
+### M4 — icehut edge at `wallet.scratchpost.ai` **(S/O)**
 
-### M5 — Wallet facade (`damshell`) **(S)**
-- New small service: closed verb allow-list (reuse the `tkrshell` allow-list and
-  limiter **design**), wallet-signature login (nonce → verify → session), an
-  `HttpOnly; SameSite=Strict` session cookie (valid once same-origin), per-wallet
-  + per-IP rate limits, request logging, body caps, and **the first `429` this
-  stack has ever returned**.
-- Holds the Scratchpost key **server-side**. Reaches `caesar/api` and
-  `rpc-gateway` over loopback. No SoT database.
-- Write the §3.1 prohibition into the repo before the code.
+Contract: [`docs/specs/icehut-edge.md`](../specs/icehut-edge.md). That document
+is the deliverable for this milestone — the edge gets built to fit it.
+
+- DNS + TLS for `wallet.scratchpost.ai` (Cloudflare registrar; proxied with
+  Authenticated Origin Pulls recommended, so `CF-Connecting-IP` is trustworthy).
+- Serve the wallet **same-origin** with its API: static files and `/api/*` on one
+  host. Static caching, `Service-Worker-Allowed: /`, and the security headers
+  including **`connect-src 'self'`** — the line that makes §0.1 enforced.
+- Client-IP handling that does **not** trust a client-supplied `X-Forwarded-For`
+  (spec §7 — this is the `rpc-gateway` bug; do not repeat it at the edge).
+- Keep the GitHub repo public; deploy the served copy to icehut.
+- **Exit:** the wallet loads from its own origin, `document.origin` equals the
+  API origin, and a request to any other origin is refused by the browser.
+
+### M5 — Wallet facade on icehut **(S)**
+
+The edge must do more than proxy: it mints wallet identity and holds any backend
+credential **server-side**. nginx alone cannot verify a signature or rate-limit
+per wallet.
+
+- Closed verb allow-list (reuse the `tkrshell` allow-list and limiter *design*),
+  wallet-signature login (nonce → verify → session), `HttpOnly; SameSite=Strict`
+  cookie for the PWA and a bearer token for the extension.
+- Per-wallet + per-IP rate limits, request logging, body caps, and **the first
+  `429` this stack has ever returned**.
+- Reaches the brain and `rpc-gateway` over LAN/loopback. No SoT database.
+- Write the §3.1 no-aggregation prohibition into the repo before the code.
 - **Exit:** a browser logs in with a wallet signature and makes an authenticated
   call with no CORS, no preflight, and no key in the client.
 
@@ -682,8 +730,10 @@ part. Only D5 and D6 genuinely need your input, because I cannot know them.
 | **D2** | Topology — my deviation from `wallet <-> nginx <-> nginx <-> backend` | **Serve the PWA same-origin with its API edge** (§2.5). Keeps your nginx↔nginx spine, removes CORS, preflight, third-party cookies, and the Private Network Access problem in one move. |
 | **D3** | `damshell` | **Build it — as a wallet facade, not a shell**, with the §3.1 no-aggregation prohibition committed before the code. nginx alone cannot mint identity, hold the key, or rate-limit per wallet. |
 | **D4** | Swap engine | **Option A as the direction** (on-chain on your own nodes, Uniswap V2 first, `security-worker` band as the pre-sign gate). B is available as a stopgap. Reversible; recorded in `docs/swap-routing.md` in M8. |
-| **D5** | **Wallet hostname** — needs you | `scratchPost.ai` is meta-only, so this must be named. Proposed: **`wallet.tkrpik.com`** — a domain you already control, already fronted, natural fit. Say the word or pick another. |
-| **D6** | **M0 probe access** — needs you | The five read-only calls in M0 need a route to eva `192.168.1.79` / Base `:9545`. I cannot reach a LAN host from here. Either you run them, or give me SSH/a tunnel. |
+| **D5** | Wallet hostname | **RESOLVED: `https://wallet.scratchpost.ai`.** Charles owns `scratchpost.ai`; Cloudflare is the registrar. This also means `blockchain-infrastructure/docs/theticker/SCRATCHPOST.md:4` ("meta name only… do not use it as a hostname") is now wrong and needs amending — it is cited by four other docs. |
+| **D6** | Chain-plane probe access | **Re-scoped, no longer a wallet blocker.** The wallet never contacts eva; EVM balances come from the user's injected provider. A route to eva is still needed for the *backend* (prices/swap), not for the client. |
+| **D9** | **icehut edge contract** | **Written:** [`docs/specs/icehut-edge.md`](../specs/icehut-edge.md). Six open questions for Charles are listed there (§10). |
+| **D10** | Solana reads | **Needs a decision.** Phantom exposes no balance RPC, so v1 called a public Solana RPC directly — unacceptable under the §0.1 rule. Either icehut serves Solana token reads (spec §3.3) or the Solana row is dropped. |
 | **D7** | Theme | **Warm-dark**, already implemented in `tools/src/app.css`: `ink` surfaces, `cream` text, `ember` amber accent. Deliberately not Phantom violet — the pattern is what we emulate, not the palette. Change is a one-file edit. |
 | **D8** | Ownership of Scratchpost-side milestones (M4, M5, M6, M9) | **Unassigned.** They land in `blockchain-infrastructure`. I can work them if you grant that repo; otherwise they need an owner there. |
 
@@ -726,3 +776,17 @@ architecture.
     artifact and a class typo otherwise renders unstyled with no error anywhere.
     Pins the Tailwind scan set with `source(none)` so unrelated file edits no
     longer perturb the build and spuriously trip the freshness gate.
+- **rev 3** — this document.
+  - **Hostname resolved:** `https://wallet.scratchpost.ai`, same-origin with its
+    API. `scratchpost.ai` is Charles's; the Cloudflare registrar note in the
+    sibling repo is out of date.
+  - **Hard boundary stated and made enforceable:** the wallet talks to icehut and
+    nothing else, ever. Not eva, not the brain, not a public RPC. Enforced by
+    three shipped artefacts — no RPC passthrough, `connect-src 'self'`, and the
+    extension's `host_permissions` — rather than by policy.
+  - **New deliverable:** `docs/specs/icehut-edge.md`, the contract the edge is
+    built to fit, including the six decisions the edge needs from Charles.
+  - **Corrected a live v1 defect:** `app.js:10` hardcodes
+    `https://api.mainnet-beta.solana.com` and calls it directly. That third-party
+    RPC leaves the trust path.
+  - **M0 re-scoped:** the chain probe is a backend concern, not a wallet blocker.
