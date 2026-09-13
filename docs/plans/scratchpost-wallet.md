@@ -495,13 +495,20 @@ anchor.** The wallet should never imply that routing through it is required.
 
 | | Milestone | State |
 |---|---|---|
-| ✅ | M1 build skeleton | **Done** — commit `a4e59ec` on `feat/scratchpost-wallet` |
-| ▶ | M2 design system and app shell | Next |
+| ✅ | M1 build skeleton | **Done** — `a4e59ec` |
+| ✅ | M2 design system and app shell | **Done** — `d53c67b`, CSS determinism fix `+1` |
+| ▶ | M3 home, data layer, Beaver Nickels removal | Next |
 | ○ | M0 chain probe | Needs a network path to eva |
-| ○ | M3–M11 | Not started |
+| ○ | M4–M11 | Not started |
 
 Work happens in the worktree `.worktrees/scratchpost-wallet` on
-`feat/scratchpost-wallet`; `main` stays clean and untouched.
+`feat/scratchpost-wallet`; `main` stays clean and untouched. `npm run check`
+runs the whole gate: unit tests, committed-CSS freshness, and a class-resolution
+check.
+
+**Uncommitted observation for M3:** the shell has never been opened in a
+browser. It is verified structurally (tests, class resolution, valid CSS) but
+not visually. First task in M3 is to load it and look at it.
 
 ### M0 — Chain-plane probe **(O/S)** — *cheap, read-only, unblocks §5*
 
@@ -712,3 +719,10 @@ architecture.
     into recorded decisions.
   - **Executed M1**: Tailwind v4 pipeline, CI, committed CSS — `a4e59ec` on
     `feat/scratchpost-wallet`.
+  - **Executed M2**: mobile-first wallet shell — `d53c67b`. Replaces the v1 card
+    list with header + account chip, wallet-value block with a USD/CAD toggle,
+    the Send/Swap/Receive/Buy row, a token list, and a four-tab bottom nav.
+    Adds `tools/check-classes.js`, because `app.css` is a committed build
+    artifact and a class typo otherwise renders unstyled with no error anywhere.
+    Pins the Tailwind scan set with `source(none)` so unrelated file edits no
+    longer perturb the build and spuriously trip the freshness gate.
