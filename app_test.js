@@ -11,7 +11,7 @@ const path = require("path");
 
 const ROOT = __dirname;
 const ALLOWED_ORIGIN = "https://tkrwallet.scratchpost.ai";
-const SHIPPED = ["index.html", "ui.js", "wallet.js", "sw.js", "manifest.json", "manifest.webmanifest"];
+const SHIPPED = ["index.html", "ui.js", "wallet.js", "sw.js", "manifest.json", "manifest.webmanifest", "README.md"];
 
 let failures = [];
 let count = 0;
