@@ -807,3 +807,8 @@ architecture.
   - **`@tailwindplus/elements` is not usable here:** the Application UI examples
     load it from a CDN, which MV3 and `script-src 'self'` both forbid.
     Interactivity stays hand-written.
+- **rev 5 — RDAP build freeze (M2.2).** The build proceeds under
+  `docs/plans/rdap-build-plan.md`. Decisions frozen for this build: D10 Solana
+  is **catalogued-not-queried** (no client read source; edge reads pending);
+  D12 no React runtime, confirmed; D5 `tkrwallet.scratchpost.ai` is the single
+  origin constant. Audit findings map to milestones per `docs/research/RESEARCH.md`.
