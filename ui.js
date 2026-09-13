@@ -190,7 +190,23 @@
     }
   }
 
-  function renderTokens(holdings) {
+  /** Fiat value for one holding, or null when unpriced/unknown (renders —). */
+  function fiatFor(holding, prices) {
+    var wallet = root.tkrWalletData;
+    if (!wallet || !holding || holding.state !== "ok" || holding.amount === null) {
+      return null;
+    }
+    if (!prices || prices.state !== "ok") {
+      return null;
+    }
+    var entry = prices.prices[wallet.assetKey(holding)];
+    if (!entry || typeof entry[state.currency] !== "number" || !isFinite(entry[state.currency])) {
+      return null;
+    }
+    return holding.amount * entry[state.currency];
+  }
+
+  function renderTokens(holdings, prices) {
     var box = el("token-list");
     var tpl = el("tpl-token-row");
     if (!box || !tpl) {
@@ -209,13 +225,13 @@
       var badge = row.querySelector("[data-token-badge]");
       setText(row.querySelector("[data-token-name]"), holding.symbol || "?");
       setText(row.querySelector("[data-token-chain]"), holding.chain_name || "");
-      setText(row.querySelector("[data-token-amount]"), formatAmount(holding.amount));
       setText(
-        row.querySelector("[data-token-fiat]"),
-        holding.fiat === undefined ? "" : formatFiat(holding.fiat, state.currency)
+        row.querySelector("[data-token-amount]"),
+        holding.state === "unknown" ? "\u2014" : formatAmount(holding.amount)
       );
+      setText(row.querySelector("[data-token-fiat]"), formatFiat(fiatFor(holding, prices), state.currency));
       if (badge) {
-        // Deterministic letter-avatar colour: no image assets, no remote icons.
+        // Colour comes from the data layer's local map — never from the wire.
         badge.style.backgroundColor = holding.color || "#cfc8b8";
         badge.textContent = String(holding.symbol || "?").slice(0, 3);
       }
@@ -224,7 +240,86 @@
     return holdings;
   }
 
-  /* ---- wiring ----------------------------------------------------------- */
+  /* ---- wallet wiring: shell talks to the data layer only ------------------ */
+
+  var uiData = { lastHoldings: null, lastPrices: null, account: null };
+
+  /** Re-render the list and value from whatever we last knew. */
+  function renderAll() {
+    if (uiData.lastHoldings) {
+      renderTokens(uiData.lastHoldings, uiData.lastPrices);
+      refreshValue();
+    }
+  }
+
+  function refreshValue() {
+    var wallet = root.tkrWalletData;
+    var holdings = uiData.lastHoldings;
+    if (!wallet || !holdings) {
+      return;
+    }
+    var est = wallet.estimateValue(holdings, uiData.lastPrices, state.currency);
+    if (est.state === "ok") {
+      var note = est.priced < est.total ? est.priced + " of " + est.total + " holdings priced" : "";
+      setWalletValue(est.value, state.currency, note || undefined);
+    } else {
+      setWalletValue(null, state.currency, "Prices unavailable until the wallet edge ships.");
+    }
+  }
+
+  function refreshPrices() {
+    var wallet = root.tkrWalletData;
+    var holdings = uiData.lastHoldings;
+    if (!wallet || !holdings || !holdings.length) {
+      uiData.lastPrices = null;
+      renderAll();
+      return Promise.resolve(null);
+    }
+    var assets = holdings.filter(function (h) {
+      return h.state === "ok" && h.amount !== null;
+    }).map(function (h) {
+      return wallet.assetKey(h);
+    });
+    return wallet.getPrices(assets, [state.currency]).then(function (prices) {
+      uiData.lastPrices = prices;
+      renderAll();
+      return prices;
+    });
+  }
+
+  /** Connect button: provider connect -> holdings -> prices. Read-only; the
+   * data layer never sends a transaction. */
+  function connectWallet() {
+    var wallet = root.tkrWalletData;
+    if (!wallet) {
+      setStatus("Wallet data layer failed to load.");
+      return Promise.resolve(null);
+    }
+    setStatus("Requesting wallet connection\u2026");
+    return wallet
+      .connect()
+      .then(function (account) {
+        uiData.account = account;
+        setAccount(account.address);
+        setWalletStatus("Connected. Reading balances\u2026");
+        return wallet.listHoldings(null, account.address, account.chain_id);
+      })
+      .then(function (holdings) {
+        uiData.lastHoldings = holdings;
+        renderTokens(holdings, null);
+        setWalletStatus(holdings.length + " holding" + (holdings.length === 1 ? "" : "s") + " listed.");
+        return refreshPrices();
+      })
+      .catch(function (err) {
+        uiData.account = null;
+        uiData.lastHoldings = null;
+        uiData.lastPrices = null;
+        setAccount(null, "Install an injected wallet to connect.");
+        setStatus((err && err.message) || "Wallet connect failed.");
+        setWalletValue(null, state.currency, "Connect a wallet to see your balance.");
+        return null;
+      });
+  }
 
   var state = {
     screen: DEFAULT_SCREEN,
@@ -244,6 +339,14 @@
     for (var j = 0; j < currencies.length; j++) {
       currencies[j].addEventListener("click", function (event) {
         setCurrency(event.currentTarget.getAttribute("data-currency"));
+        renderAll(); // re-paint fiat column and value in the new currency
+      });
+    }
+
+    var accountBtn = el("account-btn");
+    if (accountBtn) {
+      accountBtn.addEventListener("click", function () {
+        connectWallet();
       });
     }
 
@@ -314,6 +417,9 @@
     setWalletValue: setWalletValue,
     setCurrency: setCurrency,
     renderTokens: renderTokens,
+    connectWallet: connectWallet,
+    renderAll: renderAll,
+    uiData: uiData,
     bind: bind,
     state: state,
     el: el,

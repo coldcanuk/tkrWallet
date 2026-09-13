@@ -261,6 +261,24 @@ test("service worker is network-first for the shell", function () {
   assert.ok(sw.indexOf("caches.match(event.request)") !== -1, "missing cache fallback");
 });
 
+test("shell loads the data layer before the shell controller", function () {
+  const html = readFile("index.html");
+  const w = html.indexOf('src="./wallet.js"');
+  const u = html.indexOf('src="./ui.js"');
+  assert.ok(w !== -1, "missing wallet.js script tag");
+  assert.ok(u !== -1 && w < u, "wallet.js must load before ui.js");
+});
+
+test("service worker precaches the data layer", function () {
+  assert.ok(readFile("sw.js").indexOf('"./wallet.js"') !== -1, "sw.js must precache wallet.js");
+});
+
+test("shell controller talks to the data layer, and still never fetches", function () {
+  const src = readFile("ui.js");
+  assert.ok(src.indexOf("tkrWalletData") !== -1, "ui.js must route through the data layer");
+  assert.ok(src.indexOf("connectWallet") !== -1, "missing connectWallet entry point");
+});
+
 /* ── wallet.js: the data layer ──────────────────────────────────────────── */
 
 function fakeProvider(opts) {
