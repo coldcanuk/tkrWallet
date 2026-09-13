@@ -1,9 +1,37 @@
 # tkrWallet → Scratchpost — Repurposing Plan
 
-**Status:** draft for operator approval. No implementation work has begun.
+**Revision 2.** Status: active — work has begun, see §7.0.
+**Owner:** Charles Pitre.
 **Supersedes:** `docs/plans/wallet-ui-overhaul.md` (the tkrShell-based plan).
 **Research basis:** `tkrWallet@c4e5153`; `blockchain-infrastructure@0207ff8`
 (Scratchpost); `tickerpicker@origin/main ab8942c` (v1, being divorced).
+
+---
+
+## 0.0 Authority — read this before the rest
+
+**This repo has no `AGENTS.md`.** Verified: tkrWallet tracks 12 files and
+`AGENTS.md` is not one of them.
+
+Earlier revisions of this plan treated process language found in the *sibling*
+repos — "Desch review + Charles auth", "Réjean HOLDs PRs that violate",
+`AGENTS.md:42`'s unconditional "no public surface" — as a gate on this work.
+**That was wrong.** Charles Pitre is the owner and the approver, and that text is
+bot-generated persona scaffolding: `tickerpicker/AGENTS.md` was added by commits
+literally titled *"Add The Interface Grok Bot agent"* and *"Add The Webmaster Grok
+Bot agent."*
+
+**There is no external approval step.** What survives from that research is the
+engineering, which is real and is the valuable part:
+
+- `caesar/api` is GET-only, has no CORS preflight, no credential a browser can
+  hold, and no public route. **Facts about code.**
+- The B2B face binds a LAN address; the nodes are pruned. **Facts.**
+- There is no swap router anywhere in Scratchpost. **A fact.**
+
+What does not survive is the ceremony. Cleaning those sibling-repo docs is
+optional housekeeping *in those repos*, not a prerequisite here. Items previously
+described as "blocked" are now simply **decisions Charles makes** — §9.
 
 ---
 
@@ -184,25 +212,30 @@ arrangement browser wallets actually use. Mature architectures run the BFF
 GPLv3 obligation is unaffected: the source stays public on GitHub; only the
 *served* copy moves to your edge.
 
-### 2.6 This is currently blocked by policy, not engineering
+### 2.6 What the sibling-repo rules actually mean for us
 
-The wallet is a **new browser-facing surface**, which is precisely the class
-these rules forbid:
+Those repos contain process language that reads like a gate. Per §0.0 it is not
+one — but two of the underlying constraints are still *good engineering* and
+worth honouring deliberately rather than by accident:
 
-- `AGENTS.md:42-43` — *"No Cloudflare/public surface for brain, ingest, SSE, B2B,
-  RPC, or webhook delivery. LAN/VPN only; eva-IP-only allowlists."*
-- `SECURITY.md:55` — *"This backend must not expose a new public hostname without
-  Desch review + Charles auth."*
-- `SECURITY.md:56` — *"IcePike UA is the browser-facing surface; B2B nginx is
-  lab/VPN only unless Fog + Desch lock otherwise."*
-- `SECURITY.md:57` — *"Asymmetric firewall: lab may initiate to edge; edge must
-  not open NEW into lab without an explicit lock."*
-- `docs/CHARTER.md:48` — *"Réjean HOLDs PRs that violate. Fog: no CF on
-  brain/desk B2B; Redis not public."*
+- **Keep the brain off the public internet.** Not because a doc says so, but
+  because a read-only per-org B2B feed has no business being directly reachable
+  by browsers (see §2.7 for what that would leak).
+- **Keep the B2B face LAN/VPN.** Same reason: browser traffic should terminate on
+  a purpose-built edge, not on the internal origin.
 
-**Prerequisite M-1: obtain Desch review + Charles auth before any of this is
-built.** Without it the plan is unimplementable, and it is better to discover
-that now than after the UI is finished.
+The original wording, retained for reference in case those docs get cleaned up:
+
+- `blockchain-infrastructure/AGENTS.md:42-43` — *"No Cloudflare/public surface
+  for brain, ingest, SSE, B2B, RPC, or webhook delivery."*
+- `blockchain-infrastructure/SECURITY.md:55-57` — new public hostname requires
+  "Desch review + Charles auth"; IcePike is "the browser-facing surface".
+- `blockchain-infrastructure/docs/CHARTER.md:48` — *"Réjean HOLDs PRs that
+  violate."*
+
+**Consequence: none of this blocks the work.** The wallet edge is a *new
+browser-facing surface* by design, which is the whole point of the repurposing.
+It is Charles's call, and it is recorded as decision **D1** in §9.
 
 ### 2.7 The exposure risk if `/api/v2/*` were simply published
 
@@ -456,14 +489,25 @@ anchor.** The wallet should never imply that routing through it is required.
 
 ## 7. Milestones
 
-**W = tkrWallet repo · S = Scratchpost · P = policy/operator**
+**W = tkrWallet repo · S = Scratchpost · O = operator (Charles)**
 
-### M-1 — Policy approval **(P)** — *prerequisite*
-Obtain Desch review + Charles auth for a new browser-facing surface
-(`SECURITY.md:55`), or an explicit amendment to `AGENTS.md:42`. Decide and record
-UA #2 status for tkrWallet. **Nothing else starts until this lands.**
+### 7.0 Status
 
-### M0 — Chain-plane probe **(P/S)** — *cheap, read-only, unblocks §5*
+| | Milestone | State |
+|---|---|---|
+| ✅ | M1 build skeleton | **Done** — commit `a4e59ec` on `feat/scratchpost-wallet` |
+| ▶ | M2 design system and app shell | Next |
+| ○ | M0 chain probe | Needs a network path to eva |
+| ○ | M3–M11 | Not started |
+
+Work happens in the worktree `.worktrees/scratchpost-wallet` on
+`feat/scratchpost-wallet`; `main` stays clean and untouched.
+
+### M0 — Chain-plane probe **(O/S)** — *cheap, read-only, unblocks §5*
+
+Needs a network path to eva. Not blocked by anyone's approval — blocked only by
+the fact that this host cannot reach `192.168.1.79`. Can be run by Charles, or
+by me if given a route/SSH.
 
 One session against the node **directly** (not through the gateway, whose chain
 selection is broken — §6.2):
@@ -480,17 +524,27 @@ Repeat against Base `:9545` to confirm it is up at all (§5.5). Record the measu
 horizon in the wallet's diagnostics rather than hardcoding it.
 
 **Exit:** the prune preset, the measured retention horizon, and Base liveness are
-all known facts instead of doc assertions.
+known facts instead of doc assertions.
 
-### M1 — Guardrails and build skeleton **(W)**
-- Root `package.json` with **no dependencies** (so `node_modules` never sits
-  beside `manifest.json`), `tools/package.json` for Tailwind v4 CLI.
-- `tools/src/app.css` → committed `app.css`; CI runs tests **and** a CSS-freshness
-  check.
-- Convert `app_test.js` into a named-test harness that aggregates failures.
-- **Add a CORS/preflight assertion** to the backend's prove suite — Node `fetch`
-  cannot catch CORS, so this needs an explicit OPTIONS check.
-- **Exit:** CI green; `app.css` reproducible.
+### M1 — Build skeleton **(W)** — ✅ DONE (`a4e59ec`)
+
+- Root `package.json` with **no dependencies**, so `node_modules` never lands
+  beside `manifest.json` in the unpacked extension. `tools/` holds the Tailwind
+  v4 CLI as a build-only devDependency.
+- `tools/src/app.css` → **committed** `app.css` (MV3 forbids the CDN and cannot
+  relax `script-src`, so the shipped CSS must be a reviewable file).
+- Warm-dark `@theme` tokens (ink / cream / ember). Safe-area insets are plain
+  custom properties, because Tailwind tree-shakes unused `@theme` tokens — found
+  and fixed during the build.
+- `.npmrc` documents that npm ignores a project-level `cache` key; `npm run
+  setup` passes it explicitly for read-only-`$HOME` environments.
+- CI: unit tests **plus** a committed-CSS freshness gate.
+- **Verified:** `app.css` builds (4,923 B), `node app_test.js` → `ok`,
+  `npm run check:css` → no diff.
+
+**Still open from M1:** the CORS/preflight assertion belongs to the backend's
+prove suite (S), and converting `app_test.js` to a named-test harness is folded
+into M2 when the tests are next touched.
 
 ### M2 — Design system and app shell **(W)**
 - `@theme` dark-first tokens; sticky header, scroll region, fixed bottom nav.
@@ -585,7 +639,6 @@ all known facts instead of doc assertions.
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| **Policy forbids a public surface** | Planned work is unimplementable as drawn | **M-1 first**: Desch + Charles sign-off, or an explicit amendment |
 | **No swap router exists** | Headline feature has no engine | §6.1 decision on the critical path; ship the tab honestly under construction |
 | Publishing `/api/v2/*` | Entire launch/market feed free to anonymous callers | Publish only a facade with a closed verb allow-list, never the B2B face |
 | Edge-injected API key | Every anonymous caller becomes an authenticated customer; Super Pro key = total entitlement bypass | Never inject the key at nginx; hold it in the facade |
@@ -610,38 +663,52 @@ all known facts instead of doc assertions.
 
 ---
 
-## 9. Decisions I need from you
+## 9. Decisions
 
-1. **Approve the pivot and the milestone order.**
-2. **Policy (M-1)** — who approaches Desch and Charles, and is tkrWallet
-   officially UA #2? This gates everything.
-3. **Topology (§2.5)** — accept serving the PWA **same-origin** with its API
-   edge? This is my main deviation from your proposal and it removes the entire
-   CORS/preflight/cookie class of problems.
-4. **`damshell` (§3)** — accept a small wallet facade with a hard no-aggregation
-   prohibition? Or push per-wallet identity into Scratchpost and skip the
-   service?
-5. **Swap engine (§6.1)** — A (on-chain, own nodes), B (port v1 vendor clients),
-   or C (hybrid)? This decides whether Swap is under construction for a quarter
-   or a year.
-6. **Wallet hostname** — what should the wallet's origin be, given
-   `scratchPost.ai` is off-limits?
-7. **Ownership** — who owns the Scratchpost-side milestones (M4, M5, M6, M9)?
-8. **Theme** — confirm warm-dark (existing charcoal/amber identity) over
-   Phantom-violet.
-9. **M0 probe access** — can the five read-only calls in M0 be run against eva
-   (and Base) before implementation starts? This is the cheapest way to remove
-   the largest remaining unknown.
+Previously framed as questions. There is no approval gate (§0.0), so these are
+**defaults I am proceeding on** — overrule any of them and I will re-plan that
+part. Only D5 and D6 genuinely need your input, because I cannot know them.
 
-## 10. Research status
+| # | Decision | Resolution |
+|---|---|---|
+| **D1** | Public wallet surface vs. keeping the brain LAN-only | **Proceed.** The wallet edge is a new browser-facing surface by design; the brain and B2B face stay LAN-only. No approval step. |
+| **D2** | Topology — my deviation from `wallet <-> nginx <-> nginx <-> backend` | **Serve the PWA same-origin with its API edge** (§2.5). Keeps your nginx↔nginx spine, removes CORS, preflight, third-party cookies, and the Private Network Access problem in one move. |
+| **D3** | `damshell` | **Build it — as a wallet facade, not a shell**, with the §3.1 no-aggregation prohibition committed before the code. nginx alone cannot mint identity, hold the key, or rate-limit per wallet. |
+| **D4** | Swap engine | **Option A as the direction** (on-chain on your own nodes, Uniswap V2 first, `security-worker` band as the pre-sign gate). B is available as a stopgap. Reversible; recorded in `docs/swap-routing.md` in M8. |
+| **D5** | **Wallet hostname** — needs you | `scratchPost.ai` is meta-only, so this must be named. Proposed: **`wallet.tkrpik.com`** — a domain you already control, already fronted, natural fit. Say the word or pick another. |
+| **D6** | **M0 probe access** — needs you | The five read-only calls in M0 need a route to eva `192.168.1.79` / Base `:9545`. I cannot reach a LAN host from here. Either you run them, or give me SSH/a tunnel. |
+| **D7** | Theme | **Warm-dark**, already implemented in `tools/src/app.css`: `ink` surfaces, `cream` text, `ember` amber accent. Deliberately not Phantom violet — the pattern is what we emulate, not the palette. Change is a one-file edit. |
+| **D8** | Ownership of Scratchpost-side milestones (M4, M5, M6, M9) | **Unassigned.** They land in `blockchain-infrastructure`. I can work them if you grant that repo; otherwise they need an owner there. |
+
+## 10. Research status and iteration log
 
 Both deep-dives are complete. Everything above is sourced from repo code, config,
 or official upstream documentation, with each claim labelled in the underlying
 reports as verified / inferred / unknown.
 
 **One genuine unknown remains and it is deliberately not guessed:** the node
-prune profile. The flags live on eva, not in the repo — and Reth's default with
-no profile is *archive*, while `--minimal` would leave only 64 blocks of
-receipts. **M0 resolves it with five read-only calls.** Everything downstream is
-designed so that the answer changes the *diagnostics and the Activity window*,
-not the architecture.
+prune profile. The flags live on eva, not in the repo — Reth's default with no
+profile is *archive*, while `--minimal` would leave only 64 blocks of receipts.
+**M0 resolves it with five read-only calls.** Everything downstream is designed so
+the answer changes the *diagnostics and the Activity window*, not the
+architecture.
+
+### Revision history
+
+- **rev 1** — plan built around tkrShell (v1). Superseded; retained as
+  `wallet-ui-overhaul.md` for its CORS and duplicate-`ACAO` research, which is
+  still useful background for the divorce.
+- **rev 2** — this document.
+  - Pivoted the whole plan from tkrShell to Scratchpost.
+  - Added the chain-plane findings: prune profile is *unverified* (flags are on
+    eva), per-method RPC survival matrix, `eth_getTransactionReceipt` and
+    `eth_getLogs` are receipts-segment limited, and `ws://` is unusable from a
+    browser.
+  - Corrected the `rpc-gateway` chain-selector defect upward: Base is unreachable
+    for **reads as well as writes**, and `prove.ts` cannot detect it.
+  - Added the trust model: custody is genuinely client-side, but the operator can
+    censor, front-run, and log a forged IP.
+  - **Removed the M-1 policy gate** (see §0.0) and converted the open questions
+    into recorded decisions.
+  - **Executed M1**: Tailwind v4 pipeline, CI, committed CSS — `a4e59ec` on
+    `feat/scratchpost-wallet`.
