@@ -29,3 +29,6 @@ jobs:
         run: |
           npm --prefix tools run build:css
           git diff --exit-code -- app.css
+
+      - name: Every class used exists in app.css
+        run: node tools/check-classes.js

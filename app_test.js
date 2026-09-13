@@ -13,14 +13,53 @@ assert.ok(wallet.GAME_URL.indexOf("/api/public/game") === -1);
 assert.strictEqual(typeof wallet.login, "function");
 assert.strictEqual(typeof wallet.swapHref, "function");
 
+// ---- index.html: the wallet shell -----------------------------------------
 const html = fs.readFileSync(__filename.replace("app_test.js", "index.html"), "utf8");
-assert.ok(html.indexOf('id="wallet-login"') !== -1);
-assert.ok(html.indexOf("Holdings") !== -1);
-assert.ok(html.indexOf("Consolidate / split") !== -1);
-assert.ok(html.indexOf('id="batch-intent"') !== -1);
-assert.ok(html.indexOf("You sign every fill") !== -1);
-assert.ok(html.indexOf("hosted-attach-btn") !== -1);
-assert.ok(html.toLowerCase().indexOf("we never custody") === -1);
+assert.ok(html.indexOf('id="main"') !== -1, "shell needs a main region");
+["home", "swap", "activity", "search"].forEach(function (screen) {
+  assert.ok(html.indexOf('data-screen="' + screen + '"') !== -1, "missing screen " + screen);
+  assert.ok(html.indexOf('data-nav="' + screen + '"') !== -1, "missing nav tab " + screen);
+});
+assert.ok(html.indexOf('href="./app.css"') !== -1, "shell must load the committed CSS");
+assert.ok(html.indexOf('src="./ui.js"') !== -1, "shell must boot from ui.js");
+assert.ok(html.indexOf("viewport-fit=cover") !== -1, "iOS safe areas need viewport-fit=cover");
+assert.ok(html.toLowerCase().indexOf("beaver") === -1, "Beaver Nickels must stay removed");
+
+// MV3 blocks inline script and `script-src` cannot be relaxed, so any <script>
+// without a src would silently fail in the extension popup.
+const inlineScript = /<script(?![^>]*\bsrc=)[^>]*>/i;
+assert.ok(!inlineScript.test(html), "index.html must have no inline <script> (MV3 CSP)");
+
+// ---- ui.js: shell controller ----------------------------------------------
+const ui = require("./ui.js");
+assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search"]);
+assert.strictEqual(ui.parseRoute("#/swap"), "swap");
+assert.strictEqual(ui.parseRoute(""), "home");
+assert.strictEqual(ui.parseRoute("#/nope"), "home");
+assert.strictEqual(ui.parseRoute(null), "home");
+assert.strictEqual(ui.parseRoute("#/ACTIVITY?x=1"), "activity");
+assert.strictEqual(ui.parseCurrency("CAD"), "cad");
+assert.strictEqual(ui.parseCurrency("eur"), "usd");
+assert.strictEqual(ui.shortAddress("0x2222222222222222222222222222222222222222"), "0x2222\u20262222");
+assert.strictEqual(ui.shortAddress(""), "");
+// The core honesty rule: unknown is an em dash, never $0.00.
+assert.strictEqual(ui.formatFiat(null), "\u2014");
+assert.strictEqual(ui.formatFiat(undefined), "\u2014");
+assert.strictEqual(ui.formatFiat("nonsense"), "\u2014");
+assert.notStrictEqual(ui.formatFiat(0, "usd"), "\u2014");
+assert.strictEqual(ui.formatAmount(null), "\u2014");
+assert.strictEqual(ui.formatAmount(0), "0");
+
+const uiSrc = fs.readFileSync(__filename.replace("app_test.js", "ui.js"), "utf8");
+// Dot-prefixed so the check is about real usage, not a mention in prose.
+[".innerHTML", ".outerHTML", ".insertAdjacentHTML", "document.write", "eval("].forEach(function (sink) {
+  assert.ok(uiSrc.indexOf(sink) === -1, "ui.js must not use " + sink);
+});
+// The shell layer must stay network-free. Balances, prices and RPC belong to
+// the data layer; if a fetch ever appears here, that separation has broken.
+["fetch(", "XMLHttpRequest", "WebSocket("].forEach(function (call) {
+  assert.ok(uiSrc.indexOf(call) === -1, "ui.js must not make network calls: " + call);
+});
 
 const src = fs.readFileSync(__filename.replace("app_test.js", "app.js"), "utf8");
 assert.ok(src.indexOf("/api/quote") === -1, "wallet must not embed a second quote client");

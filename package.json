@@ -13,7 +13,9 @@
     "test": "node app_test.js",
     "build:css": "npm --prefix tools run build:css",
     "watch:css": "npm --prefix tools run watch:css",
-    "check:css": "npm run build:css && git diff --exit-code -- app.css"
+    "check:classes": "node tools/check-classes.js",
+    "check:css": "npm run build:css && git diff --exit-code -- app.css",
+    "check": "npm test && npm run check:css && npm run check:classes"
   },
   "engines": {
     "node": ">=20"

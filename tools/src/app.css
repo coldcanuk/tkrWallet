@@ -15,6 +15,7 @@
  * with the files that actually carry class names. */
 @source "../../index.html";
 @source "../../app.js";
+@source "../../ui.js";
 
 @theme {
   /* ---- Surfaces: warm dark, carried over from the v1 cream/charcoal identity */
