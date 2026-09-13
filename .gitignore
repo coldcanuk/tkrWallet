@@ -1,1 +1,7 @@
 .worktrees
+
+# Build tooling only. Must never appear next to manifest.json: the extension is
+# loaded unpacked from the repo root, so node_modules would be packaged with it.
+tools/node_modules
+tools/.npm-cache
+

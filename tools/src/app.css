@@ -1,0 +1,78 @@
+/* tkrWallet — Tailwind v4 source.
+ *
+ * Compiled to /app.css, which IS committed. Two reasons that matters:
+ *   1. The Chrome extension is loaded unpacked from the repo root, so the
+ *      shipped CSS has to be a reviewed file in the tree.
+ *   2. MV3 forbids remote code and `script-src` cannot be relaxed, so the
+ *      Tailwind CDN is not an option and a runtime build does not exist.
+ *
+ * Rebuild from the repo root:  npm run build:css
+ */
+@import "tailwindcss";
+
+/* Tailwind scans from this file's directory by default. The app sources live at
+ * the repo root, so they must be declared explicitly. Keep this list in step
+ * with the files that actually carry class names. */
+@source "../../index.html";
+@source "../../app.js";
+
+@theme {
+  /* ---- Surfaces: warm dark, carried over from the v1 cream/charcoal identity */
+  --color-ink-950: #12100e;
+  --color-ink-900: #1c1917;
+  --color-ink-850: #221e1b;
+  --color-ink-800: #2a2522;
+  --color-ink-700: #3a3431;
+  --color-ink-600: #4d4642;
+
+  /* ---- Text */
+  --color-cream-50: #faf8f2;
+  --color-cream-100: #f3f0e6;
+  --color-cream-300: #cfc8b8;
+  --color-cream-500: #a8a29e;
+
+  /* ---- Brand accent: ember (warm amber/copper). Deliberately not Phantom
+   * violet — keep the tkr identity rather than cloning a competitor. */
+  --color-ember-300: #f2c078;
+  --color-ember-400: #e8a33d;
+  --color-ember-500: #d98a1f;
+  --color-ember-600: #b06e12;
+
+  /* ---- Semantic */
+  --color-up-400: #4ade80;
+  --color-down-400: #f87171;
+  --color-warn-400: #fbbf24;
+
+  /* ---- Shape */
+  --radius-card: 1.25rem;
+}
+
+@layer base {
+  /* Safe-area insets are plain custom properties, not @theme spacing tokens:
+   * Tailwind tree-shakes unused theme variables, and these are read from JS and
+   * from the shell CSS rather than through a utility class. */
+  :root {
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* 100vh, not 100%: iOS PWA standalone otherwise leaves a chin gap. */
+  html,
+  body {
+    height: 100vh;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-ink-950);
+    color: var(--color-cream-100);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+
+  /* The wallet shows live numbers; tabular figures stop them jittering. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
