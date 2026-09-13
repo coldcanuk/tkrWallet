@@ -5,3 +5,17 @@
 tools/node_modules
 tools/.npm-cache
 
+# Tailwind Plus reference kits (licence: https://tailwindcss.com/plus/license).
+#
+# These are purchased commercial products. tkrWallet is GPLv3 and public, so the
+# kits must stay OUT of the repo:
+#
+#   Using Tailwind Plus components to build an end product is permitted, even an
+#   open-source one. Repackaging and redistributing the component library itself
+#   is not — and a checked-in copy of the whole kit is exactly that. See
+#   docs/specs/tailwind-plus-usage.md.
+#
+# Keep them on disk as local reference material; never commit them.
+application-ui-v4/
+catalyst-ui-kit/
+

@@ -734,6 +734,8 @@ part. Only D5 and D6 genuinely need your input, because I cannot know them.
 | **D6** | Chain-plane probe access | **Re-scoped, no longer a wallet blocker.** The wallet never contacts eva; EVM balances come from the user's injected provider. A route to eva is still needed for the *backend* (prices/swap), not for the client. |
 | **D9** | **icehut edge contract** | **Written:** [`docs/specs/icehut-edge.md`](../specs/icehut-edge.md). Six open questions for Charles are listed there (§10). |
 | **D10** | Solana reads | **Needs a decision.** Phantom exposes no balance RPC, so v1 called a public Solana RPC directly — unacceptable under the §0.1 rule. Either icehut serves Solana token reads (spec §3.3) or the Solana row is dropped. |
+| **D11** | Tailwind Plus kits | **Use them; do not vendor them.** Both kits are licensed commercial products and this repo is GPLv3 + public. Building the wallet with their components is explicitly permitted; committing a copy of a kit is repackaging and is not. Kits are gitignored, referenced from disk. Policy: [`docs/specs/tailwind-plus-usage.md`](../specs/tailwind-plus-usage.md). |
+| **D12** | Catalyst's React runtime | **Recommendation: do not adopt.** Catalyst is React + Headless UI + `motion` + `clsx`. Take its dark-mode craft, not its runtime — this is a signing client, where "the shipped thing is the reviewable thing" is a security property, and MV3's `unsafe-eval` ban would need auditing against `motion` first. Reversible if you want it: esbuild + a dependency audit, no milestone changes. |
 | **D7** | Theme | **Warm-dark**, already implemented in `tools/src/app.css`: `ink` surfaces, `cream` text, `ember` amber accent. Deliberately not Phantom violet — the pattern is what we emulate, not the palette. Change is a one-file edit. |
 | **D8** | Ownership of Scratchpost-side milestones (M4, M5, M6, M9) | **Unassigned.** They land in `blockchain-infrastructure`. I can work them if you grant that repo; otherwise they need an owner there. |
 
@@ -792,3 +794,16 @@ architecture.
     `https://api.mainnet-beta.solana.com` and calls it directly. That third-party
     RPC leaves the trust path.
   - **M0 re-scoped:** the chain probe is a backend concern, not a wallet blocker.
+- **rev 4** — this document.
+  - **Tailwind Plus kits added** (`application-ui-v4/`, `catalyst-ui-kit/`).
+    Licence policy written up and enforced: building the wallet *with* the
+    components is permitted; committing the kits is repackaging and is not.
+    Both are gitignored — this was caught before they were committed.
+  - **Design language adopted from the kits:** rings instead of borders
+    (`ring-1 ring-inset ring-white/10`), Catalyst's dark elevation ladder, and
+    Tailwind v4's `outline-2 outline-offset-2` focus idiom. Palette stays warm
+    (`ink`/`cream`/`ember`) rather than Catalyst's neutral `zinc` — the craft is
+    borrowed, not the brand.
+  - **`@tailwindplus/elements` is not usable here:** the Application UI examples
+    load it from a CDN, which MV3 and `script-src 'self'` both forbid.
+    Interactivity stays hand-written.
