@@ -191,10 +191,31 @@ test("PWA description is clean", function () {
 
 /* ── sw.js ──────────────────────────────────────────────────────────────── */
 
-test("service worker no longer precaches the deleted v1 app.js", function () {
+test("service worker precaches the shell and not the deleted v1", function () {
   const sw = readFile("sw.js");
   assert.ok(sw.indexOf('"./app.js"') === -1, "sw.js still precaches app.js");
   assert.ok(sw.indexOf("./ui.js") !== -1, "sw.js must precache the shell");
+  assert.ok(sw.indexOf("./app.css") !== -1, "sw.js must precache the styles");
+});
+
+test("service worker has a correct lifecycle", function () {
+  const sw = readFile("sw.js");
+  assert.ok(sw.indexOf("skipWaiting") !== -1, "missing skipWaiting");
+  assert.ok(sw.indexOf("clients.claim") !== -1, "missing clients.claim");
+  assert.ok(sw.indexOf('"activate"') !== -1, "missing activate handler");
+  assert.ok(/caches\.delete\(/.test(sw), "activate must delete stale caches");
+});
+
+test("service worker refuses cross-origin and non-GET requests", function () {
+  const sw = readFile("sw.js");
+  assert.ok(sw.indexOf("event.request.method !== \"GET\"") !== -1, "missing method guard");
+  assert.ok(sw.indexOf("url.origin !== self.location.origin") !== -1, "missing origin guard");
+});
+
+test("service worker is network-first for the shell", function () {
+  const sw = readFile("sw.js");
+  assert.ok(sw.indexOf("fetch(event.request)") !== -1, "missing network fetch");
+  assert.ok(sw.indexOf("caches.match(event.request)") !== -1, "missing cache fallback");
 });
 
 end();
