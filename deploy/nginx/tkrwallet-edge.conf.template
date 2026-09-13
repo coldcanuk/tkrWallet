@@ -1,0 +1,118 @@
+# tkrWallet edge vhost — https://tkrwallet.scratchpost.ai
+#
+# TEMPLATE. No secret values. Replace {{...}} at install time.
+# Reference: docs/specs/icehut-edge.md · docs/security/security-audit.md
+#
+# Hard rules baked in from the audit (R-1..R-12):
+#   - the origin accepts Cloudflare peers only (and proves it via mTLS);
+#   - the IP the backend sees is the real peer, never a client-supplied header;
+#   - no RPC passthrough exists, so no node is reachable through this vhost;
+#   - rate limits exist, because /v1/quote fronts paid vendor quotas.
+#
+# Apply the http-context additions ONCE per host (see deploy/README.md).
+
+# --- http context additions (once per host) -------------------------------
+# server_tokens off;
+# limit_req_zone $binary_remote_addr zone=wallet_auth:10m rate=10r/m;
+# limit_req_zone $binary_remote_addr zone=wallet_api:10m  rate=60r/m;
+# # Cloudflare ranges — keep in step with https://www.cloudflare.com/ips/
+# set_real_ip_from {{CLOUDFLARE_RANGES}};
+# real_ip_header CF-Connecting-IP;
+
+server {
+    listen 80;
+    server_name tkrwallet.scratchpost.ai;
+
+    # Only Cloudflare reaches the origin. Every other peer is refused, so the
+    # origin IP cannot be used to bypass the WAF or speak plaintext.
+    allow {{CLOUDFLARE_RANGES}};
+    deny all;
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name tkrwallet.scratchpost.ai;
+
+    ssl_certificate     {{SSL_FULLCHAIN}};
+    ssl_certificate_key {{SSL_PRIVKEY}};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    # Cloudflare Authenticated Origin Pulls. With the real_ip module above,
+    # $remote_addr is now provably the true client IP (R-1 + R-3).
+    ssl_verify_client on;
+    ssl_client_certificate {{CF_ORIGIN_PULL_CA}};
+
+    client_max_body_size 128k;
+
+    # Security headers. NOTE: add_header does not inherit into a location that
+    # defines its own — these are repeated via an include if locations grow.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; worker-src 'self'" always;
+
+    # Header hygiene: never forward a client-supplied hop header (R-3/R-4).
+    # X-Forwarded-For carries the single authoritative value: $remote_addr,
+    # which real_ip has already rewritten to the true client.
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_hide_header Server;
+    proxy_hide_header X-Powered-By;
+
+    # --- wallet API: same origin, no CORS needed for the PWA. Extension CORS
+    #     and OPTIONS preflight are handled by the facade. -------------------
+
+    location = /api/wallet/nonce {
+        limit_req zone=wallet_auth burst=5 nodelay;
+        proxy_pass http://{{FACADE_UPSTREAM}};
+    }
+
+    location = /api/wallet/session {
+        limit_req zone=wallet_auth burst=5 nodelay;
+        proxy_pass http://{{FACADE_UPSTREAM}};
+    }
+
+    location /api/ {
+        limit_req zone=wallet_api burst=20 nodelay;
+        proxy_pass http://{{FACADE_UPSTREAM}};
+    }
+
+    location = /healthz {
+        proxy_pass http://{{FACADE_UPSTREAM}};
+    }
+
+    # --- static: the wallet itself -----------------------------------------
+
+    location = /sw.js {
+        add_header Service-Worker-Allowed / always;
+        add_header Cache-Control "no-cache" always;
+        root {{WALLET_ROOT}};
+        try_files /sw.js =404;
+    }
+
+    location / {
+        root {{WALLET_ROOT}};
+        try_files $uri $uri/ /index.html;
+        location = /index.html {
+            add_header Cache-Control "no-store" always;
+        }
+    }
+}
+
+# Unknown hosts are killed outright — no catch-all proxying (R-5).
+server {
+    listen 80 default_server;
+    listen 443 ssl default_server;
+    server_name _;
+    ssl_certificate     {{SSL_FULLCHAIN}};
+    ssl_certificate_key {{SSL_PRIVKEY}};
+    return 444;
+}
