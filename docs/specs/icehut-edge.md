@@ -1,4 +1,4 @@
-# icehut edge specification — `wallet.scratchpost.ai`
+# icehut edge specification — `tkrwallet.scratchpost.ai`
 
 **Audience:** whoever tailors the icehut edge.
 **Status:** requirements from the wallet side. Nothing here is implemented yet.
@@ -24,7 +24,7 @@ browser** rather than trusted:
 2. **`connect-src 'self'` in the CSP.** The browser then refuses any request
    from the wallet to another origin. A future contributor cannot add an eva
    call by accident — it fails in dev, not in production.
-3. **`host_permissions` in the extension** lists exactly `wallet.scratchpost.ai`.
+3. **`host_permissions` in the extension** lists exactly `tkrwallet.scratchpost.ai`.
 
 So "never talks to eva" becomes a property of the shipped artifact instead of a
 promise in a README. That is the main reason I would keep this hostname
@@ -36,9 +36,9 @@ same-origin with its API (§2).
 
 | Item | Value |
 |---|---|
-| Hostname | `wallet.scratchpost.ai` |
+| Hostname | `tkrwallet.scratchpost.ai` |
 | DNS / registrar | Cloudflare |
-| Wallet origin | `https://wallet.scratchpost.ai` |
+| Wallet origin | `https://tkrwallet.scratchpost.ai` |
 | API origin | **the same origin** — `/api/*` on the same host |
 | HTTP :80 | 301 → HTTPS, no content served |
 | HSTS | `max-age=31536000; includeSubDomains; preload` |
@@ -51,16 +51,24 @@ terminates client TLS, adds WAF/bot management and DDoS absorption, and reaches
 icehut over mTLS so icehut can *prove* a request came from Cloudflare. icehut
 serves a Cloudflare Origin Certificate. This matters for §7.
 
-**One correction to make in the sibling repo:** `blockchain-infrastructure/
-docs/theticker/SCRATCHPOST.md:4` currently states that `scratchPost.ai` is a
-"meta name only… do not use it as a hostname, TLS name, API base, nginx
-`server_name`, or public URL." That was written to stop bots inventing a
-Scratchpost portal. It is now wrong, and it is cited by `SCRATCHPOST-FEED-*
-{RESEARCH,PLAN,ARCHITECTURE}.md` and `theticker/README.md`. Suggested amendment:
+**One amendment to make in the sibling repo — an amendment, not a correction.**
+`blockchain-infrastructure/docs/theticker/SCRATCHPOST.md:4` states that
+`scratchPost.ai` is a "meta name only… do not use it as a hostname, TLS name,
+API base, nginx `server_name`, or public URL." That rule is deliberate: it
+protects a separate, pre-existing project from assistants inventing hostnames
+under this domain. It is cited by `SCRATCHPOST-FEED-{RESEARCH,PLAN,
+ARCHITECTURE}.md` and `theticker/README.md`, so it is load-bearing.
 
-> `scratchpost.ai` is used **only** for `wallet.scratchpost.ai`, the customer
-> wallet UA. There is still no Scratchpost portal, and no other
-> `scratchpost.ai` hostname is authorised.
+Do **not** remove it. Add exactly one named exception and leave the guard up:
+
+> `scratchpost.ai` is used **only** for `tkrwallet.scratchpost.ai`, the tkrWallet
+> customer UA. Every other `scratchpost.ai` hostname remains unauthorised, and
+> there is still no Scratchpost portal.
+
+**This is the only hostname under `scratchpost.ai` the wallet will ever use.**
+The extension's `host_permissions` and the CSP allow-list name that one host and
+nothing else, so a future contributor — human or assistant — cannot quietly
+widen it.
 
 ---
 
@@ -242,7 +250,7 @@ Deliberately short, because each omission is a security win:
 - **No WebSocket** in v1. `eth_subscribe` on eva is unusable from a browser
   anyway — the endpoints are plain `ws://` on a LAN bind, and an HTTPS page and
   a `chrome-extension://` page are both secure contexts that refuse insecure
-  WebSockets. If live updates are wanted later: `wss://wallet.scratchpost.ai/ws`
+  WebSockets. If live updates are wanted later: `wss://tkrwallet.scratchpost.ai/ws`
   on 443, proxied, never `ws://` to a node.
 - **No SSE** in v1. `/events` is inert in production anyway — `caesar/api`
   `main.ts` never passes `uiReader`, so the bridge returns immediately and only
@@ -352,7 +360,7 @@ users, which is the argument for the per-session limits above.
 
 ## 10. Decisions I need from you
 
-1. **Proxied or DNS-only** for `wallet.scratchpost.ai`?
+1. **Proxied or DNS-only** for `tkrwallet.scratchpost.ai`?
 2. **Who terminates TLS** — Cloudflare with an Origin Certificate, or icehut
    with Let's Encrypt? (If proxied, Authenticated Origin Pulls is what makes
    `CF-Connecting-IP` trustworthy.)
@@ -370,7 +378,7 @@ users, which is the argument for the per-session limits above.
 
 If you want the short version, the wallet needs exactly five things:
 
-1. Serve static files at `wallet.scratchpost.ai` with the caching in §2.
+1. Serve static files at `tkrwallet.scratchpost.ai` with the caching in §2.
 2. Four auth endpoints (§3.1) and an `HttpOnly` session cookie.
 3. One prices endpoint with **USD and CAD** (§3.2).
 4. Solana token reads, or drop Solana (§3.3).

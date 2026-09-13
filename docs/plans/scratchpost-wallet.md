@@ -43,7 +43,7 @@ described as "blocked" are now simply **decisions Charles makes** — §9.
 | Backend | `tickerpicker` / `tkrshell` — aggregator-era | **Scratchpost** (`blockchain-infrastructure`) |
 | Shell | tkrShell, an allow-list proxy to an aggregator | **retired** |
 | Edge | `tkrpik.com/v1/*` (tkrshell) | **icehut**, the physical edge server |
-| Wallet origin | `coldcanuk.github.io/tkrWallet` | **`wallet.scratchpost.ai`** (Charles owns the domain; Cloudflare is the registrar) |
+| Wallet origin | `coldcanuk.github.io/tkrWallet` | **`tkrwallet.scratchpost.ai`** (Charles owns the domain; Cloudflare is the registrar) |
 | What the wallet may contact | `tkrpik.com`, `tkrswap.com`, **and `api.mainnet-beta.solana.com`** | **icehut and nothing else — never eva** |
 | Routing | six vendor quote clients in `tickerpicker` | **does not exist yet** (§6.1) |
 | Chain truth | third-party RPC + vendor APIs | own pruned Reth (ETH) + Base + op-node |
@@ -58,7 +58,7 @@ artefacts make it a property of the program:
 2. **`connect-src 'self'`** in the CSP means the browser refuses any request from
    the wallet to another origin. A future contributor cannot add an eva call by
    accident — it fails in development.
-3. **`host_permissions`** in the extension lists exactly `wallet.scratchpost.ai`.
+3. **`host_permissions`** in the extension lists exactly `tkrwallet.scratchpost.ai`.
 
 This also fixes a live v1 defect: the current `app.js:10` hardcodes
 `https://api.mainnet-beta.solana.com` and calls it directly. That is a
@@ -210,7 +210,7 @@ the recommended session mechanism because it keeps tokens out of JavaScript.
 
 ```
    Browser — PWA + MV3 extension
-   https://wallet.scratchpost.ai
+   https://tkrwallet.scratchpost.ai
         │  same origin — no CORS, no preflight, no third-party cookie
         │  CSP connect-src 'self' — the browser blocks anything else
         ▼
@@ -607,12 +607,12 @@ into M2 when the tests are next touched.
 - **Exit:** no `beaver` string, and no non-icehut origin, anywhere in the
   tkrWallet tree. Both are now testable invariants.
 
-### M4 — icehut edge at `wallet.scratchpost.ai` **(S/O)**
+### M4 — icehut edge at `tkrwallet.scratchpost.ai` **(S/O)**
 
 Contract: [`docs/specs/icehut-edge.md`](../specs/icehut-edge.md). That document
 is the deliverable for this milestone — the edge gets built to fit it.
 
-- DNS + TLS for `wallet.scratchpost.ai` (Cloudflare registrar; proxied with
+- DNS + TLS for `tkrwallet.scratchpost.ai` (Cloudflare registrar; proxied with
   Authenticated Origin Pulls recommended, so `CF-Connecting-IP` is trustworthy).
 - Serve the wallet **same-origin** with its API: static files and `/api/*` on one
   host. Static caching, `Service-Worker-Allowed: /`, and the security headers
@@ -730,7 +730,7 @@ part. Only D5 and D6 genuinely need your input, because I cannot know them.
 | **D2** | Topology — my deviation from `wallet <-> nginx <-> nginx <-> backend` | **Serve the PWA same-origin with its API edge** (§2.5). Keeps your nginx↔nginx spine, removes CORS, preflight, third-party cookies, and the Private Network Access problem in one move. |
 | **D3** | `damshell` | **Build it — as a wallet facade, not a shell**, with the §3.1 no-aggregation prohibition committed before the code. nginx alone cannot mint identity, hold the key, or rate-limit per wallet. |
 | **D4** | Swap engine | **Option A as the direction** (on-chain on your own nodes, Uniswap V2 first, `security-worker` band as the pre-sign gate). B is available as a stopgap. Reversible; recorded in `docs/swap-routing.md` in M8. |
-| **D5** | Wallet hostname | **RESOLVED: `https://wallet.scratchpost.ai`.** Charles owns `scratchpost.ai`; Cloudflare is the registrar. This also means `blockchain-infrastructure/docs/theticker/SCRATCHPOST.md:4` ("meta name only… do not use it as a hostname") is now wrong and needs amending — it is cited by four other docs. |
+| **D5** | Wallet hostname | **RESOLVED: `https://tkrwallet.scratchpost.ai`** — the only `scratchpost.ai` hostname the wallet will ever use. Cloudflare is the registrar. Note `SCRATCHPOST.md:4`'s "meta name only, do not use as a hostname" rule is a **deliberate guardrail** protecting a separate project, not an error: amend it with exactly one named exception and keep the guard up. Wording in the spec §1. |
 | **D6** | Chain-plane probe access | **Re-scoped, no longer a wallet blocker.** The wallet never contacts eva; EVM balances come from the user's injected provider. A route to eva is still needed for the *backend* (prices/swap), not for the client. |
 | **D9** | **icehut edge contract** | **Written:** [`docs/specs/icehut-edge.md`](../specs/icehut-edge.md). Six open questions for Charles are listed there (§10). |
 | **D10** | Solana reads | **Needs a decision.** Phantom exposes no balance RPC, so v1 called a public Solana RPC directly — unacceptable under the §0.1 rule. Either icehut serves Solana token reads (spec §3.3) or the Solana row is dropped. |
@@ -777,9 +777,11 @@ architecture.
     Pins the Tailwind scan set with `source(none)` so unrelated file edits no
     longer perturb the build and spuriously trip the freshness gate.
 - **rev 3** — this document.
-  - **Hostname resolved:** `https://wallet.scratchpost.ai`, same-origin with its
-    API. `scratchpost.ai` is Charles's; the Cloudflare registrar note in the
-    sibling repo is out of date.
+  - **Hostname resolved:** `https://tkrwallet.scratchpost.ai` — the one and only
+    `scratchpost.ai` hostname the wallet uses — same-origin with its API.
+    Cloudflare is the registrar. The sibling repo's "meta name only" rule is a
+    deliberate guardrail protecting a separate project; it gets one named
+    exception, not removal.
   - **Hard boundary stated and made enforceable:** the wallet talks to icehut and
     nothing else, ever. Not eva, not the brain, not a public RPC. Enforced by
     three shipped artefacts — no RPC passthrough, `connect-src 'self'`, and the
