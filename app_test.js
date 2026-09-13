@@ -11,20 +11,14 @@ const path = require("path");
 
 const ROOT = __dirname;
 const ALLOWED_ORIGIN = "https://tkrwallet.scratchpost.ai";
-const SHIPPED = ["index.html", "ui.js", "sw.js", "manifest.json", "manifest.webmanifest"];
+const SHIPPED = ["index.html", "ui.js", "wallet.js", "sw.js", "manifest.json", "manifest.webmanifest"];
 
 let failures = [];
 let count = 0;
+let queue = [];
 
 function test(name, fn) {
-  count++;
-  try {
-    fn();
-    console.log("ok   " + name);
-  } catch (e) {
-    failures.push("FAIL " + name + " — " + (e && e.message ? e.message : e));
-    console.error("FAIL " + name + " — " + (e && e.message ? e.message : e));
-  }
+  queue.push({ name: name, fn: fn });
 }
 
 function end() {
@@ -33,6 +27,30 @@ function end() {
     process.exit(1);
   }
   console.log("\n" + count + " tests, 0 failures");
+}
+
+/* Sequential async runner: each test may return a promise. A sync throw inside
+ * a test's fn becomes a rejection here, so every failure is caught and reported
+ * and the suite always runs to completion. */
+function run() {
+  let chain = Promise.resolve();
+  queue.forEach(function (t) {
+    chain = chain.then(function () {
+      return Promise.resolve()
+        .then(t.fn)
+        .then(
+          function () {
+            count++;
+            console.log("ok   " + t.name);
+          },
+          function (e) {
+            failures.push("FAIL " + t.name + " — " + (e && e.message ? e.message : e));
+            console.error("FAIL " + t.name + " — " + (e && e.message ? e.message : e));
+          }
+        );
+    });
+  });
+  chain.then(end);
 }
 
 function readFile(rel) {
@@ -243,4 +261,169 @@ test("service worker is network-first for the shell", function () {
   assert.ok(sw.indexOf("caches.match(event.request)") !== -1, "missing cache fallback");
 });
 
-end();
+/* ── wallet.js: the data layer ──────────────────────────────────────────── */
+
+function fakeProvider(opts) {
+  opts = opts || {};
+  return {
+    request: function (args) {
+      if (args.method === "eth_requestAccounts") {
+        return Promise.resolve(["0x2222222222222222222222222222222222222222"]);
+      }
+      if (args.method === "eth_chainId") {
+        return Promise.resolve("0x1");
+      }
+      if (args.method === "eth_getBalance") {
+        if (opts.failBalance) {
+          return Promise.reject(new Error("rpc down"));
+        }
+        return Promise.resolve("0xde0b6b3a7640000"); // 1 ETH
+      }
+      if (args.method === "eth_call") {
+        if (opts.failCall) {
+          return Promise.reject(new Error("rpc down"));
+        }
+        const target = String(((args.params || [])[0] || {}).to || "").toLowerCase();
+        const data = ((args.params || [])[0] || {}).data || "";
+        // Only the USDC contract holds a balance in the fixture; the rest are 0.
+        if (data.indexOf("0x70a08231") === 0 && target === "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48") {
+          return Promise.resolve("0xf4240"); // 1 USDC
+        }
+        return Promise.resolve("0x0");
+      }
+      return Promise.reject(new Error("unexpected " + args.method));
+    },
+  };
+}
+
+test("wallet.js declares the single origin and a chain catalogue", function () {
+  const wallet = require("./wallet.js");
+  assert.strictEqual(wallet.BASE_URL, ALLOWED_ORIGIN);
+  // Integer-like object keys enumerate in numeric order regardless of insertion.
+  assert.deepStrictEqual(
+    Object.keys(wallet.CHAINS).sort((a, b) => a - b),
+    ["1", "4663", "8453", "900001"]
+  );
+});
+
+test("connect() returns the account and parsed chain id", function () {
+  const wallet = require("./wallet.js");
+  return wallet.connect(fakeProvider()).then(function (account) {
+    assert.strictEqual(account.address, "0x2222222222222222222222222222222222222222");
+    assert.strictEqual(account.chain_id, 1);
+  });
+});
+
+test("connect() rejects without a provider", function () {
+  const wallet = require("./wallet.js");
+  return wallet.connect(null).then(
+    function () {
+      throw new Error("should have rejected");
+    },
+    function (e) {
+      assert.ok(/provider/.test(e.message), e.message);
+    }
+  );
+});
+
+test("listHoldings() reads native and ERC-20 balances", function () {
+  const wallet = require("./wallet.js");
+  return wallet.listHoldings(fakeProvider(), "0x2222222222222222222222222222222222222222", 1).then(function (rows) {
+    const eth = rows.filter((r) => r.symbol === "ETH")[0];
+    const usdc = rows.filter((r) => r.symbol === "USDC")[0];
+    assert.strictEqual(eth.state, "ok");
+    assert.ok(Math.abs(eth.amount - 1) < 1e-9, "1 ETH");
+    assert.strictEqual(eth.chain_name, "Ethereum");
+    assert.strictEqual(usdc.state, "ok");
+    assert.ok(Math.abs(usdc.amount - 1) < 1e-9, "1 USDC");
+    assert.ok(!rows.some((r) => r.symbol === "WETH" || r.symbol === "USDT"), "zero balances are filtered");
+  });
+});
+
+test("listHoldings() failures are unknown, never zero", function () {
+  const wallet = require("./wallet.js");
+  return wallet
+    .listHoldings(fakeProvider({ failBalance: true, failCall: true }), "0x2222222222222222222222222222222222222222", 1)
+    .then(function (rows) {
+      assert.ok(rows.length >= 2, "unknown rows must still be listed");
+      rows.forEach(function (r) {
+        assert.strictEqual(r.state, "unknown", r.symbol + " must be unknown");
+        assert.strictEqual(r.amount, null, r.symbol + " amount must be null, not 0");
+      });
+    });
+});
+
+test("listHoldings() degrades unsupported chains to native-only", function () {
+  const wallet = require("./wallet.js");
+  return wallet.listHoldings(fakeProvider(), "0x2222222222222222222222222222222222222222", 137).then(function (rows) {
+    assert.strictEqual(rows.length, 1, "native-only on an uncatalogued chain");
+    assert.strictEqual(rows[0].symbol, "ETH");
+    assert.strictEqual(rows[0].chain_id, 137);
+    assert.ok(rows[0].address === null, "native has no contract address");
+  });
+});
+
+test("hexToAmount() returns null on malformed input, never 0", function () {
+  const wallet = require("./wallet.js");
+  assert.strictEqual(wallet.hexToAmount("0x", 6), null);
+  assert.strictEqual(wallet.hexToAmount("garbage", 18), null);
+  assert.ok(Math.abs(wallet.hexToAmount("0xf4240", 6) - 1) < 1e-9);
+});
+
+test("getPrices() surfaces the edge contract and never invents a price", function () {
+  const wallet = require("./wallet.js");
+  return wallet
+    .getPrices(["1:native", "1:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"], ["usd", "cad"], function (url) {
+      assert.ok(String(url).indexOf(ALLOWED_ORIGIN + "/api/wallet/prices?assets=") === 0, url);
+      assert.ok(String(url).indexOf("1%3Anative") !== -1, "assets must be encoded");
+      return Promise.resolve({
+        ok: true,
+        json: function () {
+          return Promise.resolve({
+            as_of: 1737000000,
+            prices: { "1:native": { usd: 3120.55, cad: 4291.2 } }, // USDC omitted = unpriced
+          });
+        },
+      });
+    })
+    .then(function (got) {
+      assert.strictEqual(got.state, "ok");
+      assert.ok(!got.prices["1:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"], "absent asset stays absent");
+    });
+});
+
+test("getPrices() failure is unknown, not empty prices", function () {
+  const wallet = require("./wallet.js");
+  return wallet.getPrices(["1:native"], ["usd"], function () {
+    return Promise.reject(new Error("edge down"));
+  }).then(function (got) {
+    assert.strictEqual(got.state, "unknown");
+  });
+});
+
+test("estimateValue() reports ok/partial/unknown honestly", function () {
+  const wallet = require("./wallet.js");
+  const holdings = [
+    { symbol: "ETH", address: null, chain_id: 1, amount: 1, state: "ok" },
+    { symbol: "USDC", address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", chain_id: 1, amount: 2, state: "ok" },
+    { symbol: "USDT", address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", chain_id: 1, amount: 5, state: "unknown" },
+  ];
+  const prices = {
+    state: "ok",
+    prices: {
+      "1:native": { usd: 1000, cad: 1375 },
+      "1:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48": { usd: 1, cad: 1.375 },
+    },
+  };
+  const full = wallet.estimateValue(holdings, prices, "usd");
+  assert.strictEqual(full.state, "ok");
+  assert.ok(Math.abs(full.value - 1002) < 1e-9, "1 ETH @1000 + 2 USDC @1");
+  assert.strictEqual(full.priced, 2);
+  assert.strictEqual(full.total, 2, "unknown balances are excluded, not counted");
+  const noPrices = wallet.estimateValue(holdings, null, "usd");
+  assert.strictEqual(noPrices.state, "unknown");
+  const noCad = wallet.estimateValue(holdings, prices, "cad");
+  assert.strictEqual(noCad.state, "ok", "cad values exist in the fixture");
+});
+
+run();
