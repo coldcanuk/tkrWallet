@@ -812,3 +812,7 @@ architecture.
   is **catalogued-not-queried** (no client read source; edge reads pending);
   D12 no React runtime, confirmed; D5 `tkrwallet.scratchpost.ai` is the single
   origin constant. Audit findings map to milestones per `docs/research/RESEARCH.md`.
+- **rev 6 — RDAP build executed.** Milestones M1.4 → M3.9 complete under
+  `docs/plans/rdap-build-plan.md`. All wallet findings (W1-W10, S1-S7) closed;
+  router findings R1-R12 delivered as the `deploy/nginx` artifact. Status table:
+  `docs/reviews/AUDIT-CROSSCHECK.md`.
