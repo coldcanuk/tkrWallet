@@ -1,250 +1,200 @@
+// tkrWallet — test suite (named harness).
+//
+// Run: node app_test.js   (or npm test)
+//
+// The harness aggregates failures so one regression does not hide the rest.
+// Every group is a named test; the run ends with "N tests, 0 failures" or a
+// list of every failure and a non-zero exit.
 const assert = require("assert");
 const fs = require("fs");
-const wallet = require("./app.js");
+const path = require("path");
 
-assert.strictEqual(wallet.SWAP_URL, "https://tkrswap.com/");
-assert.strictEqual(wallet.SHELL_URL, "https://tkrpik.com");
-assert.ok(wallet.GAME_URL.indexOf("/v1/snapshot") !== -1);
-assert.ok(wallet.GAME_URL.indexOf("tkrpik.com") !== -1);
-assert.ok(wallet.GAME_FALLBACK_URL.indexOf("/api/public/game") !== -1);
-assert.ok(wallet.HOSTED_ATTACH_URL.indexOf("/v1/hosted-wallet/attach") !== -1);
-assert.ok(wallet.LOGIN_URL.indexOf("/login") !== -1);
-assert.ok(wallet.GAME_URL.indexOf("/api/public/game") === -1);
-assert.strictEqual(typeof wallet.login, "function");
-assert.strictEqual(typeof wallet.swapHref, "function");
+const ROOT = __dirname;
+const ALLOWED_ORIGIN = "https://tkrwallet.scratchpost.ai";
+const SHIPPED = ["index.html", "ui.js", "sw.js", "manifest.json", "manifest.webmanifest"];
 
-// ---- index.html: the wallet shell -----------------------------------------
-const html = fs.readFileSync(__filename.replace("app_test.js", "index.html"), "utf8");
-assert.ok(html.indexOf('id="main"') !== -1, "shell needs a main region");
-["home", "swap", "activity", "search"].forEach(function (screen) {
-  assert.ok(html.indexOf('data-screen="' + screen + '"') !== -1, "missing screen " + screen);
-  assert.ok(html.indexOf('data-nav="' + screen + '"') !== -1, "missing nav tab " + screen);
-});
-assert.ok(html.indexOf('href="./app.css"') !== -1, "shell must load the committed CSS");
-assert.ok(html.indexOf('src="./ui.js"') !== -1, "shell must boot from ui.js");
-assert.ok(html.indexOf("viewport-fit=cover") !== -1, "iOS safe areas need viewport-fit=cover");
-assert.ok(html.toLowerCase().indexOf("beaver") === -1, "Beaver Nickels must stay removed");
+let failures = [];
+let count = 0;
 
-// MV3 blocks inline script and `script-src` cannot be relaxed, so any <script>
-// without a src would silently fail in the extension popup.
-const inlineScript = /<script(?![^>]*\bsrc=)[^>]*>/i;
-assert.ok(!inlineScript.test(html), "index.html must have no inline <script> (MV3 CSP)");
+function test(name, fn) {
+  count++;
+  try {
+    fn();
+    console.log("ok   " + name);
+  } catch (e) {
+    failures.push("FAIL " + name + " — " + (e && e.message ? e.message : e));
+    console.error("FAIL " + name + " — " + (e && e.message ? e.message : e));
+  }
+}
 
-// ---- ui.js: shell controller ----------------------------------------------
-const ui = require("./ui.js");
-assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search"]);
-assert.strictEqual(ui.parseRoute("#/swap"), "swap");
-assert.strictEqual(ui.parseRoute(""), "home");
-assert.strictEqual(ui.parseRoute("#/nope"), "home");
-assert.strictEqual(ui.parseRoute(null), "home");
-assert.strictEqual(ui.parseRoute("#/ACTIVITY?x=1"), "activity");
-assert.strictEqual(ui.parseCurrency("CAD"), "cad");
-assert.strictEqual(ui.parseCurrency("eur"), "usd");
-assert.strictEqual(ui.shortAddress("0x2222222222222222222222222222222222222222"), "0x2222\u20262222");
-assert.strictEqual(ui.shortAddress(""), "");
-// The core honesty rule: unknown is an em dash, never $0.00.
-assert.strictEqual(ui.formatFiat(null), "\u2014");
-assert.strictEqual(ui.formatFiat(undefined), "\u2014");
-assert.strictEqual(ui.formatFiat("nonsense"), "\u2014");
-assert.notStrictEqual(ui.formatFiat(0, "usd"), "\u2014");
-assert.strictEqual(ui.formatAmount(null), "\u2014");
-assert.strictEqual(ui.formatAmount(0), "0");
+function end() {
+  if (failures.length) {
+    console.error("\n" + failures.length + " of " + count + " tests failed.");
+    process.exit(1);
+  }
+  console.log("\n" + count + " tests, 0 failures");
+}
 
-const uiSrc = fs.readFileSync(__filename.replace("app_test.js", "ui.js"), "utf8");
-// Dot-prefixed so the check is about real usage, not a mention in prose.
-[".innerHTML", ".outerHTML", ".insertAdjacentHTML", "document.write", "eval("].forEach(function (sink) {
-  assert.ok(uiSrc.indexOf(sink) === -1, "ui.js must not use " + sink);
-});
-// The shell layer must stay network-free. Balances, prices and RPC belong to
-// the data layer; if a fetch ever appears here, that separation has broken.
-["fetch(", "XMLHttpRequest", "WebSocket("].forEach(function (call) {
-  assert.ok(uiSrc.indexOf(call) === -1, "ui.js must not make network calls: " + call);
+function readFile(rel) {
+  const p = path.join(ROOT, rel);
+  return fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "";
+}
+
+/* ── ui.js: shell controller ───────────────────────────────────────────── */
+
+test("ui.js exports the shell API", function () {
+  const ui = require("./ui.js");
+  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search"]);
+  assert.strictEqual(typeof ui.renderTokens, "function");
+  assert.strictEqual(typeof ui.setWalletValue, "function");
 });
 
-const src = fs.readFileSync(__filename.replace("app_test.js", "app.js"), "utf8");
-assert.ok(src.indexOf("/api/quote") === -1, "wallet must not embed a second quote client");
-assert.ok(src.indexOf("tkrswap.com") !== -1);
-assert.ok(src.indexOf("/v1/snapshot") !== -1);
-["li.fi", "1inch", "jup.ag", "0x.org", "alchemy", "helius", "blockscout", "stripe.com", "pass show", "tickerpicker/", "LIFI_", "ALCHEMY_"].forEach(function (needle) {
-  assert.ok(src.toLowerCase().indexOf(needle.toLowerCase()) === -1, "vendor or pass string " + needle);
+test("route parsing is strict and never throws", function () {
+  const ui = require("./ui.js");
+  assert.strictEqual(ui.parseRoute("#/swap"), "swap");
+  assert.strictEqual(ui.parseRoute(""), "home");
+  assert.strictEqual(ui.parseRoute("#/nope"), "home");
+  assert.strictEqual(ui.parseRoute(null), "home");
+  assert.strictEqual(ui.parseRoute("#/ACTIVITY?x=1"), "activity");
 });
-assert.ok(src.indexOf("take_profit") === -1);
-assert.ok(src.indexOf("stop_loss") === -1);
-assert.ok(src.indexOf("auto-execute") === -1);
-assert.ok(src.indexOf("swapHref") !== -1);
-assert.ok(src.indexOf("wallet-login") !== -1);
 
-const href = wallet.swapHref({
-  kind: "holding",
-  symbol: "ETH",
-  address: "0x1111111111111111111111111111111111111111",
-  chain_id: 1,
+test("currency parsing falls back to USD", function () {
+  const ui = require("./ui.js");
+  assert.strictEqual(ui.parseCurrency("CAD"), "cad");
+  assert.strictEqual(ui.parseCurrency("eur"), "usd");
+  assert.strictEqual(ui.parseCurrency(null), "usd");
 });
-assert.ok(href.indexOf("https://tkrswap.com/") === 0);
-assert.ok(href.indexOf("token_in=") !== -1);
-assert.ok(href.indexOf("token_in=ETH") !== -1);
-assert.ok(href.indexOf("from_address=0x1111111111111111111111111111111111111111") !== -1);
-assert.ok(href.indexOf("source_chain_id=1") !== -1);
-assert.strictEqual(typeof wallet.batchHref, "function");
-assert.strictEqual(typeof wallet.applyBatchQuery, "function");
-const batch = wallet.batchHref("card-1", "consolidate");
-assert.ok(batch.indexOf("https://tkrswap.com/") === 0);
-assert.ok(batch.indexOf("batch_card=card-1") !== -1);
-assert.ok(batch.indexOf("mode=consolidate") !== -1);
-const shown = wallet.applyBatchQuery("?batch_card=card-9&mode=split");
-assert.strictEqual(shown.card_id, "card-9");
-assert.strictEqual(shown.mode, "split");
-assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=SPLIT").mode, "split");
-assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=pwned").mode, "consolidate");
-assert.strictEqual(wallet.applyBatchQuery("?batch_card=%20%20"), null);
-assert.ok(wallet.batchHref("card-1", "nope").indexOf("mode=consolidate") !== -1);
-assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=split%20").mode, "split");
-assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=split&gas=1").gas, true);
-assert.strictEqual(wallet.applyBatchQuery("?batch_card=card-9&mode=split").gas, false);
-assert.strictEqual(wallet.batchHref("  ", "split"), wallet.SWAP_URL);
 
-const applied = wallet.applyGame({
-  source: "tkrpik",
-  beaver_nickels: 9,
-  index_cards: [{ id: 1, name: "S&P500", performance: 5, beaver_nickels: 9 }],
-  scoreboard: [{ rank: 1, index_name: "S&P500", performance: 5 }],
+test("address shortening", function () {
+  const ui = require("./ui.js");
+  assert.strictEqual(ui.shortAddress("0x2222222222222222222222222222222222222222"), "0x2222\u20262222");
+  assert.strictEqual(ui.shortAddress(""), "");
 });
-assert.strictEqual(applied.beaver_nickels, 9);
-assert.strictEqual(applied.index_cards[0].name, "S&P500");
 
-const fake = {
-  request: function (args) {
-    if (args.method === "eth_requestAccounts") {
-      return Promise.resolve(["0x2222222222222222222222222222222222222222"]);
-    }
-    if (args.method === "eth_chainId") {
-      return Promise.resolve("0x1");
-    }
-    if (args.method === "eth_getBalance") {
-      return Promise.resolve("0xde0b6b3a7640000");
-    }
-    if (args.method === "eth_call") {
-      const data = ((args.params || [])[0] || {}).data || "";
-      if (data.indexOf("0x70a08231") === 0) {
-        return Promise.resolve("0xf4240");
-      }
-      return Promise.resolve("0x0");
-    }
-    return Promise.reject(new Error("unexpected " + args.method));
-  },
-};
+test("fiat honesty: unknown renders an em dash, never $0.00", function () {
+  const ui = require("./ui.js");
+  assert.strictEqual(ui.formatFiat(null), "\u2014");
+  assert.strictEqual(ui.formatFiat(undefined), "\u2014");
+  assert.strictEqual(ui.formatFiat("nonsense"), "\u2014");
+  assert.notStrictEqual(ui.formatFiat(0, "usd"), "\u2014");
+});
 
-wallet.login(fake).then(function (holding) {
-  assert.strictEqual(holding.kind, "holding");
-  assert.strictEqual(holding.symbol, "ETH");
-  assert.strictEqual(holding.address, "0x2222222222222222222222222222222222222222");
-  assert.strictEqual(holding.chain_id, 1);
-  assert.ok(Math.abs(holding.amount - 1) < 0.0001);
-  const listed = wallet.applyHoldings([
-    holding,
-    {
-      kind: "holding",
-      symbol: "USDC",
-      token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      chain_id: 1,
-      address: holding.address,
-      amount: 1,
-    },
-  ]);
-  assert.strictEqual(listed[0].kind, "holding");
-  assert.strictEqual(listed[1].symbol, "USDC");
-  const usdcHref = wallet.swapHref(listed[1]);
-  assert.ok(usdcHref.indexOf("token_in=USDC") !== -1);
-  return wallet.listSolanaHoldings("So11111111111111111111111111111111111111112", function (method) {
-    if (method === "getBalance") {
-      return Promise.resolve({ value: 2000000000 });
-    }
-    if (method === "getTokenAccountsByOwner") {
-      return Promise.resolve({
-        value: [
-          {
-            account: {
-              data: {
-                parsed: {
-                  info: {
-                    mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-                    tokenAmount: { uiAmount: 3, decimals: 6 },
-                  },
-                },
-              },
-            },
-          },
-        ],
-      });
-    }
-    return Promise.resolve(null);
-  }).then(function (sol) {
-    assert.strictEqual(wallet.SOLANA_CHAIN, 900001);
-    assert.strictEqual(sol[0].symbol, "SOL");
-    assert.strictEqual(sol[0].chain_id, 900001);
-    assert.ok(Math.abs(sol[0].amount - 2) < 0.0001);
-    assert.strictEqual(sol[1].symbol, "USDC");
-    const solHref = wallet.swapHref(sol[0]);
-    assert.ok(solHref.indexOf("token_in=SOL") !== -1);
-    assert.ok(solHref.indexOf("source_chain_id=900001") !== -1);
-    assert.ok(src.indexOf("/api/quote") === -1);
-    return wallet.loadGame(function (url) {
-      if (String(url).indexOf("/v1/snapshot") !== -1) {
-        return Promise.resolve({
-          ok: false,
-          status: 404,
-          json: function () {
-            return Promise.resolve({});
-          },
-        });
-      }
-      if (String(url).indexOf("/api/public/game") !== -1) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: function () {
-            return Promise.resolve({
-              source: "tkrpik",
-              beaver_nickels: 3,
-              index_cards: [],
-              scoreboard: [],
-            });
-          },
-        });
-      }
-      return Promise.reject(new Error("unexpected " + url));
-    }).then(function (data) {
-      assert.strictEqual(data.beaver_nickels, 3);
-      return wallet.attachHosted(function (url, opts) {
-        assert.ok(String(url).indexOf("/v1/hosted-wallet/attach") !== -1);
-        assert.strictEqual(opts.method, "POST");
-        return Promise.resolve({
-          ok: false,
-          status: 501,
-          json: function () {
-            return Promise.resolve({ status: "plan-only", detail: "Hosted wallets are paid. Keys stay off tkrWallet. Security review required." });
-          },
-        });
-      }).then(function (got) {
-        assert.strictEqual(got.status, 501);
-        assert.strictEqual(got.body.status, "plan-only");
-        return wallet.attachHosted(function () {
-          return Promise.resolve({
-            ok: false,
-            status: 401,
-            json: function () {
-              return Promise.resolve({ status: "sign-in", detail: "Sign in on tkrpik to attach a hosted wallet. Keys stay off tkrWallet." });
-            },
-          });
-        }).then(function (unauth) {
-          assert.strictEqual(unauth.status, 401);
-          assert.strictEqual(unauth.body.status, "sign-in");
-          console.log("ok");
-        });
-      });
-    });
+test("amount formatting: unknown renders an em dash, zero renders 0", function () {
+  const ui = require("./ui.js");
+  assert.strictEqual(ui.formatAmount(null), "\u2014");
+  assert.strictEqual(ui.formatAmount(0), "0");
+});
+
+/* ── index.html: the shell ──────────────────────────────────────────────── */
+
+test("shell structure: four screens and four nav entries", function () {
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('id="main"') !== -1, "missing main region");
+  ["home", "swap", "activity", "search"].forEach(function (screen) {
+    assert.ok(html.indexOf('data-screen="' + screen + '"') !== -1, "missing screen " + screen);
+    assert.ok(html.indexOf('data-nav="' + screen + '"') !== -1, "missing nav entry " + screen);
   });
-}).catch(function (err) {
-  console.error(err);
-  process.exit(1);
 });
+
+test("shell loads the committed CSS and boots from ui.js", function () {
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('href="./app.css"') !== -1, "missing committed CSS");
+  assert.ok(html.indexOf('src="./ui.js"') !== -1, "missing ui.js boot");
+});
+
+test("iOS safe areas and dark theme", function () {
+  const html = readFile("index.html");
+  assert.ok(html.indexOf("viewport-fit=cover") !== -1, "viewport-fit=cover required");
+  assert.ok(html.indexOf('content="#12100e"') !== -1, "theme-color must match the dark base");
+});
+
+test("no inline <script>: MV3 blocks it and cannot be relaxed", function () {
+  const html = readFile("index.html");
+  const inline = /<script(?![^>]*\bsrc=)[^>]*>/i;
+  assert.ok(!inline.test(html), "found an inline script tag");
+});
+
+test("CSP meta tag is present and forbids foreign origins", function () {
+  const html = readFile("index.html");
+  assert.ok(html.indexOf("Content-Security-Policy") !== -1, "missing CSP meta tag");
+  assert.ok(html.indexOf("connect-src 'self'") !== -1, "connect-src must be 'self'");
+});
+
+test("Beaver Nickels stay removed from the shell", function () {
+  assert.ok(readFile("index.html").toLowerCase().indexOf("beaver") === -1);
+});
+
+/* ── ui.js source invariants ────────────────────────────────────────────── */
+
+test("ui.js has no markup-string sinks", function () {
+  const src = readFile("ui.js");
+  [".innerHTML", ".outerHTML", ".insertAdjacentHTML", "document.write", "eval("].forEach(function (sink) {
+    assert.ok(src.indexOf(sink) === -1, "ui.js must not use " + sink);
+  });
+});
+
+test("ui.js makes no network calls — the shell never fetches", function () {
+  const src = readFile("ui.js");
+  ["fetch(", "XMLHttpRequest", "WebSocket(", "EventSource", "sendBeacon"].forEach(function (call) {
+    assert.ok(src.indexOf(call) === -1, "ui.js must not use " + call);
+  });
+});
+
+/* ── Single-origin invariant (the audit's headline check) ───────────────── */
+
+test("shipped files reference only the wallet origin", function () {
+  const re = /https?:\/\/[a-zA-Z0-9._-]+/g;
+  SHIPPED.forEach(function (file) {
+    const src = readFile(file);
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      assert.strictEqual(m[0], ALLOWED_ORIGIN, file + " references a foreign origin: " + m[0]);
+    }
+  });
+});
+
+/* ── manifest.json: the extension ───────────────────────────────────────── */
+
+test("host_permissions is exactly the wallet origin", function () {
+  const manifest = JSON.parse(readFile("manifest.json"));
+  assert.deepStrictEqual(manifest.host_permissions, [ALLOWED_ORIGIN + "/*"]);
+});
+
+test("extension CSP is tightened, not relaxed", function () {
+  const manifest = JSON.parse(readFile("manifest.json"));
+  const csp = manifest.content_security_policy && manifest.content_security_policy.extension_pages;
+  assert.ok(csp, "missing content_security_policy.extension_pages");
+  assert.ok(csp.indexOf("script-src 'self'") !== -1, "script-src must stay 'self'");
+  assert.ok(csp.indexOf("'unsafe-eval'") === -1, "MV3 forbids unsafe-eval");
+  assert.ok(csp.indexOf(ALLOWED_ORIGIN) !== -1, "the wallet origin must be allow-listed for connect-src");
+});
+
+test("extension description names Scratchpost, not the v1 funnel", function () {
+  const manifest = JSON.parse(readFile("manifest.json"));
+  assert.ok(manifest.description.toLowerCase().indexOf("beaver") === -1);
+  assert.ok(manifest.description.toLowerCase().indexOf("tkrshell") === -1);
+});
+
+/* ── manifest.webmanifest: the PWA ──────────────────────────────────────── */
+
+test("PWA manifest colours match the dark theme", function () {
+  const wm = JSON.parse(readFile("manifest.webmanifest"));
+  assert.strictEqual(wm.background_color, "#12100e");
+  assert.strictEqual(wm.theme_color, "#12100e");
+});
+
+test("PWA description is clean", function () {
+  const wm = JSON.parse(readFile("manifest.webmanifest"));
+  assert.ok(wm.description.toLowerCase().indexOf("beaver") === -1);
+  assert.ok(wm.description.toLowerCase().indexOf("tkrswap") === -1);
+});
+
+/* ── sw.js ──────────────────────────────────────────────────────────────── */
+
+test("service worker no longer precaches the deleted v1 app.js", function () {
+  const sw = readFile("sw.js");
+  assert.ok(sw.indexOf('"./app.js"') === -1, "sw.js still precaches app.js");
+  assert.ok(sw.indexOf("./ui.js") !== -1, "sw.js must precache the shell");
+});
+
+end();
