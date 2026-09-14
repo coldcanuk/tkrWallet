@@ -13,7 +13,7 @@
  * Bump CACHE whenever the shell changes. skipWaiting + clients.claim make the
  * new worker take over immediately, so one reload picks up a new deploy.
  */
-const CACHE = "tkrwallet-v2";
+const CACHE = "tkrwallet-v3";
 const SHELL = ["./", "./index.html", "./ui.js", "./wallet.js", "./crypto.js", "./store.js", "./vendor/noble.js", "./app.css", "./manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -38,6 +38,9 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== self.location.origin) {
     return; // never cache or answer for other origins or methods
+  }
+  if (url.pathname.indexOf("/api/") === 0) {
+    return; // API responses are never cached — balances/prices must stay fresh
   }
   event.respondWith(
     fetch(event.request, { cache: "no-store" })

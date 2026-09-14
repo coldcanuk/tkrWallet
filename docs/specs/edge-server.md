@@ -177,13 +177,32 @@ Hard requirements:
 ### 3.3 Chain token reads — the wallet no longer uses an injected provider
 
 The client is pure self-custody: it has no `window.ethereum` and no EIP-1193
-connect path, so **EVM balances must also come from the edge** (an EVM balance
-read endpoint is not specified here yet — it lands with the edge). **Phantom
+connect path, so **all chain reads must come from the edge**. **Phantom
 exposes no balance RPC either**, so the v1 wallet called
 `https://api.mainnet-beta.solana.com` directly — a third-party RPC. Under the
 §0 rule that is not acceptable.
 
-Either:
+**`GET /api/wallet/balances?address=<0x…>&chains=1,8453`** (implemented client-side
+by `wallet.js#getBalances`; the dev edge ships a working implementation in
+`tools/dev-edge.js`)
+
+```json
+{ "balances": [
+    { "chain_id": 1, "symbol": "ETH",  "address": null,                 "amount": "1.25",  "decimals": 18 },
+    { "chain_id": 8453, "symbol": "USDC", "address": "0x8335…2913", "amount": "42.5", "decimals": 6 }
+  ],
+  "as_of": 1737000000 }
+```
+
+- `address` is the EIP-55 owner; `chains` is a comma list of numeric chain ids
+  (cap 8 per request, `400` beyond). Native gas tokens use `address: null`.
+- `amount` is an exact **decimal string** — never a float — the client converts.
+- **Zero balances are omitted**, not returned as `0.0`: an empty `balances`
+  array is "you hold none of the catalogued tokens", never "we did not check".
+  A chain read that fails omits that asset; the client renders what it got.
+- Public (no auth): balance data is what a chain explorer already exposes.
+
+Solana reads still need one of:
 - **`GET /api/wallet/solana/tokens?address=<pubkey>`** →
   `{ "tokens": [ { "mint": "…", "symbol": "SOL", "amount": "2.0", "decimals": 9 } ] }`, or
 - a **narrow** `POST /api/wallet/solana/rpc` allow-listing exactly

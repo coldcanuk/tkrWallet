@@ -13,10 +13,16 @@
 (function (root) {
   "use strict";
 
-  var SCREENS = ["home", "swap", "activity", "search"];
+  var SCREENS = ["home", "swap", "activity", "search", "settings"];
   var DEFAULT_SCREEN = "home";
   var CURRENCIES = ["usd", "cad"];
   var STORAGE_KEY = "tkrwallet.currency";
+  var AUTOLOCK_KEY = "tkrwallet.autolock";
+  /* Auto-lock is a security floor, not a preference: it cannot be turned off
+   * and the longest offered session is 1 hour. Default is 5 minutes. */
+  var AUTOLOCK_OPTIONS = [1, 5, 15, 30, 60];
+  var AUTOLOCK_DEFAULT = 5;
+  var AUTOLOCK_MAX = 60;
 
   /* ---- pure helpers (unit-testable without a DOM) ---------------------- */
 
@@ -31,6 +37,32 @@
   function parseCurrency(value) {
     var code = String(value == null ? "" : value).toLowerCase();
     return CURRENCIES.indexOf(code) === -1 ? "usd" : code;
+  }
+
+  /** Normalise an auto-lock minutes value: never 0 (cannot be off), never
+   * more than 60 (the longest session), snapped to the nearest offered option.
+   * Bad or missing input falls back to the 5-minute default. */
+  function parseAutolockMinutes(value) {
+    if (value === null || value === undefined || String(value).trim() === "") {
+      return AUTOLOCK_DEFAULT;
+    }
+    var n = Number(value);
+    if (!isFinite(n)) {
+      n = AUTOLOCK_DEFAULT;
+    }
+    if (n < 1) {
+      n = 1;
+    }
+    if (n > AUTOLOCK_MAX) {
+      n = AUTOLOCK_MAX;
+    }
+    var best = AUTOLOCK_OPTIONS[0];
+    for (var i = 0; i < AUTOLOCK_OPTIONS.length; i++) {
+      if (Math.abs(AUTOLOCK_OPTIONS[i] - n) < Math.abs(best - n)) {
+        best = AUTOLOCK_OPTIONS[i];
+      }
+    }
+    return best;
   }
 
   /** "0x2222...2222" — short enough for a 360px header. */
@@ -237,16 +269,30 @@
         var node = tplEmpty.content.firstElementChild.cloneNode(true);
         var cta = node.querySelector("[data-import]");
         if (session.address) {
-          // A wallet IS loaded: the list is empty only because there is no
-          // balance source. Saying "No wallet yet" and offering to import again
-          // would contradict the address in the header.
+          // A wallet IS loaded: the list is empty only because the edge has not
+          // returned holdings. Saying "No wallet yet" and offering to import
+          // again would contradict the address in the header.
           setText(node.querySelector("[data-empty-title]"), "No balances yet");
           setText(
             node.querySelector("[data-empty-body]"),
-            "Balances for this account arrive with the wallet edge, which is not built yet. Your keys stay on this device."
+            "Balances for this account arrive with the wallet edge. Your keys stay on this device."
           );
           if (cta) {
             cta.setAttribute("hidden", "");
+          }
+        } else if (session.locked) {
+          // A vault exists on this device but the session is locked. The CTA
+          // becomes the unlock button — never "Import wallet".
+          setText(node.querySelector("[data-empty-title]"), "Wallet locked");
+          setText(
+            node.querySelector("[data-empty-body]"),
+            "Unlock with your password to see your wallet. It locks itself after a period of inactivity."
+          );
+          if (cta) {
+            setText(cta, "Unlock");
+            cta.addEventListener("click", function () {
+              openGate("unlock");
+            });
           }
         } else if (cta) {
           cta.addEventListener("click", function () {
@@ -317,7 +363,9 @@
       setText(row.querySelector("[data-token-name]"), tok.symbol);
       setText(
         row.querySelector("[data-token-chain]"),
-        tok.address ? tok.chain_name + " \u00b7 " + shortAddress(tok.address, 6, 4) : tok.chain_name + " \u00b7 native"
+        (tok.name && tok.name !== tok.symbol ? tok.name + " \u00b7 " : "") +
+          tok.chain_name +
+          (tok.address ? " \u00b7 " + shortAddress(tok.address, 6, 4) : "")
       );
       if (badge) {
         badge.style.backgroundColor = tok.color || "#cfc8b8";
@@ -378,9 +426,38 @@
     });
   }
 
+  /** Read balances for the unlocked account from the wallet edge, then price
+   * what came back. Every failure stays honest: unknown is rendered, never
+   * invented. */
+  function refreshBalances() {
+    var wallet = root.tkrWalletData;
+    if (!wallet || !session.address) {
+      return Promise.resolve(null);
+    }
+    setWalletStatus("Reading balances from the wallet edge\u2026");
+    return wallet
+      .getBalances(session.address, [1, 8453])
+      .then(function (res) {
+        if (res.state === "ok") {
+          uiData.lastHoldings = res.balances || [];
+          renderTokens(uiData.lastHoldings, null);
+          setWalletStatus(
+            uiData.lastHoldings.length + " holding" + (uiData.lastHoldings.length === 1 ? "" : "s") + " listed."
+          );
+          return refreshPrices();
+        }
+        uiData.lastHoldings = null;
+        uiData.lastPrices = null;
+        renderTokens(null);
+        setWalletStatus("Balances unavailable: the wallet edge did not respond.");
+        setWalletValue(null, state.currency, "Balances unavailable until the wallet edge responds.");
+        return null;
+      });
+  }
+
   /* ---- wallet gate: unlock with password, or import a recovery phrase ----- */
 
-  var session = { vault: null, address: null };
+  var session = { vault: null, address: null, locked: false };
 
   function crypto() {
     return root.tkrCrypto || null;
@@ -471,13 +548,110 @@
     var c = crypto();
     var w = c.importMnemonic(phrase);
     session.address = w.evmAddress;
+    session.locked = false;
     setAccount(w.evmAddress);
-    setWalletStatus("Imported " + w.evmAddress + ". Balances for this account need the wallet edge \u2014 not built yet.");
+    setWalletStatus("Wallet " + w.evmAddress + " unlocked. Reading balances\u2026");
     setWalletValue(null, state.currency, "Balances for this account arrive with the wallet edge.");
     // Repaint the list so the empty state reflects the now-unlocked wallet
-    // instead of the boot-time "No wallet yet" card.
+    // instead of the boot-time "No wallet yet" card, then pull real balances.
     renderTokens(null);
+    state.lastActivity = Date.now();
+    scheduleLock();
+    refreshBalances();
     return w;
+  }
+
+  /* ---- auto-lock: a security floor, not a preference --------------------- */
+
+  function readStoredAutolock() {
+    try {
+      return parseAutolockMinutes(root.localStorage && root.localStorage.getItem(AUTOLOCK_KEY));
+    } catch (e) {
+      return AUTOLOCK_DEFAULT; // private mode / storage disabled
+    }
+  }
+
+  function storeAutolock(minutes) {
+    try {
+      if (root.localStorage) {
+        root.localStorage.setItem(AUTOLOCK_KEY, String(minutes));
+      }
+    } catch (e) {
+      /* non-fatal: the setting still applies for this session */
+    }
+  }
+
+  function renderAutolock() {
+    var buttons = document.querySelectorAll("[data-autolock]");
+    for (var i = 0; i < buttons.length; i++) {
+      var active = Number(buttons[i].getAttribute("data-autolock")) === state.autolockMinutes;
+      buttons[i].setAttribute("aria-pressed", active ? "true" : "false");
+    }
+  }
+
+  function setAutolock(minutes) {
+    state.autolockMinutes = parseAutolockMinutes(minutes);
+    storeAutolock(state.autolockMinutes);
+    renderAutolock();
+    scheduleLock();
+    setWalletStatus(
+      "Auto-lock after " + state.autolockMinutes + " minute" + (state.autolockMinutes === 1 ? "" : "s") +
+        " of inactivity. It cannot be turned off."
+    );
+  }
+
+  function resetActivity() {
+    state.lastActivity = Date.now();
+    scheduleLock();
+  }
+
+  /** Arm the inactivity timer. Activity resets it; expiry locks the wallet.
+   * The re-check on fire keeps background-tab timer throttling honest. */
+  function scheduleLock() {
+    if (state.lockTimer) {
+      clearTimeout(state.lockTimer);
+      state.lockTimer = null;
+    }
+    if (!session.address) {
+      return; // nothing unlocked to lock
+    }
+    var timeoutMs = state.autolockMinutes * 60000;
+    var tick = function () {
+      var remaining = timeoutMs - (Date.now() - state.lastActivity);
+      if (remaining <= 0) {
+        state.lockTimer = null;
+        lockNow("auto");
+      } else {
+        state.lockTimer = setTimeout(tick, remaining);
+      }
+    };
+    state.lockTimer = setTimeout(tick, timeoutMs);
+  }
+
+  function lockNow(reason) {
+    var wasUnlocked = Boolean(session.address);
+    if (!wasUnlocked && !session.locked) {
+      setWalletStatus("No wallet is unlocked.");
+      return;
+    }
+    if (state.lockTimer) {
+      clearTimeout(state.lockTimer);
+      state.lockTimer = null;
+    }
+    session.address = null;
+    session.vault = null;
+    session.locked = session.locked || wasUnlocked;
+    uiData.lastHoldings = null;
+    uiData.lastPrices = null;
+    closeGate();
+    setAccount(null, "Locked");
+    setWalletStatus(
+      reason === "auto"
+        ? "Auto-locked after " + state.autolockMinutes + " minutes of inactivity."
+        : "Wallet locked."
+    );
+    setWalletValue(null, state.currency, "Unlock your wallet to see your balance.");
+    renderTokens(null);
   }
 
   function onUnlock() {
@@ -554,6 +728,9 @@
     screen: DEFAULT_SCREEN,
     currency: "usd",
     onCurrencyChange: null,
+    autolockMinutes: AUTOLOCK_DEFAULT,
+    lastActivity: Date.now(),
+    lockTimer: null,
   };
 
   function bind() {
@@ -619,6 +796,20 @@
       });
     }
 
+    var settingsBtn = el("header-settings");
+    if (settingsBtn) {
+      settingsBtn.addEventListener("click", function () {
+        go("settings");
+      });
+    }
+
+    var autolockBtns = document.querySelectorAll("[data-autolock]");
+    for (var a = 0; a < autolockBtns.length; a++) {
+      autolockBtns[a].addEventListener("click", function (event) {
+        setAutolock(event.currentTarget.getAttribute("data-autolock"));
+      });
+    }
+
     var actions = document.querySelectorAll("[data-action]");
     for (var k = 0; k < actions.length; k++) {
       actions[k].addEventListener("click", function (event) {
@@ -626,6 +817,10 @@
         if (action === "swap") {
           // The one honest route: the swap screen explains why it is empty.
           go("swap");
+          return;
+        }
+        if (action === "lock") {
+          lockNow("manual");
           return;
         }
         // send / receive / buy are not built. Say so rather than dead-ending.
@@ -643,6 +838,39 @@
       });
     }
 
+    /* Any interaction while unlocked re-arms the auto-lock timer. */
+    if (root.addEventListener) {
+      ["pointerdown", "keydown", "touchstart"].forEach(function (evt) {
+        root.addEventListener(
+          evt,
+          function () {
+            if (session.address) {
+              resetActivity();
+            }
+          },
+          { passive: true }
+        );
+      });
+      // Timers are throttled in background tabs; on return, either the timeout
+      // already elapsed (lock) or we re-arm for the remaining time.
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState !== "visible") {
+          return;
+        }
+        if (!session.address) {
+          return;
+        }
+        var timeoutMs = state.autolockMinutes * 60000;
+        if (Date.now() - state.lastActivity >= timeoutMs) {
+          lockNow("auto");
+        } else {
+          scheduleLock();
+        }
+      });
+    }
+
+    state.autolockMinutes = readStoredAutolock();
+    renderAutolock();
     state.currency = readStoredCurrency();
     renderCurrency();
     showScreen(parseRoute(root.location && root.location.hash));
@@ -658,6 +886,8 @@
         .loadVault()
         .then(function (vault) {
           if (vault) {
+            // A wallet exists on this device: it starts locked, not absent.
+            session.locked = true;
             openGate("unlock");
           }
         })
@@ -710,6 +940,9 @@
     SCREENS: SCREENS,
     parseRoute: parseRoute,
     parseCurrency: parseCurrency,
+    parseAutolockMinutes: parseAutolockMinutes,
+    AUTOLOCK_OPTIONS: AUTOLOCK_OPTIONS,
+    AUTOLOCK_DEFAULT: AUTOLOCK_DEFAULT,
     shortAddress: shortAddress,
     formatFiat: formatFiat,
     formatAmount: formatAmount,
@@ -724,9 +957,12 @@
     searchResults: searchResults,
     maybePreview: maybePreview,
     renderAll: renderAll,
+    refreshBalances: refreshBalances,
     openGate: openGate,
     closeGate: closeGate,
     showGateForm: showGateForm,
+    lockNow: lockNow,
+    setAutolock: setAutolock,
     session: session,
     uiData: uiData,
     bind: bind,

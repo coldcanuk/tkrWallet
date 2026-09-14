@@ -51,6 +51,18 @@
 
           <button
             type="button"
+            id="header-settings"
+            class="flex size-11 items-center justify-center rounded-full bg-ink-900 ring-1 ring-inset ring-white/10 text-cream-300 shadow-tile hover:ring-ember-400/40 active:scale-[0.97] active:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+            aria-label="Settings"
+          >
+            <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true">
+              <path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" stroke="currentColor" stroke-width="2" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" stroke-width="2" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
             id="header-search"
             class="flex size-11 items-center justify-center rounded-full bg-ink-900 ring-1 ring-inset ring-white/10 text-cream-300 shadow-tile hover:ring-ember-400/40 active:scale-[0.97] active:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
             aria-label="Search"
@@ -171,6 +183,28 @@
             class="min-h-11 w-full rounded-full bg-ink-900 ring-1 ring-inset ring-white/10 px-4 text-sm text-cream-100 placeholder:text-cream-500 focus:ring-2 focus:ring-ember-400 focus:outline-none"
           />
           <div id="search-results" class="mt-3 overflow-hidden rounded-card bg-ink-900 shadow-card ring-1 ring-inset ring-white/10"></div>
+        </section>
+
+        <!-- Settings -->
+        <section data-screen="settings" hidden aria-labelledby="settings-heading">
+          <h1 id="settings-heading" class="sr-only">Settings</h1>
+          <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
+            <h2 class="text-sm font-medium text-cream-500">Security</h2>
+            <p class="mt-1 text-xs leading-relaxed text-cream-500">
+              Auto-lock locks the wallet after inactivity. It cannot be turned off;
+              the longest a wallet can stay unlocked is 1 hour.
+            </p>
+            <div role="group" aria-label="Auto-lock after" class="mt-3 flex flex-wrap gap-2">
+              <button type="button" data-autolock="1" aria-pressed="false" class="min-h-10 rounded-full px-4 text-xs font-medium text-cream-500 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 aria-pressed:bg-ember-400 aria-pressed:text-ink-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">1 min</button>
+              <button type="button" data-autolock="5" aria-pressed="false" class="min-h-10 rounded-full px-4 text-xs font-medium text-cream-500 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 aria-pressed:bg-ember-400 aria-pressed:text-ink-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">5 min</button>
+              <button type="button" data-autolock="15" aria-pressed="false" class="min-h-10 rounded-full px-4 text-xs font-medium text-cream-500 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 aria-pressed:bg-ember-400 aria-pressed:text-ink-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">15 min</button>
+              <button type="button" data-autolock="30" aria-pressed="false" class="min-h-10 rounded-full px-4 text-xs font-medium text-cream-500 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 aria-pressed:bg-ember-400 aria-pressed:text-ink-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">30 min</button>
+              <button type="button" data-autolock="60" aria-pressed="false" class="min-h-10 rounded-full px-4 text-xs font-medium text-cream-500 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 aria-pressed:bg-ember-400 aria-pressed:text-ink-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">1 hour</button>
+            </div>
+            <button type="button" data-action="lock" class="mt-4 min-h-11 w-full rounded-full bg-ink-950 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
+              Lock now
+            </button>
+          </div>
         </section>
       </main>
 

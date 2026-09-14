@@ -11,10 +11,12 @@ index.html          markup only. Templates + static structure. CSP meta tag.
 ui.js               shell controller. Routing, currency, render primitives,
                     account chip, status announcements. NO network calls —
                     asserted by test.
-wallet.js           data layer. THE ONLY network caller. Edge fetch only.
-                    Single origin constant.
+wallet.js           data layer. THE ONLY network caller. Edge fetch
+                    (balances + prices). Relative /api/… on the PWA origin
+                    (served FROM the edge), absolute edge origin for
+                    extension pages. Single-origin invariant enforced by test.
 sw.js               service worker. Network-first for the shell, cache
-                    fallback, same-origin GET only, lifecycle correct.
+                    fallback, same-origin GET only, /api/* never cached.
 app.css             committed Tailwind build (tools/src/app.css).
 manifest.json       MV3 extension: pinned key, PNG icons, single-origin
                     host_permissions, tightened extension_pages CSP.
