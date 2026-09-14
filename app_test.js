@@ -722,4 +722,261 @@ test("crypto: signTransaction recovers the signer on Ethereum and Base", functio
   assert.strictEqual(c.recoverTxSigner(c.signTransaction(priv, base), 8453), w.evmAddress);
 });
 
+/* ---------------------------------------------------------------------------
+ * M3.1 — the dev edge must never report a read failure as "you own nothing".
+ * docs/research/balances-empty-state.md; docs/specs/edge-server.md §3.3.
+ * ------------------------------------------------------------------------- */
+
+const edge = require("./tools/dev-edge.js");
+
+const ADDR = "0x" + "11".repeat(20);
+const EXTRA = "0x" + "Ab".repeat(20);
+
+function rpcReply(result) {
+  return {
+    json: function () {
+      return Promise.resolve({ jsonrpc: "2.0", id: 1, result: result });
+    },
+  };
+}
+
+function balancesUrl(query) {
+  return new URL("http://127.0.0.1:8899/api/wallet/balances?" + query);
+}
+
+/* Fake RPC transport. `plan(method, params, url)` returns a result string,
+ * throws/rejects to simulate a failure. */
+function fakeRpc(plan) {
+  return function (u, opts) {
+    const req = JSON.parse(opts.body);
+    return Promise.resolve()
+      .then(function () {
+        return plan(req.method, req.params, u);
+      })
+      .then(rpcReply);
+  };
+}
+
+function chainOf(u) {
+  return String(u).indexOf("base") !== -1 ? 8453 : 1;
+}
+
+function abiEncodeString(s) {
+  const hex = Buffer.from(s, "utf8").toString("hex");
+  const len = (hex.length / 2).toString(16).padStart(64, "0");
+  const data = hex.padEnd(Math.ceil(hex.length / 64) * 64, "0");
+  return "0x" + "20".padStart(64, "0") + len + data;
+}
+
+test("dev edge: when no chain can be read the answer is 502, never an empty 200", function () {
+  return edge
+    .balancesHandler(balancesUrl("address=" + ADDR + "&chains=1,8453"), function () {
+      return Promise.reject(new Error("rpc down"));
+    })
+    .then(function (res) {
+      assert.strictEqual(res.code, 502, "a total read failure must not be a success status");
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.ok, false, "errors use the §3 envelope");
+      assert.strictEqual(body.error, "chain-read-failed");
+      assert.ok(body.detail, "the envelope carries human-readable detail");
+      assert.strictEqual(body.balances, undefined, "never an empty wallet in success shape");
+    });
+});
+
+test("dev edge: a failed chain is disclosed as unknown while partial success survives", function () {
+  const fetchFn = fakeRpc(function (method, params, u) {
+    if (chainOf(u) === 1) {
+      throw new Error("ethereum rpc timeout");
+    }
+    return method === "eth_getBalance" ? "0xde0b6b3a7640000" : "0x0"; // 1 ETH on Base, no tokens
+  });
+  return edge.balancesHandler(balancesUrl("address=" + ADDR + "&chains=1,8453"), fetchFn).then(function (res) {
+    assert.strictEqual(res.code, 200, "partial success is still a success");
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.balances.length, 1, "the readable chain's holding is shown");
+    assert.strictEqual(body.balances[0].chain_id, 8453);
+    const status = {};
+    body.chains.forEach(function (c) {
+      status[c.chain_id] = c;
+    });
+    assert.strictEqual(status[1].state, "unknown", "the unreadable chain must say unknown");
+    assert.ok(status[1].error, "and carry the real reason");
+    assert.strictEqual(status[8453].state, "ok");
+  });
+});
+
+test("dev edge: an empty list means 'you own none' ONLY when every chain was read", function () {
+  const emptyButRead = fakeRpc(function (method) {
+    return "0x0";
+  });
+  return edge.balancesHandler(balancesUrl("address=" + ADDR + "&chains=1,8453"), emptyButRead).then(function (res) {
+    assert.strictEqual(res.code, 200);
+    const body = JSON.parse(res.body);
+    assert.deepStrictEqual(body.balances, [], "a genuinely empty wallet is an empty list");
+    assert.strictEqual(body.chains.length, 2);
+    body.chains.forEach(function (c) {
+      assert.strictEqual(c.state, "ok", "and every chain is reported read");
+    });
+  });
+});
+
+test("dev edge: a partially readable chain is reported as partial", function () {
+  // Native read works; every token read fails -> we know the gas balance but not
+  // the token set, and the response says so instead of implying "no tokens".
+  const fetchFn = fakeRpc(function (method, params) {
+    if (method === "eth_getBalance") {
+      return "0x0";
+    }
+    throw new Error("token read failed");
+  });
+  return edge.balancesHandler(balancesUrl("address=" + ADDR + "&chains=1"), fetchFn).then(function (res) {
+    assert.strictEqual(res.code, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.chains[0].state, "partial");
+    assert.ok(/token read/.test(body.chains[0].error), "the failure count is disclosed");
+  });
+});
+
+test("dev edge: validation errors use the documented envelope", function () {
+  return edge.balancesHandler(balancesUrl("address=not-an-address&chains=1"), fakeRpc(function () { return "0x0"; })).then(function (res) {
+    assert.strictEqual(res.code, 400);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, false);
+    assert.strictEqual(body.error, "bad-address");
+    assert.ok(body.detail);
+  });
+});
+
+test("dev edge: over-cap requests are rejected, not silently truncated", function () {
+  const nine = "1,2,3,4,5,6,7,8,9";
+  return edge.balancesHandler(balancesUrl("address=" + ADDR + "&chains=" + nine), fakeRpc(function () { return "0x0"; })).then(function (res) {
+    assert.strictEqual(res.code, 400, "the spec's cap must be enforced");
+    assert.strictEqual(JSON.parse(res.body).error, "too-many-chains");
+  });
+});
+
+test("dev edge: user-added tokens are read, malformed ones are ignored", function () {
+  const fetchFn = fakeRpc(function (method, params) {
+    const to = params[0] && params[0].to;
+    const data = params[0] && params[0].data;
+    if (method === "eth_getBalance") {
+      return "0x0";
+    }
+    if (data === "0x313ce567") {
+      return "0x" + "12"; // decimals() = 18
+    }
+    if (to && to.toLowerCase() === EXTRA.toLowerCase() && data.indexOf("0x70a08231") === 0) {
+      return "0x4563918244f40000"; // 5e18
+    }
+    return "0x0";
+  });
+  return edge
+    .balancesHandler(balancesUrl("address=" + ADDR + "&chains=1&tokens=1:" + EXTRA + ",1:nothex,9:0xdead"), fetchFn)
+    .then(function (res) {
+      assert.strictEqual(res.code, 200);
+      const body = JSON.parse(res.body);
+      const extra = body.balances.filter(function (b) {
+        return b.address && b.address.toLowerCase() === EXTRA.toLowerCase();
+      });
+      assert.strictEqual(extra.length, 1, "the added token is queried and reported");
+      assert.strictEqual(extra[0].amount, "5", "with its real decimals");
+      assert.strictEqual(body.balances.length, 1, "malformed and unrequested-chain tokens are ignored");
+    });
+});
+
+test("dev edge: token metadata endpoint labels an arbitrary ERC-20", function () {
+  const fetchFn = fakeRpc(function (method, params) {
+    const data = params[0] && params[0].data;
+    if (data === "0x313ce567") {
+      return "0x" + "6"; // decimals() = 6
+    }
+    if (data === "0x95d89b41") {
+      return abiEncodeString("USDC");
+    }
+    if (data === "0x06fdde03") {
+      return abiEncodeString("USD Coin");
+    }
+    return "0x0";
+  });
+  const u = new URL("http://127.0.0.1:8899/api/wallet/token?chain=8453&address=" + EXTRA);
+  return edge.tokenHandler(u, fetchFn).then(function (res) {
+    assert.strictEqual(res.code, 200);
+    const tok = JSON.parse(res.body).token;
+    assert.strictEqual(tok.symbol, "USDC");
+    assert.strictEqual(tok.name, "USD Coin");
+    assert.strictEqual(tok.decimals, 6);
+    assert.strictEqual(tok.chain_id, 8453);
+  });
+});
+
+test("dev edge: an address that is not a token is a 404, not invented metadata", function () {
+  const fetchFn = fakeRpc(function () {
+    throw new Error("execution reverted");
+  });
+  const u = new URL("http://127.0.0.1:8899/api/wallet/token?chain=8453&address=" + EXTRA);
+  return edge.tokenHandler(u, fetchFn).then(function (res) {
+    assert.strictEqual(res.code, 404);
+    assert.strictEqual(JSON.parse(res.body).error, "not-a-token");
+  });
+});
+
+test("dev edge: a price-source failure is 502 with the envelope, never empty prices", function () {
+  const fetchFn = function () {
+    return Promise.reject(new Error("coingecko down"));
+  };
+  const u = new URL("http://127.0.0.1:8899/api/wallet/prices?assets=1:native&vs=usd");
+  return edge.pricesHandler(u, fetchFn).then(function (res) {
+    assert.strictEqual(res.code, 502);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, false);
+    assert.strictEqual(body.error, "price-source-failed");
+    assert.strictEqual(body.prices, undefined, "a failure must not look like an empty price set");
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * Catalogue integrity. These are the offline structural half; the on-chain
+ * proof (bytecode + symbol + decimals for every address) is
+ * `npm run verify:catalogue`.
+ * ------------------------------------------------------------------------- */
+
+test("catalogue: every token address is well-formed and unique within its chain", function () {
+  const wallet = require("./wallet.js");
+  Object.keys(wallet.TOKENS).forEach(function (chainId) {
+    const seen = {};
+    wallet.TOKENS[chainId].forEach(function (t) {
+      if (!t.address) {
+        return; // native gas token
+      }
+      assert.ok(/^0x[0-9a-fA-F]{40}$/.test(t.address), "malformed address on chain " + chainId + ": " + t.address);
+      assert.ok(!seen[t.address.toLowerCase()], "duplicate address on chain " + chainId + ": " + t.address);
+      seen[t.address.toLowerCase()] = true;
+      assert.ok(t.symbol && t.name, "every token needs a symbol and a name");
+      assert.ok(Number.isInteger(t.decimals) && t.decimals >= 0 && t.decimals <= 36, "bad decimals for " + t.symbol);
+    });
+  });
+});
+
+test("catalogue: a token is never listed on a chain it is not deployed on (the OP bug)", function () {
+  const wallet = require("./wallet.js");
+  const mainnet = (wallet.TOKENS[1] || []).map(function (t) {
+    return t.address && t.address.toLowerCase();
+  });
+  // 0x4200…0042 is the GovernanceToken predeploy on OP Mainnet (chain 10); it has
+  // no bytecode on Ethereum. Cataloguing it as a mainnet token made every
+  // mainnet balance read silently drop a token. Verified against chain state and
+  // CoinGecko; guarded structurally here and on-chain by verify-catalogue.
+  assert.ok(
+    mainnet.indexOf("0x4200000000000000000000000000000000000042") === -1,
+    "the OP Mainnet predeploy must not be catalogued on Ethereum mainnet"
+  );
+  assert.strictEqual(
+    (wallet.TOKENS[1] || []).filter(function (t) {
+      return t.symbol === "OP";
+    }).length,
+    0,
+    "OP has no Ethereum mainnet deployment"
+  );
+});
+
 run();
