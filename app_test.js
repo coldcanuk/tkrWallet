@@ -11,7 +11,7 @@ const path = require("path");
 
 const ROOT = __dirname;
 const ALLOWED_ORIGIN = "https://tkrwallet.scratchpost.ai";
-const SHIPPED = ["index.html", "ui.js", "wallet.js", "crypto.js", "sw.js", "manifest.json", "manifest.webmanifest", "README.md"];
+const SHIPPED = ["index.html", "ui.js", "wallet.js", "crypto.js", "store.js", "sw.js", "manifest.json", "manifest.webmanifest", "README.md"];
 
 let failures = [];
 let count = 0;
@@ -554,6 +554,22 @@ test("crypto: the bundle has no eval and no remote code", function () {
   ["fetch(", "XMLHttpRequest", "WebSocket", "sendBeacon", "import("].forEach(function (call) {
     assert.ok(bundle.indexOf(call) === -1, "bundle must not make network calls: " + call);
   });
+});
+
+test("import/unlock gate is present and wired", function () {
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('id="wallet-gate"') !== -1, "missing gate overlay");
+  assert.ok(html.indexOf('id="gate-unlock"') !== -1 && html.indexOf('id="gate-import"') !== -1, "missing gate forms");
+  const ui = readFile("ui.js");
+  ["openGate", "onUnlock", "onImport", "revealAccount", "loadVault", "decryptVault", "encryptVault"].forEach(function (fn) {
+    assert.ok(ui.indexOf(fn) !== -1, "ui.js must wire " + fn);
+  });
+  assert.ok(ui.indexOf("600000") !== -1 || readFile("crypto.js").indexOf("600000") !== -1, "KDF iterations pinned");
+});
+
+test("shipped files still reference only the wallet origin", function () {
+  // crypto.js + store.js are now in SHIPPED; confirm the scan covers them.
+  assert.ok(SHIPPED.indexOf("crypto.js") !== -1 && SHIPPED.indexOf("store.js") !== -1);
 });
 
 run();

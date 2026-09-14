@@ -218,6 +218,41 @@
       </button>
     </template>
 
+    <!-- Wallet gate: unlock (password) or import (recovery phrase). Shown when
+         no session is open; closes once the vault decrypts or a phrase imports. -->
+    <section id="wallet-gate" hidden class="fixed inset-0 z-50 overflow-y-auto bg-ink-950/95 backdrop-blur">
+      <div class="mx-auto flex min-h-full max-w-md flex-col justify-center px-4 py-8 md:max-w-2xl">
+        <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
+          <p class="text-center text-xs text-cream-500">Your keys stay on this device</p>
+          <h2 id="gate-title" class="mt-1 text-center text-lg font-semibold text-cream-50">Unlock wallet</h2>
+
+          <form id="gate-unlock" class="mt-4">
+            <label for="gate-password" class="block text-xs text-cream-500">Password</label>
+            <input id="gate-password" type="password" autocomplete="current-password" class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none" />
+            <p id="gate-error" class="mt-2 hidden text-xs text-down-400"></p>
+            <button type="submit" class="mt-4 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">Unlock</button>
+          </form>
+
+          <form id="gate-import" class="mt-4" hidden>
+            <label for="gate-mnemonic" class="block text-xs text-cream-500">12 or 24-word recovery phrase</label>
+            <textarea id="gate-mnemonic" rows="3" autocomplete="off" spellcheck="false" class="mt-1 w-full rounded-lg bg-ink-950 px-4 py-3 text-sm text-cream-100 ring-1 ring-inset ring-white/10 placeholder:text-cream-500 focus:ring-2 focus:ring-ember-400 focus:outline-none" placeholder="word word word …"></textarea>
+            <label for="gate-new-password" class="mt-3 block text-xs text-cream-500">New password</label>
+            <input id="gate-new-password" type="password" autocomplete="new-password" class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none" />
+            <p id="gate-import-error" class="mt-2 hidden text-xs text-down-400"></p>
+            <button type="submit" class="mt-4 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">Import</button>
+          </form>
+
+          <p class="mt-4 text-center text-xs text-cream-500">
+            <button type="button" id="gate-toggle" class="text-ember-400 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ember-400">Use a recovery phrase instead</button>
+          </p>
+          <p class="mt-3 text-center text-[11px] leading-relaxed text-cream-500">
+            Encrypted on this device with your password. Lose the password or
+            phrase and the wallet is unrecoverable — by design.
+          </p>
+        </div>
+      </div>
+    </section>
+
     <!-- Empty-state template. One design, used at boot and by renderTokens(),
          so the two can never diverge. -->
     <template id="tpl-token-empty">
@@ -260,6 +295,7 @@
          audited crypto bundle -> our crypto wrapper -> data layer -> shell. -->
     <script src="./vendor/noble.js"></script>
     <script src="./crypto.js"></script>
+    <script src="./store.js"></script>
     <script src="./wallet.js"></script>
     <script src="./ui.js"></script>
   </body>
