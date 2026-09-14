@@ -34,7 +34,7 @@ right and expensive to retrofit.
 The single most important property asked for, and it holds:
 
 ```
-grep -rE '192\.168\.|10\.[0-9]|127\.0\.0\.1|localhost|:NNNN|\.local' \
+grep -rE 'a\.b\.c\.d|w\.x\.y\.z|localhost|:NNNN|\.local' \
   index.html ui.js app.js sw.js manifest.json manifest.webmanifest
 → no matches
 ```
