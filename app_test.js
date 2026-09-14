@@ -821,6 +821,9 @@ test("tapping a coin opens the detail screen instead of a dead click", function 
   const detail = ui.match(/function renderDetail\(\) \{[\s\S]*?\n  \}/);
   assert.ok(detail, "renderDetail must exist");
   assert.ok(detail[0].indexOf("go(") !== -1, "an invalid detail route must not render an empty shell");
+  // The native gas token has no contract: do not offer to copy one.
+  assert.ok(detail[0].indexOf("detail-copy") !== -1, "the detail screen owns the copy button");
+  assert.ok(/route\.asset/.test(detail[0]), "contract handling must depend on whether there is an address");
 });
 
 test("a failed read is retryable and never rendered as an empty wallet", function () {

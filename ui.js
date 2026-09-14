@@ -796,13 +796,23 @@
 
     // Contract row: the native gas token has no contract.
     var row = el("detail-contract-row");
+    var copy = el("detail-copy");
     if (route.asset) {
       if (row) {
         row.removeAttribute("hidden");
       }
+      if (copy) {
+        copy.removeAttribute("hidden");
+      }
       setText(el("detail-contract"), route.asset);
-    } else if (row) {
-      row.setAttribute("hidden", "");
+    } else {
+      if (row) {
+        row.setAttribute("hidden", "");
+      }
+      if (copy) {
+        // Nothing to copy for ETH/SOL: hide the button rather than let it fail.
+        copy.setAttribute("hidden", "");
+      }
     }
     return { symbol: symbol, chainId: route.chainId, asset: route.asset };
   }
