@@ -1,5 +1,7 @@
 # tkrWallet — Technical Review
 
+> **Superseded for current-tree claims.** This file describes a pre-0.7 tree (`app.js`). Use [`2026-09-14-technical-review.md`](./2026-09-14-technical-review.md) and [`../security/2026-09-14-security-audit.md`](../security/2026-09-14-security-audit.md).
+
 **Revision reviewed:** `c4e5153` (`main`, clean working tree)
 **Date of review:** current session
 **Reviewer:** automated engineering review

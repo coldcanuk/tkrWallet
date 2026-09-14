@@ -31,6 +31,10 @@ EVM balances for an unlocked wallet arrive from the wallet edge — they are not
 read from any injected provider, and the wallet never contacts a chain node
 itself.
 
+Current knowledge docs (how the UA talks to the edge, 0-knowledge scan, strengths
+and remediations): [`docs/reviews/2026-09-14-technical-review.md`](docs/reviews/2026-09-14-technical-review.md),
+[`docs/security/2026-09-14-security-audit.md`](docs/security/2026-09-14-security-audit.md).
+
 ## What works today
 
 - Mobile-first shell: wallet value (USD/CAD), Send/Swap/Receive/Buy row, token
