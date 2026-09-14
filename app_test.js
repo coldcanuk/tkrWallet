@@ -117,6 +117,74 @@ test("auto-lock minutes: clamped, snapped, never off, never past an hour", funct
   assert.ok(ui.AUTOLOCK_OPTIONS.every((m) => m >= 1 && m <= 60), "no off option, nothing over an hour");
 });
 
+test("parseViewSession restores a fresh viewing session and rejects an expired one", function () {
+  const ui = require("./ui.js");
+  const addr = "0x71562b71999873DB5b286dF957af199Ec94617F7";
+  const now = 1_700_000_000_000;
+  const fresh = ui.parseViewSession(
+    JSON.stringify({ address: addr, lastActivity: now - 60_000, autolockMinutes: 5 }),
+    now
+  );
+  assert.ok(fresh, "a session inside the auto-lock window must restore");
+  assert.strictEqual(fresh.address, addr);
+  assert.strictEqual(fresh.autolockMinutes, 5);
+  assert.strictEqual(fresh.lastActivity, now - 60_000);
+
+  const expired = ui.parseViewSession(
+    JSON.stringify({ address: addr, lastActivity: now - 6 * 60_000, autolockMinutes: 5 }),
+    now
+  );
+  assert.strictEqual(expired, null, "past the auto-lock window must not restore");
+
+  assert.strictEqual(ui.parseViewSession(null, now), null);
+  assert.strictEqual(ui.parseViewSession("{", now), null);
+  assert.strictEqual(ui.parseViewSession(JSON.stringify({ lastActivity: now }), now), null);
+  assert.strictEqual(
+    ui.parseViewSession(JSON.stringify({ address: "not-an-address", lastActivity: now, autolockMinutes: 5 }), now),
+    null
+  );
+  const snapped = ui.parseViewSession(
+    JSON.stringify({ address: addr, lastActivity: now, autolockMinutes: 7 }),
+    now
+  );
+  assert.strictEqual(snapped.autolockMinutes, 5, "viewing session snaps auto-lock the same way Settings does");
+});
+
+test("reload keeps the viewing session; lock and expiry do not; keys never land in it", function () {
+  const ui = readFile("ui.js");
+  assert.ok(ui.indexOf("tkrwallet.view-session") !== -1, "viewing session has a dedicated key");
+  assert.ok(ui.indexOf("sessionStorage") !== -1, "reload must use sessionStorage, not a second IndexedDB vault");
+  assert.ok(/function parseViewSession\(/.test(ui), "parseViewSession is the pure helper tests call");
+  assert.ok(/function saveViewSession\(/.test(ui), "unlock must persist a viewing session");
+  assert.ok(/function clearViewSession\(/.test(ui), "lock must drop the viewing session");
+  assert.ok(/function restoreViewSession\(/.test(ui), "boot must try to restore before prompting");
+
+  const reveal = ui.match(/function revealAccount\(phrase\) \{[\s\S]*?\n  \}/);
+  assert.ok(reveal && reveal[0].indexOf("saveViewSession()") !== -1, "unlock/import must save the viewing session");
+
+  const lock = ui.match(/function lockNow\(reason\) \{[\s\S]*?\n  \}/);
+  assert.ok(lock && lock[0].indexOf("clearViewSession()") !== -1, "lockNow must clear the viewing session");
+
+  const reset = ui.match(/function resetActivity\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(reset && reset[0].indexOf("saveViewSession()") !== -1, "activity must refresh the viewing-session timestamp");
+
+  const bindStart = ui.indexOf("function bind(");
+  assert.ok(bindStart !== -1, "bind must exist");
+  const bind = ui.slice(bindStart);
+  const restoreAt = bind.indexOf("restoreViewSession()");
+  const gateAt = bind.indexOf('openGate("unlock")');
+  assert.ok(restoreAt !== -1, "boot must restore a viewing session");
+  assert.ok(gateAt !== -1, "boot still prompts when there is no viewing session");
+  assert.ok(restoreAt < gateAt, "restore must run before the unlock gate, or refresh always re-prompts");
+
+  const save = ui.match(/function saveViewSession\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(save, "saveViewSession must exist");
+  assert.ok(save[0].indexOf("mnemonic") === -1, "the viewing session must never mention the recovery phrase");
+  assert.ok(save[0].indexOf("privateKey") === -1, "the viewing session must never mention a private key");
+  assert.ok(save[0].indexOf("session.address") !== -1, "only the public address is needed to re-read balances");
+  assert.ok(save[0].indexOf("sessionStorage") !== -1 && save[0].indexOf("localStorage") === -1, "tab-scoped, not durable across close");
+});
+
 test("address shortening", function () {
   const ui = require("./ui.js");
   assert.strictEqual(ui.shortAddress("0x2222222222222222222222222222222222222222"), "0x2222\u20262222");
@@ -349,7 +417,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v3"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v4"') !== -1, "cache version must bump so the new worker activates");
 });
 
 test("service worker bypasses the HTTP cache and sweeps legacy caches", function () {
@@ -854,6 +922,14 @@ test("holdings coverage is disclosed and a token can be added by address", funct
   // Only public metadata is stored — never anything from the vault.
   const store = ui.match(/function storeTokens\(list\) \{[\s\S]*?\n  \}/);
   assert.ok(store && store[0].indexOf("JSON.stringify(list)") !== -1, "stored tokens are the metadata list");
+});
+
+test("the value note never claims the wallet edge has not shipped", function () {
+  const ui = readFile("ui.js");
+  assert.ok(
+    ui.indexOf("until the wallet edge ships") === -1,
+    "live origin is the edge; a missing price or a partial read must not say it is unshipped"
+  );
 });
 
 test("unlock fetches real balances from the edge and locks on expiry", function () {

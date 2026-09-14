@@ -43,7 +43,11 @@ itself.
   with audited `@noble`/`@scure` primitives — never a server.
 - **Auto-lock**: the wallet locks itself after inactivity — 5 minutes by
   default, configurable in Settings (1/5/15/30/60 min). It cannot be turned
-  off and the longest session is 1 hour. "Lock now" is one tap away.
+  off and the longest session is 1 hour. "Lock now" is one tap away. A
+  reload within that window does not re-prompt: the public address is kept
+  in `sessionStorage` so balances can be re-read. Closing the tab or waiting
+  out the timer still requires the password. The recovery phrase is never
+  stored there.
 - **Balances from the edge** (`GET /api/wallet/balances` + `/api/wallet/prices`,
   see `docs/specs/edge-server.md` §3.2–3.3): an unlocked wallet reads real
   Mainnet + Base holdings and fiat value. The production edge is not deployed
