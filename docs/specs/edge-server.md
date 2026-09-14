@@ -316,7 +316,7 @@ proxy token metadata for anything the client already knows by address.
 for an arbitrary address, so the client can label a token it learned about from
 a transaction instead of shipping a hardcoded table.
 
-### 3.5 Discover — optional
+### 3.6 Discover — optional
 
 If we keep a Discover section (index cards, scoreboard, launches), it needs a
 small tier-filtered read. Anonymous callers must get the public tier only. This

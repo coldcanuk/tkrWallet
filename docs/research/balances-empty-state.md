@@ -185,6 +185,30 @@ the production edge is being built to fit:
 - `docs/specs/edge-server.md` numbers two different sections `§3.5` (`:257`
   catalogue, `:290` Discover).
 
+## Finding 11 — a catalogued token that does not exist on the chain it is listed for
+
+While proving the failure path, the new per-chain reporting named a token that
+failed every read: **OP**. `wallet.js` catalogued it on **Ethereum mainnet** at
+`0x4200000000000000000000000000000000000042`.
+
+That address has no bytecode on Ethereum:
+
+```console
+$ eth_getCode 0x4200…0042 @ mainnet   -> "0x"
+$ eth_getCode 0x4200…0042 @ base      -> 0x6080604052… (a contract)
+```
+
+It is the **GovernanceToken predeploy on OP Mainnet (chain 10)** — it only ever
+exists there. CoinGecko lists OP on `optimistic-ethereum` and on no other
+platform. So the entry was simply wrong, and because a failed read was silently
+dropped (Finding 2) it had been invisible: an OP balance could never appear, and
+nothing ever said why.
+
+A full sweep of every catalogued address (bytecode present, `symbol()` matches,
+`decimals()` matches) found this as the **only** bad entry out of 35 — every
+other address and decimals value is correct. `OP` is removed, and
+`npm run verify:catalogue` now performs that sweep on demand.
+
 ## Answers to the operator's questions
 
 | Question | Answer |

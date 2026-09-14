@@ -12,10 +12,13 @@
     <!-- Enforces the single-origin rule in the browser before any server header
          exists: connect-src 'self' means the wallet cannot call another origin,
          so "never talks to eva" is refused by the browser, not just by review.
-         The extension gets the equivalent policy in manifest.json. -->
+         The extension gets the equivalent policy in manifest.json.
+         frame-ancestors is deliberately NOT here: browsers ignore it when it is
+         delivered in a <meta> element (they log an error and drop it). It is a
+         header-only directive and the nginx template sends it for real. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; worker-src 'self'"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; worker-src 'self'"
     />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" />

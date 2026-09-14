@@ -1,5 +1,17 @@
 # tkrWallet systems map
 
+> **STALE — v1 era, kept for history only. Do not use to understand this tree.**
+> This map and `tkrwallet.mmd` describe the pre-rewrite wallet: GitHub Pages at
+> `coldcanuk.github.io/tkrWallet`, `app.js`, the tkrpik/tkrSwap funnel, an
+> injected EIP-1193 provider, and a direct public Solana RPC. None of that is in
+> this repository any more — the app is `index.html` + `ui.js` + `wallet.js`,
+> served from `https://tkrwallet.scratchpost.ai`, with every chain read going
+> through that one edge. This is finding **F14** in
+> `docs/reviews/technical-review.md`. For current truth read `README.md`,
+> `docs/architecture/client.md` and `docs/specs/edge-server.md`.
+
+Superseded text follows.
+
 Public GPLv3 client for the tkrpik / tkrSwap funnel. PWA and Chrome
 extension in this tree. GitHub Pages:
 `https://coldcanuk.github.io/tkrWallet`.

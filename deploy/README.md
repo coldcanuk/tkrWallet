@@ -11,7 +11,7 @@ from `docs/security/security-audit.md` (R-1…R-12).
 2. `{{CLOUDFLARE_RANGES}}` from <https://www.cloudflare.com/ips/>.
 3. An origin certificate for the host, and the Cloudflare origin-pull CA file.
 4. The wallet facade listening on `{{FACADE_UPSTREAM}}` (see
-   `docs/specs/icehut-edge.md` — auth, prices, rate limits).
+   `docs/specs/edge-server.md` — auth, prices, rate limits).
 5. The wallet static files at `{{WALLET_ROOT}}` (this repository's web root).
 
 ## Install

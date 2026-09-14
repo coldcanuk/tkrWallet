@@ -50,8 +50,19 @@ itself.
   yet, so `npm run dev` serves a working local edge (`tools/dev-edge.js`) —
   same origin, so the single-origin CSP still holds. There is no
   injected-provider (MetaMask/Brave/Uniswap) connect path.
-- **Token search**: a 38-token Mainnet + Base catalogue searchable offline by
-  symbol, name, or address.
+- **Honest reads, not comfortable ones**: the edge reports which chains it
+  actually read, and the client keeps three outcomes apart — *read*, *partly
+  read*, *could not read*. A failed read says **"Balances unavailable"** and
+  offers **Retry**; it is never rendered as "No balances yet". A partial read
+  keeps the rows it got and discloses the gap. This is the repo's `unknown ≠
+  zero` rule, enforced on the wire instead of promised in a comment.
+- **Token detail**: tapping a holding or a search result opens
+  `#/token/<chain>:<asset>` — symbol, name, chain, amount, fiat value, contract
+  address (copyable), and an explicit note when the balance is unknown.
+- **Token search and coverage**: a 37-token Mainnet + Base catalogue searchable
+  offline by symbol, name, or address. The holdings list states that scope and
+  offers **Add token by address**, which reads symbol/decimals from the contract
+  via the edge — so a holding outside the catalogue is no longer invisible.
 - Service worker: network-first shell, offline fallback, same-origin only,
   `/api/*` never cached.
 - Honest placeholders: Swap is under construction (no router exists in this
@@ -68,16 +79,29 @@ canonical BIP-39 test vector. See `docs/security/wallet-custody.md`.
 ## Development
 
 ```bash
-npm run setup      # installs the Tailwind build tooling (tools/node_modules)
-npm run dev        # local wallet + edge API on http://127.0.0.1:8899 (one origin)
-npm run check      # tests + committed-CSS freshness + class-resolution guard
-npm run build:css  # rebuild app.css from tools/src/app.css (committed output)
+npm run setup             # installs the Tailwind build tooling (tools/node_modules)
+npm run dev               # local wallet + edge API on http://127.0.0.1:8899 (one origin)
+npm run check             # tests + committed-CSS freshness + class-resolution guard
+npm run build:css         # rebuild app.css from tools/src/app.css (committed output)
+npm run verify:catalogue  # checks every catalogued token against real chain state
 ```
 
 `npm run dev` serves the app **and** `/api/wallet/balances` + `/api/wallet/prices`
 from one origin, so balances, prices and the CSP all behave like production.
 Balances are read server-side from public chain RPCs and prices from CoinGecko —
 dev-only stand-ins for the real edge.
+
+> **Use the same port every time.** The vault lives in IndexedDB, which the
+> browser scopes to an **origin**. `127.0.0.1:8899` and `127.0.0.1:9000` are
+> different origins with different databases, so running on another port makes
+> the wallet look forgotten and ask you to import again — nothing was lost, it is
+> a different store. `npm run dev` prints this reminder on start.
+
+`npm run verify:catalogue` needs network access and is deliberately **not** part
+of `npm run check`: it proves each catalogued address really has bytecode and
+matching `symbol()`/`decimals()` on the chain it is catalogued for. It exists
+because the catalogue is trusted blindly by balances, prices and search, and one
+entry (`OP`) was once listed on a chain it is not deployed on.
 
 There are **no runtime dependencies** and no JS build for the app itself: the
 shipped tree is the reviewed tree. `app.css` is committed because MV3 forbids

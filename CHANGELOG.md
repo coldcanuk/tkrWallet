@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.7.0 — truthful balances, token detail, catalogue coverage
+
+Closes **F1** (`docs/reviews/technical-review.md:125-155`, severity High):
+*"For a wallet, 'I could not check' must never be presented as 'you have
+nothing.'"* It had been open, and `docs/specs/edge-server.md` §3.3 had been
+written to forbid the fix, so the client could not implement it even in
+principle. Research and reproduction: `docs/research/balances-empty-state.md`.
+
+- **The edge now reports what it actually read.** `/api/wallet/balances`
+  gains a required `chains` array (`ok` / `partial` / `unknown`, with the real
+  error). An empty `balances` array now means "you hold none" *only* when every
+  chain was read; when nothing could be read the response is **502**, not a 200
+  with an empty list. The dev edge's silent per-asset `catch` — which turned
+  every RPC failure into a confident "no balances" — is gone, transient reads
+  are retried once, and a partial chain names the tokens that failed.
+- **The client keeps three states, not two.** `getBalances` returns
+  `ok` / `partial` / `unknown` with a reason. The UI says **"Balances
+  unavailable"** with a **Retry** button when nothing was readable, **"Balances
+  incomplete"** plus the offending chain when part of it was, and only claims
+  "No balances yet" after a fully successful read. A read report that is missing
+  altogether is treated as *partial*, never as empty.
+- **Token detail screen.** Tapping a coin did nothing but write a status string;
+  holdings and search rows now open `#/token/<chain>:<asset>` with symbol, name,
+  chain, amount, fiat value, a copyable contract address, and an explicit note
+  when the balance is unknown or the token is not held.
+- **Coverage is disclosed and closable.** The holdings list states that it
+  covers Mainnet + Base and a fixed catalogue, and offers **Add token by
+  address** — a new `GET /api/wallet/token?chain=&address=` reads
+  `symbol()`/`decimals()` from the contract, and only that public metadata is
+  stored locally. User-added tokens rank first in search.
+- **Catalogue bug found and fixed.** `OP` was catalogued on Ethereum mainnet at
+  `0x4200…0042`, which is the *GovernanceToken predeploy on OP Mainnet (chain
+  10)* and has no bytecode on Ethereum — so every mainnet read silently dropped
+  it. New `npm run verify:catalogue` checks bytecode + `symbol()` + `decimals()`
+  for every catalogued address against the chain (35 addresses, all passing);
+  `wallet.js` no longer ships the bogus row.
+- **Dev-edge spec conformance.** Errors now use the documented `{ok:false,
+  error, detail}` envelope; over-cap requests return `400` instead of being
+  silently truncated; prices are `Cache-Control: public, max-age=15`.
+- **Dev-origin trap documented.** The vault is per-origin, so a different
+  `PORT` looks like a lost wallet; `npm run dev` says so on start and the README
+  explains it.
+- **Repairs while in here:** the `frame-ancestors` directive is no longer
+  declared in a `<meta>` CSP (browsers ignore it there and log an error; the
+  nginx template still sends it as a real header), `package.json` matches the
+  CHANGELOG version, the duplicated `§3.5` heading is renumbered, the stale v1
+  `docs/systems/*` map (F14) is clearly marked, and two citations of the
+  non-existent `docs/specs/icehut-edge.md` point at the real spec.
+- 83 tests, 0 failures.
+
 ## 0.6.0 — auto-lock, working search, edge balances
 
 - **Auto-lock**: 5-minute default, configurable in Settings (1/5/15/30/60 min).
@@ -69,7 +119,7 @@ stack with icehut as its only counterparty.
 **Docs**
 
 - README rewritten (topology, invariants, dev workflow).
-- `docs/architecture/client.md`, `docs/specs/icehut-edge.md`,
+- `docs/architecture/client.md`, `docs/specs/edge-server.md`,
   `docs/research/RESEARCH.md`, `docs/plans/rdap-build-plan.md`,
   `docs/reviews/AUDIT-CROSSCHECK.md`, `docs/security/security-audit.md`,
   `docs/reviews/wallet-technical-review.md`.
