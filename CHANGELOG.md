@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.1 — live edge + viewing session
+
+The production origin was still serving a Sep 13 snapshot that treated a
+failed Base read as “you own nothing”, and a reload always re-opened the
+password gate. This release is what `tkrwallet.scratchpost.ai` is meant to
+be running.
+
+- **Viewing session survives reload.** After unlock, the public address and
+  activity timestamp live in `sessionStorage` for the auto-lock window
+  (default 5 minutes, never off, max 1 hour). Reload does not re-prompt.
+  Lock / expiry / closing the tab still require the password. The recovery
+  phrase is never written there.
+- **Service worker cache `tkrwallet-v4`** so a stale Sep 13 shell cannot
+  keep answering after this ships.
+
+The honesty contract (`chains[]`, 502 on total failure, `/api/wallet/token`)
+is already in 0.7.0; the production origin in `blockchain-infrastructure`
+is updated to match so live Base-down is disclosed instead of empty.
+
 ## 0.7.0 — truthful balances, token detail, catalogue coverage
 
 Closes **F1** (`docs/reviews/technical-review.md:125-155`, severity High):
