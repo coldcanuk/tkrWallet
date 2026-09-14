@@ -18,6 +18,7 @@
   var CURRENCIES = ["usd", "cad"];
   var STORAGE_KEY = "tkrwallet.currency";
   var AUTOLOCK_KEY = "tkrwallet.autolock";
+  var VIEW_SESSION_KEY = "tkrwallet.view-session";
   /* Auto-lock is a security floor, not a preference: it cannot be turned off
    * and the longest offered session is 1 hour. Default is 5 minutes. */
   var AUTOLOCK_OPTIONS = [1, 5, 15, 30, 60];
@@ -78,6 +79,43 @@
       }
     }
     return best;
+  }
+
+  /**
+   * Viewing session: public address + activity timestamp, never key material.
+   * Survives reload (sessionStorage) for the auto-lock window; rejected when
+   * stale, malformed, or missing. Pure — tests call this without a DOM.
+   */
+  function parseViewSession(raw, now) {
+    if (raw === null || raw === undefined || String(raw).trim() === "") {
+      return null;
+    }
+    var parsed;
+    try {
+      parsed = JSON.parse(String(raw));
+    } catch (e) {
+      return null;
+    }
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    var address = String(parsed.address || "").trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
+      return null;
+    }
+    var lastActivity = Number(parsed.lastActivity);
+    if (!isFinite(lastActivity) || lastActivity <= 0) {
+      return null;
+    }
+    var minutes = parseAutolockMinutes(parsed.autolockMinutes);
+    var at = now == null ? Date.now() : Number(now);
+    if (!isFinite(at)) {
+      at = Date.now();
+    }
+    if (at - lastActivity >= minutes * 60000) {
+      return null;
+    }
+    return { address: address, lastActivity: lastActivity, autolockMinutes: minutes };
   }
 
   /** "0x2222...2222" — short enough for a 360px header. */
@@ -517,8 +555,17 @@
     if (est.state === "ok") {
       var note = est.priced < est.total ? est.priced + " of " + est.total + " holdings priced" : "";
       setWalletValue(est.value, state.currency, note);
+    } else if (!holdings.length) {
+      var read = uiData.lastBalances;
+      if (read && read.state === "unknown") {
+        setWalletValue(null, state.currency, "Balances unavailable until the wallet edge responds.");
+      } else if (read && read.state === "partial") {
+        setWalletValue(null, state.currency, "Balances may be incomplete. " + chainProblems(read));
+      } else {
+        setWalletValue(null, state.currency, "");
+      }
     } else {
-      setWalletValue(null, state.currency, "Prices unavailable until the wallet edge ships.");
+      setWalletValue(null, state.currency, "Prices unavailable from the wallet edge.");
     }
   }
 
@@ -840,6 +887,53 @@
 
   var session = { vault: null, address: null, locked: false };
 
+  function saveViewSession() {
+    if (!session.address) {
+      return;
+    }
+    try {
+      if (!root.sessionStorage) {
+        return;
+      }
+      root.sessionStorage.setItem(
+        VIEW_SESSION_KEY,
+        JSON.stringify({
+          address: session.address,
+          lastActivity: state.lastActivity,
+          autolockMinutes: state.autolockMinutes,
+        })
+      );
+    } catch (e) {
+      /* private mode / quota: the in-memory session still works */
+    }
+  }
+
+  function clearViewSession() {
+    try {
+      if (root.sessionStorage) {
+        root.sessionStorage.removeItem(VIEW_SESSION_KEY);
+      }
+    } catch (e) {
+      /* non-fatal */
+    }
+  }
+
+  function restoreViewSession() {
+    try {
+      var raw = root.sessionStorage && root.sessionStorage.getItem(VIEW_SESSION_KEY);
+      var parsed = parseViewSession(raw, Date.now());
+      if (!parsed) {
+        if (raw) {
+          clearViewSession();
+        }
+        return null;
+      }
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function crypto() {
     return root.tkrCrypto || null;
   }
@@ -940,6 +1034,7 @@
     renderTokens(null);
     state.lastActivity = Date.now();
     scheduleLock();
+    saveViewSession();
     refreshBalances();
     return w;
   }
@@ -986,6 +1081,7 @@
   function resetActivity() {
     state.lastActivity = Date.now();
     scheduleLock();
+    saveViewSession();
   }
 
   /** Arm the inactivity timer. Activity resets it; expiry locks the wallet.
@@ -1024,6 +1120,7 @@
     session.address = null;
     session.vault = null;
     session.locked = session.locked || wasUnlocked;
+    clearViewSession();
     uiData.lastHoldings = null;
     uiData.lastPrices = null;
     uiData.lastBalances = null;
@@ -1314,12 +1411,27 @@
     showScreen(parseRoute(root.location && root.location.hash));
     maybePreview();
     if (!uiData.lastHoldings) {
+      var restored = restoreViewSession();
+      if (restored) {
+        session.address = restored.address;
+        session.locked = false;
+        state.lastActivity = restored.lastActivity;
+        state.autolockMinutes = restored.autolockMinutes;
+        renderAutolock();
+        setAccount(restored.address);
+        setWalletStatus("Wallet " + restored.address + " still unlocked. Reading balances\u2026");
+        setWalletValue(null, state.currency, "Reading balances from the wallet edge\u2026");
+        scheduleLock();
+        refreshBalances();
+      }
+    }
+    if (!uiData.lastHoldings) {
       renderTokens(null); // the one shared empty-state design
       searchResults("");
     }
-    // If a wallet is already on this device, prompt for the password on boot —
-    // but not in preview mode, which is for looking at the design.
-    if (!uiData.lastHoldings && store()) {
+    // If a wallet is already on this device and no viewing session restored,
+    // prompt for the password on boot — but not in preview mode.
+    if (!session.address && !uiData.lastHoldings && store()) {
       store()
         .loadVault()
         .then(function (vault) {
@@ -1380,6 +1492,7 @@
     parseTokenRoute: parseTokenRoute,
     parseCurrency: parseCurrency,
     parseAutolockMinutes: parseAutolockMinutes,
+    parseViewSession: parseViewSession,
     AUTOLOCK_OPTIONS: AUTOLOCK_OPTIONS,
     AUTOLOCK_DEFAULT: AUTOLOCK_DEFAULT,
     shortAddress: shortAddress,
