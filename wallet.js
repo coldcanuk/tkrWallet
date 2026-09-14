@@ -252,9 +252,12 @@
    * the same matching a server-side catalogue would do, applied to the list we
    * already hold. Pure and offline: no network call.
    *
-   * Chain-wide search (every Base/mainnet token, not just this curated set)
-   * needs the edge catalogue endpoint, because "which tokens exist" is an
-   * index question, not a chain-state question. See docs/specs/icehut-edge.md. */
+   * Scope is Mainnet + Base only, per product direction. Chain-wide search
+   * (every Mainnet/Base token, not just this curated set) needs the edge
+   * catalogue endpoint, because "which tokens exist" is an index question, not
+   * a chain-state question. See docs/specs/edge-server.md. */
+  var SEARCHABLE_CHAINS = { 1: true, 8453: true };
+
   function searchCatalog(query, limit) {
     var q = String(query || "").trim().toLowerCase();
     if (!q) {
@@ -264,6 +267,9 @@
     var out = [];
     Object.keys(TOKENS).forEach(function (chainKey) {
       var chainId = Number(chainKey);
+      if (!SEARCHABLE_CHAINS[chainId]) {
+        return; // Mainnet + Base only
+      }
       TOKENS[chainKey].forEach(function (tok) {
         var bySymbol = tok.symbol.toLowerCase().indexOf(q) !== -1;
         var byAddress = !!tok.address && tok.address.toLowerCase().indexOf(q) !== -1;

@@ -147,6 +147,14 @@
         tabs[j].removeAttribute("aria-current");
       }
     }
+    // Focus the search field once its screen is visible. The header button
+    // navigates first; focusing before the section is un-hidden fails silently.
+    if (next === "search") {
+      var input = el("search-input");
+      if (input && document.activeElement !== input) {
+        input.focus();
+      }
+    }
     return next;
   }
 
@@ -291,8 +299,8 @@
       var sub = document.createElement("p");
       sub.className = "mt-1 text-xs text-cream-500";
       sub.textContent = q
-        ? "Only the tokens this wallet ships with are searchable until the edge catalogue lands."
-        : "Ethereum, Base and Robinhood tokens this wallet knows about. Full chain-wide search needs the wallet edge.";
+        ? "Only Mainnet and Base tokens this wallet ships with are searchable until the edge catalogue lands."
+        : "Mainnet and Base tokens this wallet knows about. Full chain-wide search needs the wallet edge.";
       hint.appendChild(line);
       hint.appendChild(sub);
       box.appendChild(hint);

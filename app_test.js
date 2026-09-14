@@ -504,6 +504,18 @@ test("searchCatalog filters by symbol and address, offline", function () {
   assert.ok(wallet.searchCatalog("eth").length >= 1);
 });
 
+test("searchCatalog is Mainnet + Base only — never Robinhood or Solana", function () {
+  const wallet = require("./wallet.js");
+  ["eth", "usdc", "usdt", "weth"].forEach(function (q) {
+    wallet.searchCatalog(q).forEach(function (r) {
+      assert.ok(r.chain_id === 1 || r.chain_id === 8453, q + " must only return Mainnet/Base, got " + r.chain_id);
+    });
+  });
+  // Robinhood is in the holdings catalogue but must not be searchable.
+  assert.ok(wallet.TOKENS[4663], "Robinhood stays in the holdings catalogue");
+  assert.ok(!wallet.searchCatalog("eth").some((r) => r.chain_id === 4663), "Robinhood must not appear in search");
+});
+
 test("search is wired to the input and documented as catalogue-scoped", function () {
   const ui = readFile("ui.js");
   assert.ok(ui.indexOf("searchResults") !== -1, "ui.js must implement search");
