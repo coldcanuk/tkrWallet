@@ -34,11 +34,25 @@ EVM balances are read from the user's own injected provider (MetaMask, Brave,
 
 - Mobile-first shell: wallet value (USD/CAD), Send/Swap/Receive/Buy row, token
   list, four-tab navigation (Home/Swap/Activity/Search).
+- **Self-custody import / unlock**: import a 12/24-word BIP-39 recovery phrase
+  or unlock an existing local wallet with a password. The phrase is encrypted
+  (PBKDF2-SHA256 at 600k iterations → AES-GCM) and stored only on this device.
+  Derives the Ethereum (`m/44'/60'/0'/0/0`) and Solana (`m/44'/501'/0'/0'`)
+  addresses, and signs EIP-191 messages and legacy EIP-155 transactions locally
+  with audited `@noble`/`@scure` primitives — never a server.
 - Wallet connect via EIP-1193: native + ERC-20 balances for Ethereum, Base and
   Robinhood, with honest failure states — a failed RPC renders `—`, never `0`.
 - Service worker: network-first shell, offline fallback, same-origin only.
 - Honest placeholders: Swap is under construction (no router exists in this
   stack yet), Activity is device-local (the chain nodes are pruned).
+
+## Wallet custody model
+
+tkrWallet is **non-custodial**: the recovery phrase is never sent anywhere, only
+its ciphertext is persisted, and the private key exists in memory only while the
+wallet is unlocked. The crypto surface is a committed, reproducible bundle of
+audited libraries (`vendor/noble.js`), and the whole pipeline is locked by the
+canonical BIP-39 test vector. See `docs/security/wallet-custody.md`.
 
 ## Development
 
