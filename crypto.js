@@ -218,6 +218,217 @@
     });
   }
 
+  /* ---- RLP (Ethereum) + local signing ------------------------------------ */
+
+  function hexToBytes(h) {
+    var s = String(h || "").replace(/^0x/, "");
+    if (s.length % 2) {
+      s = "0" + s;
+    }
+    var out = new Uint8Array(s.length / 2);
+    for (var i = 0; i < out.length; i++) {
+      out[i] = parseInt(s.slice(i * 2, i * 2 + 2), 16);
+    }
+    return out;
+  }
+
+  function concatBytes() {
+    var len = 0;
+    for (var i = 0; i < arguments.length; i++) {
+      len += arguments[i].length;
+    }
+    var out = new Uint8Array(len);
+    var off = 0;
+    for (var j = 0; j < arguments.length; j++) {
+      out.set(arguments[j], off);
+      off += arguments[j].length;
+    }
+    return out;
+  }
+
+  /* Minimal big-endian integer, 0 -> empty string (RLP). */
+  function rlpInt(n) {
+    var v = BigInt(n);
+    if (v === 0n) {
+      return new Uint8Array(0);
+    }
+    var h = v.toString(16);
+    if (h.length % 2) {
+      h = "0" + h;
+    }
+    return hexToBytes(h);
+  }
+
+  /* An integer as a RLP list element: minimal bytes wrapped as a string. */
+  function rlpBigInt(n) {
+    return rlpBytes(rlpInt(n));
+  }
+
+  function rlpBytes(b) {
+    if (b.length === 1 && b[0] < 0x80) {
+      return b;
+    }
+    if (b.length <= 55) {
+      var o = new Uint8Array(b.length + 1);
+      o[0] = 0x80 + b.length;
+      o.set(b, 1);
+      return o;
+    }
+    var lb = rlpInt(b.length);
+    var o2 = new Uint8Array(1 + lb.length + b.length);
+    o2[0] = 0xb7 + lb.length;
+    o2.set(lb, 1);
+    o2.set(b, 1 + lb.length);
+    return o2;
+  }
+
+  function rlpList(items) {
+    var payload = new Uint8Array(0);
+    for (var i = 0; i < items.length; i++) {
+      payload = concatBytes(payload, items[i]);
+    }
+    if (payload.length <= 55) {
+      var o = new Uint8Array(payload.length + 1);
+      o[0] = 0xc0 + payload.length;
+      o.set(payload, 1);
+      return o;
+    }
+    var lb = rlpInt(payload.length);
+    var o2 = new Uint8Array(1 + lb.length + payload.length);
+    o2[0] = 0xf7 + lb.length;
+    o2.set(lb, 1);
+    o2.set(payload, 1 + lb.length);
+    return o2;
+  }
+
+  function eip191Prefix(message) {
+    var m = String(message);
+    return "\u0019Ethereum Signed Message:\n" + m.length + m;
+  }
+
+  /* EIP-191 personal_sign. Returns 65-byte r||s||v (v = 27 + parity) as hex. */
+  function signMessage(privateKey, message) {
+    var hash = noble.keccak_256(utf8(eip191Prefix(message)));
+    var rec = noble.secp256k1.sign(hash, privateKey, { prehash: false, format: "recovered", lowS: true });
+    var out = new Uint8Array(65);
+    out.set(rec.subarray(1, 33), 0); // r
+    out.set(rec.subarray(33, 65), 32); // s
+    out[64] = 27 + (rec[0] & 1); // v
+    return hex(out);
+  }
+
+  /* Legacy EIP-155 transaction signing. tx: { nonce, gasPrice, gasLimit, to,
+   * value, data, chainId } (numbers/bigint as strings, to/data as 0x-hex).
+   * Returns the raw signed transaction as 0x-hex. */
+  function signTransaction(privateKey, tx) {
+    var chainId = BigInt(tx.chainId);
+    var fields = [
+      rlpBigInt(tx.nonce),
+      rlpBigInt(tx.gasPrice),
+      rlpBigInt(tx.gasLimit),
+      rlpBytes(hexToBytes(tx.to || "")), // 20-byte address (or empty for create)
+      rlpBigInt(tx.value || 0),
+      rlpBytes(hexToBytes(tx.data || "")),
+    ];
+    var unsigned = rlpList(fields.concat([rlpBigInt(chainId), rlpBigInt(0), rlpBigInt(0)]));
+    var hash = noble.keccak_256(unsigned);
+    var rec = noble.secp256k1.sign(hash, privateKey, { prehash: false, format: "recovered", lowS: true });
+    var v = chainId * 2n + 35n + BigInt(rec[0] & 1);
+    var raw = rlpList(fields.concat([rlpBigInt(v), rlpBytes(rec.subarray(1, 33)), rlpBytes(rec.subarray(33, 65))]));
+    return hex(raw);
+  }
+
+  /* Recover the signer's EIP-55 address from a 65-byte personal_sign hex. */
+  function recoverSigner(sigHex, message) {
+    var sig = hexToBytes(sigHex);
+    if (sig.length !== 65) {
+      throw new Error("bad-signature");
+    }
+    var parity = sig[64] - 27;
+    var hash = noble.keccak_256(utf8(eip191Prefix(message)));
+    var want = null;
+    for (var rec = parity; rec <= parity + 2; rec += 2) {
+      try {
+        var sr = new Uint8Array(65);
+        sr[0] = rec;
+        sr.set(sig.subarray(0, 32), 1);
+        sr.set(sig.subarray(32, 64), 33);
+        var pub = noble.secp256k1.recoverPublicKey(sr, hash, { prehash: false });
+        var uncompressed = noble.secp256k1.Point.fromHex(hex(pub)).toBytes(false);
+        var addr = toEip55(noble.keccak_256(uncompressed.slice(1)).slice(-20));
+        want = addr;
+        break;
+      } catch (e) {
+        /* try the other recovery candidate */
+      }
+    }
+    return want;
+  }
+
+  /* Minimal recursive RLP decoder (verification only). Each item returns
+   * { item, consumed } so nesting is unambiguous. */
+  function rlpDecodeItem(bytes) {
+    var b0 = bytes[0];
+    if (b0 < 0x80) {
+      return { item: bytes.subarray(0, 1), consumed: 1 };
+    }
+    if (b0 <= 0xb7) {
+      var l = b0 - 0x80;
+      return { item: bytes.subarray(1, 1 + l), consumed: 1 + l };
+    }
+    if (b0 <= 0xbf) {
+      var ll = b0 - 0xb7;
+      var l2 = Number("0x" + hex(bytes.subarray(1, 1 + ll)));
+      return { item: bytes.subarray(1 + ll, 1 + ll + l2), consumed: 1 + ll + l2 };
+    }
+    if (b0 <= 0xf7) {
+      var l3 = b0 - 0xc0;
+      return { item: decodeList(bytes.subarray(1, 1 + l3)), consumed: 1 + l3 };
+    }
+    var ll4 = b0 - 0xf7;
+    var l4 = Number("0x" + hex(bytes.subarray(1, 1 + ll4)));
+    return { item: decodeList(bytes.subarray(1 + ll4, 1 + ll4 + l4)), consumed: 1 + ll4 + l4 };
+  }
+
+  function decodeList(payload) {
+    var items = [];
+    var off = 0;
+    while (off < payload.length) {
+      var r = rlpDecodeItem(payload.subarray(off));
+      items.push(r.item);
+      off += r.consumed;
+    }
+    return items;
+  }
+
+  function rlpDecode(bytes) {
+    var r = rlpDecodeItem(bytes);
+    return r.item;
+  }
+
+  /* Recover the signer of a legacy EIP-155 raw transaction (verification). */
+  function recoverTxSigner(rawHex, chainId) {
+    var bytes = hexToBytes(rawHex);
+    var list = rlpDecode(bytes);
+    if (list.length !== 9) {
+      throw new Error("unexpected tx field count");
+    }
+    var v = BigInt("0x" + hex(list[6]) || "0");
+    var parity = Number(v - 35n - BigInt(chainId) * 2n);
+    var fields = list.slice(0, 6).map(function (b) {
+      return rlpBytes(b); // decoded raw values re-encoded as RLP strings
+    });
+    var unsigned = rlpList(fields.concat([rlpBigInt(chainId), rlpBigInt(0), rlpBigInt(0)]));
+    var hash = noble.keccak_256(unsigned);
+    var sr = new Uint8Array(65);
+    sr[0] = parity & 3;
+    sr.set(list[7], 1);
+    sr.set(list[8], 33);
+    var pub = noble.secp256k1.recoverPublicKey(sr, hash, { prehash: false });
+    var uncompressed = noble.secp256k1.Point.fromHex(hex(pub)).toBytes(false);
+    return toEip55(noble.keccak_256(uncompressed.slice(1)).slice(-20));
+  }
+
   var api = {
     KDF_ITERATIONS: KDF_ITERATIONS,
     importMnemonic: importMnemonic,
@@ -226,6 +437,13 @@
     decryptVault: decryptVault,
     toEip55: toEip55,
     base58Encode: base58Encode,
+    signMessage: signMessage,
+    signTransaction: signTransaction,
+    recoverSigner: recoverSigner,
+    recoverTxSigner: recoverTxSigner,
+    rlpInt: rlpInt,
+    rlpList: rlpList,
+    rlpBytes: rlpBytes,
   };
 
   if (typeof module === "object" && module.exports) {

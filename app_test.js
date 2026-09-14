@@ -572,4 +572,28 @@ test("shipped files still reference only the wallet origin", function () {
   assert.ok(SHIPPED.indexOf("crypto.js") !== -1 && SHIPPED.indexOf("store.js") !== -1);
 });
 
+test("crypto: personal_sign round-trips to the derived address", function () {
+  const c = require("./crypto.js");
+  const noble = require("./vendor/noble.js");
+  const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  const w = c.importMnemonic(phrase);
+  const priv = noble.HDKey.fromMasterSeed(noble.mnemonicToSeedSync(phrase)).derive("m/44'/60'/0'/0/0").privateKey;
+  const sig = c.signMessage(priv, "hello tkr");
+  assert.ok(/^[0-9a-f]{130}$/.test(sig), "65-byte r||s||v hex");
+  assert.strictEqual(c.recoverSigner(sig, "hello tkr"), w.evmAddress);
+  assert.strictEqual(c.signMessage(priv, "hello tkr"), sig, "RFC6979 deterministic");
+});
+
+test("crypto: signTransaction recovers the signer on Ethereum and Base", function () {
+  const c = require("./crypto.js");
+  const noble = require("./vendor/noble.js");
+  const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  const w = c.importMnemonic(phrase);
+  const priv = noble.HDKey.fromMasterSeed(noble.mnemonicToSeedSync(phrase)).derive("m/44'/60'/0'/0/0").privateKey;
+  const tx = { nonce: 0, gasPrice: 20000000000n, gasLimit: 21000n, to: "0x" + "0".repeat(40), value: 0, data: "", chainId: 1 };
+  assert.strictEqual(c.recoverTxSigner(c.signTransaction(priv, tx), 1), w.evmAddress);
+  const base = Object.assign({}, tx, { nonce: 5, gasPrice: 1000000000n, gasLimit: 30000n, to: "0x" + "1".repeat(40), value: "1000000000000000000", chainId: 8453 });
+  assert.strictEqual(c.recoverTxSigner(c.signTransaction(priv, base), 8453), w.evmAddress);
+});
+
 run();
