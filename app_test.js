@@ -924,6 +924,14 @@ test("holdings coverage is disclosed and a token can be added by address", funct
   assert.ok(store && store[0].indexOf("JSON.stringify(list)") !== -1, "stored tokens are the metadata list");
 });
 
+test("the value note never claims the wallet edge has not shipped", function () {
+  const ui = readFile("ui.js");
+  assert.ok(
+    ui.indexOf("until the wallet edge ships") === -1,
+    "live origin is the edge; a missing price or a partial read must not say it is unshipped"
+  );
+});
+
 test("unlock fetches real balances from the edge and locks on expiry", function () {
   const ui = readFile("ui.js");
   // Unlock -> getBalances -> render -> prices: the actual data path.

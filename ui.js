@@ -555,8 +555,17 @@
     if (est.state === "ok") {
       var note = est.priced < est.total ? est.priced + " of " + est.total + " holdings priced" : "";
       setWalletValue(est.value, state.currency, note);
+    } else if (!holdings.length) {
+      var read = uiData.lastBalances;
+      if (read && read.state === "unknown") {
+        setWalletValue(null, state.currency, "Balances unavailable until the wallet edge responds.");
+      } else if (read && read.state === "partial") {
+        setWalletValue(null, state.currency, "Balances may be incomplete. " + chainProblems(read));
+      } else {
+        setWalletValue(null, state.currency, "");
+      }
     } else {
-      setWalletValue(null, state.currency, "Prices unavailable until the wallet edge ships.");
+      setWalletValue(null, state.currency, "Prices unavailable from the wallet edge.");
     }
   }
 
