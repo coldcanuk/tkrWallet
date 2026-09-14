@@ -513,6 +513,22 @@ test("unlocking with no vault on device explains itself, never bounces silently"
   );
 });
 
+test("gate errors hide via the hidden attribute, never the hidden class", function () {
+  // showGateError() reveals a message with removeAttribute("hidden"). If the
+  // node were hidden by the Tailwind `hidden` CLASS instead, the attribute
+  // toggle would do nothing and every unlock/import error would stay invisible
+  // (the root cause of the silent unlock bounce).
+  const html = readFile("index.html");
+  ["gate-error", "gate-import-error"].forEach(function (id) {
+    const m = html.match(new RegExp('<p id="' + id + '"[^>]*>'));
+    assert.ok(m, "missing " + id);
+    const tag = m[0];
+    const cls = (tag.match(/class="([^"]*)"/) || [])[1] || "";
+    assert.ok(!/\bhidden\b/.test(cls), id + " must not hide via the hidden class");
+    assert.ok(/\shidden(\s|>)/.test(tag), id + " must carry the hidden attribute");
+  });
+});
+
 test("shipped files still reference only the wallet origin", function () {
   // crypto.js + store.js are now in SHIPPED; confirm the scan covers them.
   assert.ok(SHIPPED.indexOf("crypto.js") !== -1 && SHIPPED.indexOf("store.js") !== -1);
