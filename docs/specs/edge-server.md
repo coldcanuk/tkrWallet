@@ -174,12 +174,14 @@ Hard requirements:
 - Case-insensitive addresses in the response keys, or state the normalisation
   you use — the client must be able to match them back.
 
-### 3.3 Solana token reads — the one chain read the wallet cannot avoid
+### 3.3 Chain token reads — the wallet no longer uses an injected provider
 
-EVM balances come from the user's own injected provider (MetaMask and friends
-expose `eth_getBalance` / `eth_call` / `eth_chainId`). **Phantom exposes no
-balance RPC**, so the v1 wallet called `https://api.mainnet-beta.solana.com`
-directly — a third-party RPC. Under the §0 rule that is not acceptable.
+The client is pure self-custody: it has no `window.ethereum` and no EIP-1193
+connect path, so **EVM balances must also come from the edge** (an EVM balance
+read endpoint is not specified here yet — it lands with the edge). **Phantom
+exposes no balance RPC either**, so the v1 wallet called
+`https://api.mainnet-beta.solana.com` directly — a third-party RPC. Under the
+§0 rule that is not acceptable.
 
 Either:
 - **`GET /api/wallet/solana/tokens?address=<pubkey>`** →
@@ -201,7 +203,7 @@ The wallet's Swap tab ships disabled. This is the contract it will need, written
 down now so the edge is not built into a corner.
 
 The shape follows the v1 desk, which got the custody model right: **the server
-returns unsigned calldata; the client signs with its own provider and
+returns unsigned calldata; the client signs with its own locally-derived key and
 broadcasts.** The edge must never return a signed transaction and must never
 hold a key.
 

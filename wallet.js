@@ -1,9 +1,8 @@
 /* tkrWallet — data layer.
  *
- * This is the ONLY file that makes network calls: injected-provider reads
- * (EIP-1193) for balances, and fetch to the wallet edge for prices. The single
- * origin is BASE_URL; the test suite greps every shipped file and fails on any
- * other origin.
+ * This is the ONLY file that makes network calls: fetch to the wallet edge for
+ * prices. The single origin is BASE_URL; the test suite greps every shipped
+ * file and fails on any other origin.
  *
  * Hard rules carried from the audits:
  *   - unknown != zero. Every read failure yields { state: "unknown" }, and no
@@ -51,8 +50,6 @@
     SOL: "#e8a33d",
   };
 
-  var BALANCE_SELECTOR = "0x70a08231";
-
   /* Preview mode (?preview=1): the operator's mockup numbers, clearly labelled
    * in the UI. Never used unless the query flag is present; production paths
    * never read these. */
@@ -71,27 +68,6 @@
       "4663:native": { usd: 0.42, cad: 0.58 },
     },
   };
-
-  function padAddress(addr) {
-    var hex = String(addr || "").toLowerCase().replace(/^0x/, "");
-    while (hex.length < 64) {
-      hex = "0" + hex;
-    }
-    return hex;
-  }
-
-  /* Returns null on any malformed input — callers must treat null as unknown,
-   * never as zero. */
-  function hexToAmount(hex, decimals) {
-    try {
-      var n = BigInt(hex || "0x0");
-      var d = BigInt(10) ** BigInt(decimals || 18);
-      var out = Number(n) / Number(d);
-      return Number.isFinite(out) ? out : null;
-    } catch (e) {
-      return null;
-    }
-  }
 
   function chainName(chainId) {
     var c = CHAINS[chainId];
@@ -113,80 +89,6 @@
       color: colorFor(symbol),
       state: amount === null ? "unknown" : "ok",
     };
-  }
-
-  function unknownRow(symbol, chainId, address, decimals) {
-    return row(symbol, chainId, null, address, decimals);
-  }
-
-  function findProvider() {
-    return typeof window === "undefined" ? null : window.ethereum || null;
-  }
-
-  /* EIP-1193 connect. Resolves { address, chain_id }. Never sends a tx. */
-  function connect(provider) {
-    provider = provider || findProvider();
-    if (!provider || typeof provider.request !== "function") {
-      return Promise.reject(new Error("no injected provider"));
-    }
-    return provider
-      .request({ method: "eth_requestAccounts" })
-      .then(function (accounts) {
-        var address = accounts && accounts[0];
-        if (!address) {
-          throw new Error("no account");
-        }
-        return provider
-          .request({ method: "eth_chainId" })
-          .catch(function () {
-            return "0x1";
-          })
-          .then(function (chainHex) {
-            return { address: address, chain_id: parseInt(chainHex, 16) || 1 };
-          });
-      });
-  }
-
-  /* Balances for one address on one chain, via the injected provider.
-   *
-   * Unsupported chains degrade to native-only (audit F2): the mainnet ERC-20
-   * addresses are never borrowed across chains. Every failure is an explicit
-   * unknown row — the user must be able to tell "I could not check" from
-   * "you have nothing". */
-  function listHoldings(provider, address, chainId) {
-    var known = CHAINS[chainId];
-    var native = known ? known.native : "ETH";
-    var catalog = TOKENS[chainId] || [{ symbol: native }];
-
-    return Promise.all(
-      catalog.map(function (tok) {
-        if (!tok.address) {
-          return provider
-            .request({ method: "eth_getBalance", params: [address, "latest"] })
-            .then(function (wei) {
-              return row(tok.symbol, chainId, hexToAmount(wei, 18), null, 18);
-            })
-            .catch(function () {
-              return unknownRow(tok.symbol, chainId, null, 18);
-            });
-        }
-        return provider
-          .request({
-            method: "eth_call",
-            params: [{ to: tok.address, data: BALANCE_SELECTOR + padAddress(address) }, "latest"],
-          })
-          .then(function (raw) {
-            return row(tok.symbol, chainId, hexToAmount(raw, tok.decimals), tok.address, tok.decimals);
-          })
-          .catch(function () {
-            return unknownRow(tok.symbol, chainId, tok.address, tok.decimals);
-          });
-      })
-    ).then(function (rows) {
-      return rows.filter(function (r) {
-        return r.state === "unknown" || (r.amount !== null && r.amount > 0);
-      });
-    });
   }
 
   function assetKey(holding) {
@@ -296,9 +198,6 @@
     chainName: chainName,
     colorFor: colorFor,
     assetKey: assetKey,
-    hexToAmount: hexToAmount,
-    connect: connect,
-    listHoldings: listHoldings,
     getPrices: getPrices,
     estimateValue: estimateValue,
     searchCatalog: searchCatalog,

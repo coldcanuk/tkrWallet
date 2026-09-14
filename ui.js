@@ -2,7 +2,7 @@
  *
  * Scope of this file: navigation, currency toggle, and rendering primitives.
  * It holds NO wallet data logic and makes NO network calls; the data layer
- * (balances, prices, RPC) arrives in M3. Keeping the split means the shell can
+ * (balances, prices) arrives in M3. Keeping the split means the shell can
  * be reviewed and tested without a chain.
  *
  * Two hard rules inherited from v1 and kept deliberately:
@@ -169,12 +169,12 @@
     return showScreen(next);
   }
 
-  /** Reflect connection state in the header. `unknown` never renders as zero. */
+  /** Reflect wallet state in the header. `unknown` never renders as zero. */
   function setAccount(address, label) {
     var dot = el("account-dot");
     var connected = Boolean(address);
-    setText(el("account-label"), connected ? shortAddress(address) : label || "Not connected");
-    setText(el("account-status"), connected ? "Connected " + String(address) : "Not connected");
+    setText(el("account-label"), connected ? shortAddress(address) : label || "No wallet");
+    setText(el("account-status"), connected ? "Wallet " + String(address) : "No wallet");
     if (dot) {
       dot.classList.remove("bg-up-400", "bg-cream-500", "bg-ember-400");
       dot.classList.add(connected ? "bg-up-400" : "bg-cream-500");
@@ -235,19 +235,11 @@
       var tplEmpty = el("tpl-token-empty");
       if (tplEmpty) {
         var node = tplEmpty.content.firstElementChild.cloneNode(true);
-        var cta = node.querySelector("[data-connect]");
+        var cta = node.querySelector("[data-import]");
         if (cta) {
           cta.addEventListener("click", function () {
             openGate();
           });
-        }
-        // The extension popup is its own security context: no other wallet can
-        // inject a provider into it, so import/unlock is the honest path there.
-        if (isExtension()) {
-          setText(
-            node.querySelector("[data-empty-body]"),
-            "Import a wallet with a recovery phrase, or unlock the one already on this device."
-          );
         }
         box.appendChild(node);
       }
@@ -372,57 +364,6 @@
       renderAll();
       return prices;
     });
-  }
-
-  /** Connect button: provider connect -> holdings -> prices. Read-only; the
-   * data layer never sends a transaction. */
-  function connectWallet() {
-    var wallet = root.tkrWalletData;
-    if (!wallet) {
-      setStatus("Wallet data layer failed to load.");
-      return Promise.resolve(null);
-    }
-    setStatus("Requesting wallet connection\u2026");
-    var dot = el("account-dot");
-    if (dot) {
-      dot.classList.remove("bg-cream-500", "bg-up-400");
-      dot.classList.add("bg-ember-400");
-    }
-    return wallet
-      .connect()
-      .then(function (account) {
-        uiData.account = account;
-        setAccount(account.address);
-        setWalletStatus("Connected. Reading balances\u2026");
-        return wallet.listHoldings(null, account.address, account.chain_id);
-      })
-      .then(function (holdings) {
-        uiData.lastHoldings = holdings;
-        renderTokens(holdings, null);
-        setWalletStatus(holdings.length + " holding" + (holdings.length === 1 ? "" : "s") + " listed.");
-        return refreshPrices();
-      })
-      .catch(function (err) {
-        uiData.account = null;
-        uiData.lastHoldings = null;
-        uiData.lastPrices = null;
-        var raw = (err && err.message) || "";
-        var msg = /provider/i.test(raw)
-          ? "No wallet detected here. Install MetaMask or Brave, then reload \u2014 or open tkrWallet in a browser tab."
-          : raw || "Wallet connect failed.";
-        setAccount(null, isExtension() ? "Open in a browser tab" : "Not connected");
-        setStatus(msg);
-        setWalletValue(null, state.currency, "Connect a wallet to see your balance.");
-        renderTokens(null);
-        return null;
-      });
-  }
-
-  /* Extension popups are their own security context: other wallets cannot
-   * inject a provider into them, so EIP-1193 connect is impossible there. The
-   * extension points at the hosted wallet instead of pretending. */
-  function isExtension() {
-    return String((root.location && root.location.protocol) || "").indexOf("chrome-extension") === 0;
   }
 
   /* ---- wallet gate: unlock with password, or import a recovery phrase ----- */
@@ -765,7 +706,6 @@
     setWalletValue: setWalletValue,
     setCurrency: setCurrency,
     renderTokens: renderTokens,
-    connectWallet: connectWallet,
     searchResults: searchResults,
     maybePreview: maybePreview,
     renderAll: renderAll,

@@ -309,43 +309,25 @@ test("service worker precaches the data layer", function () {
 test("shell controller talks to the data layer, and still never fetches", function () {
   const src = readFile("ui.js");
   assert.ok(src.indexOf("tkrWalletData") !== -1, "ui.js must route through the data layer");
-  assert.ok(src.indexOf("connectWallet") !== -1, "missing connectWallet entry point");
+});
+
+test("the injected-provider connect path is gone — self-custody only", function () {
+  // Import (recovery phrase) + unlock (password) are the only entry points.
+  // No MetaMask/Uniswap/Brave connect, no window.ethereum, no EIP-1193.
+  const ui = readFile("ui.js");
+  const wallet = readFile("wallet.js");
+  ["connectWallet", "isExtension", "window.ethereum", "provider"].forEach(function (s) {
+    assert.ok(ui.indexOf(s) === -1, "ui.js must not reference " + s);
+  });
+  ["connect", "listHoldings", "findProvider", "hexToAmount", "padAddress", "BALANCE_SELECTOR", "eth_requestAccounts", "eth_getBalance"].forEach(function (s) {
+    assert.ok(wallet.indexOf(s) === -1, "wallet.js must not reference " + s);
+  });
+  const html = readFile("index.html");
+  assert.ok(html.indexOf("Connect a wallet") === -1, "index.html must not ask to connect a wallet");
+  assert.ok(html.indexOf("Not connected") === -1, "index.html must not show 'Not connected'");
 });
 
 /* ── wallet.js: the data layer ──────────────────────────────────────────── */
-
-function fakeProvider(opts) {
-  opts = opts || {};
-  return {
-    request: function (args) {
-      if (args.method === "eth_requestAccounts") {
-        return Promise.resolve(["0x2222222222222222222222222222222222222222"]);
-      }
-      if (args.method === "eth_chainId") {
-        return Promise.resolve("0x1");
-      }
-      if (args.method === "eth_getBalance") {
-        if (opts.failBalance) {
-          return Promise.reject(new Error("rpc down"));
-        }
-        return Promise.resolve("0xde0b6b3a7640000"); // 1 ETH
-      }
-      if (args.method === "eth_call") {
-        if (opts.failCall) {
-          return Promise.reject(new Error("rpc down"));
-        }
-        const target = String(((args.params || [])[0] || {}).to || "").toLowerCase();
-        const data = ((args.params || [])[0] || {}).data || "";
-        // Only the USDC contract holds a balance in the fixture; the rest are 0.
-        if (data.indexOf("0x70a08231") === 0 && target === "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48") {
-          return Promise.resolve("0xf4240"); // 1 USDC
-        }
-        return Promise.resolve("0x0");
-      }
-      return Promise.reject(new Error("unexpected " + args.method));
-    },
-  };
-}
 
 test("wallet.js declares the single origin and a chain catalogue", function () {
   const wallet = require("./wallet.js");
@@ -355,70 +337,6 @@ test("wallet.js declares the single origin and a chain catalogue", function () {
     Object.keys(wallet.CHAINS).sort((a, b) => a - b),
     ["1", "4663", "8453", "900001"]
   );
-});
-
-test("connect() returns the account and parsed chain id", function () {
-  const wallet = require("./wallet.js");
-  return wallet.connect(fakeProvider()).then(function (account) {
-    assert.strictEqual(account.address, "0x2222222222222222222222222222222222222222");
-    assert.strictEqual(account.chain_id, 1);
-  });
-});
-
-test("connect() rejects without a provider", function () {
-  const wallet = require("./wallet.js");
-  return wallet.connect(null).then(
-    function () {
-      throw new Error("should have rejected");
-    },
-    function (e) {
-      assert.ok(/provider/.test(e.message), e.message);
-    }
-  );
-});
-
-test("listHoldings() reads native and ERC-20 balances", function () {
-  const wallet = require("./wallet.js");
-  return wallet.listHoldings(fakeProvider(), "0x2222222222222222222222222222222222222222", 1).then(function (rows) {
-    const eth = rows.filter((r) => r.symbol === "ETH")[0];
-    const usdc = rows.filter((r) => r.symbol === "USDC")[0];
-    assert.strictEqual(eth.state, "ok");
-    assert.ok(Math.abs(eth.amount - 1) < 1e-9, "1 ETH");
-    assert.strictEqual(eth.chain_name, "Ethereum");
-    assert.strictEqual(usdc.state, "ok");
-    assert.ok(Math.abs(usdc.amount - 1) < 1e-9, "1 USDC");
-    assert.ok(!rows.some((r) => r.symbol === "WETH" || r.symbol === "USDT"), "zero balances are filtered");
-  });
-});
-
-test("listHoldings() failures are unknown, never zero", function () {
-  const wallet = require("./wallet.js");
-  return wallet
-    .listHoldings(fakeProvider({ failBalance: true, failCall: true }), "0x2222222222222222222222222222222222222222", 1)
-    .then(function (rows) {
-      assert.ok(rows.length >= 2, "unknown rows must still be listed");
-      rows.forEach(function (r) {
-        assert.strictEqual(r.state, "unknown", r.symbol + " must be unknown");
-        assert.strictEqual(r.amount, null, r.symbol + " amount must be null, not 0");
-      });
-    });
-});
-
-test("listHoldings() degrades unsupported chains to native-only", function () {
-  const wallet = require("./wallet.js");
-  return wallet.listHoldings(fakeProvider(), "0x2222222222222222222222222222222222222222", 137).then(function (rows) {
-    assert.strictEqual(rows.length, 1, "native-only on an uncatalogued chain");
-    assert.strictEqual(rows[0].symbol, "ETH");
-    assert.strictEqual(rows[0].chain_id, 137);
-    assert.ok(rows[0].address === null, "native has no contract address");
-  });
-});
-
-test("hexToAmount() returns null on malformed input, never 0", function () {
-  const wallet = require("./wallet.js");
-  assert.strictEqual(wallet.hexToAmount("0x", 6), null);
-  assert.strictEqual(wallet.hexToAmount("garbage", 18), null);
-  assert.ok(Math.abs(wallet.hexToAmount("0xf4240", 6) - 1) < 1e-9);
 });
 
 test("getPrices() surfaces the edge contract and never invents a price", function () {
