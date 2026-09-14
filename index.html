@@ -12,10 +12,13 @@
     <!-- Enforces the single-origin rule in the browser before any server header
          exists: connect-src 'self' means the wallet cannot call another origin,
          so "never talks to eva" is refused by the browser, not just by review.
-         The extension gets the equivalent policy in manifest.json. -->
+         The extension gets the equivalent policy in manifest.json.
+         frame-ancestors is deliberately NOT here: browsers ignore it when it is
+         delivered in a <meta> element (they log an error and drop it). It is a
+         header-only directive and the nginx template sends it for real. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; worker-src 'self'"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; worker-src 'self'"
     />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" />
@@ -135,6 +138,77 @@
           </div>
 
           <h2 class="mb-2 mt-6 text-sm font-medium text-cream-500">Tokens</h2>
+          <p id="holdings-scope" class="mb-2 text-xs leading-relaxed text-cream-500"></p>
+
+          <!-- Shown when the balance read was incomplete or failed. "We could
+               not check" must never look like "you own nothing". -->
+          <div
+            id="balances-notice"
+            hidden
+            role="status"
+            class="mb-3 rounded-card border border-warn-400/40 bg-warn-400/10 p-3"
+          >
+            <p id="balances-notice-text" class="text-xs leading-relaxed text-warn-400"></p>
+            <p id="balances-checked" class="mt-1 text-[11px] text-cream-500"></p>
+            <button
+              type="button"
+              id="balances-retry"
+              class="mt-2 min-h-9 rounded-full border border-warn-400/50 px-4 text-xs font-medium text-warn-400 hover:bg-warn-400/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-warn-400"
+            >
+              Retry
+            </button>
+          </div>
+
+          <div class="mb-3 flex items-center justify-between">
+            <button
+              type="button"
+              id="add-token-btn"
+              class="min-h-9 rounded-full px-3 text-xs font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+            >
+              Add token by address
+            </button>
+          </div>
+
+          <!-- Add token: the built-in catalogue is a fixed list, so this is how
+               a holding outside it becomes visible. Public metadata only. -->
+          <form
+            id="add-token-form"
+            hidden
+            class="mb-3 rounded-card bg-ink-900 p-4 shadow-card ring-1 ring-inset ring-white/10"
+          >
+            <label for="add-token-chain" class="block text-xs font-medium text-cream-500">Chain</label>
+            <select
+              id="add-token-chain"
+              class="mt-1 min-h-11 w-full rounded-lg bg-ink-950 px-3 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none"
+            >
+              <option value="1">Ethereum</option>
+              <option value="8453">Base</option>
+            </select>
+            <label for="add-token-address" class="mt-3 block text-xs font-medium text-cream-500">Token contract address</label>
+            <input
+              id="add-token-address"
+              type="text"
+              inputmode="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="0x…"
+              class="mt-1 min-h-11 w-full rounded-lg bg-ink-950 px-3 font-mono text-xs text-cream-100 placeholder:text-cream-500 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none"
+            />
+            <p id="add-token-error" hidden class="mt-2 text-xs text-warn-400"></p>
+            <div class="mt-3 flex gap-2">
+              <button
+                type="submit"
+                class="min-h-11 flex-1 rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50"
+              >
+                Add token
+              </button>
+            </div>
+            <p class="mt-2 text-[11px] leading-relaxed text-cream-500">
+              The wallet reads the symbol and decimals from the contract. Only public
+              token metadata is stored on this device &mdash; never a key.
+            </p>
+          </form>
+
           <div id="token-list" class="overflow-hidden rounded-card bg-ink-900 ring-1 ring-inset ring-white/10">
           </div>
         </section>
@@ -204,6 +278,60 @@
             <button type="button" data-action="lock" class="mt-4 min-h-11 w-full rounded-full bg-ink-950 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
               Lock now
             </button>
+          </div>
+        </section>
+
+        <!-- Token detail. Tapping a coin used to set a status string and do
+             nothing else; this is the screen it opens now. -->
+        <section data-screen="detail" hidden aria-labelledby="detail-heading">
+          <button
+            type="button"
+            id="detail-back"
+            class="mb-3 inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-xs font-medium text-cream-300 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+          >
+            <svg viewBox="0 0 24 24" fill="none" class="size-4" aria-hidden="true"><path d="m15 6-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Back
+          </button>
+
+          <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
+            <div class="flex items-center gap-3">
+              <span
+                id="detail-badge"
+                class="flex size-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-ink-950"
+                aria-hidden="true"
+              ></span>
+              <div class="min-w-0">
+                <h1 id="detail-heading" class="truncate text-lg font-semibold text-cream-50" data-detail-symbol></h1>
+                <p id="detail-name" class="truncate text-xs text-cream-500"></p>
+                <p class="truncate text-xs text-cream-500">
+                  <span id="detail-chain"></span>
+                </p>
+              </div>
+            </div>
+
+            <dl class="mt-5 space-y-3">
+              <div class="flex items-baseline justify-between gap-4">
+                <dt class="text-xs text-cream-500">Amount held</dt>
+                <dd id="detail-amount" class="tnum text-sm font-medium text-cream-100"></dd>
+              </div>
+              <div class="flex items-baseline justify-between gap-4">
+                <dt class="text-xs text-cream-500">Value</dt>
+                <dd id="detail-fiat" class="tnum text-sm font-medium text-cream-100"></dd>
+              </div>
+              <div id="detail-contract-row" class="flex items-baseline justify-between gap-4">
+                <dt class="text-xs text-cream-500">Contract</dt>
+                <dd id="detail-contract" class="tnum max-w-[190px] truncate text-right text-xs text-cream-300"></dd>
+              </div>
+            </dl>
+
+            <button
+              type="button"
+              id="detail-copy"
+              class="mt-4 min-h-11 w-full rounded-full bg-ink-950 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+            >
+              Copy contract address
+            </button>
+            <p id="detail-note" class="mt-3 text-xs leading-relaxed text-cream-500"></p>
           </div>
         </section>
       </main>

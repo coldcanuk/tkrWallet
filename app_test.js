@@ -62,9 +62,11 @@ function readFile(rel) {
 
 test("ui.js exports the shell API", function () {
   const ui = require("./ui.js");
-  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings"]);
+  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings", "detail"]);
   assert.strictEqual(typeof ui.renderTokens, "function");
   assert.strictEqual(typeof ui.setWalletValue, "function");
+  assert.strictEqual(typeof ui.renderDetail, "function");
+  assert.strictEqual(typeof ui.goToken, "function");
 });
 
 test("route parsing is strict and never throws", function () {
@@ -75,6 +77,21 @@ test("route parsing is strict and never throws", function () {
   assert.strictEqual(ui.parseRoute(null), "home");
   assert.strictEqual(ui.parseRoute("#/ACTIVITY?x=1"), "activity");
   assert.strictEqual(ui.parseRoute("#/settings"), "settings");
+});
+
+test("token routes parse to a detail screen, and malformed ones fall home", function () {
+  const ui = require("./ui.js");
+  assert.strictEqual(ui.parseRoute("#/token/1:native"), "detail");
+  assert.deepStrictEqual(ui.parseTokenRoute("#/token/1:native"), { chainId: 1, asset: null });
+  assert.deepStrictEqual(ui.parseTokenRoute("#/token/8453:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"), {
+    chainId: 8453,
+    asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  });
+  // Half a route is not a route: never render an empty detail shell.
+  ["#/token/1", "#/token/1:", "#/token/abc:native", "#/token/1:0xnope", "#/token/"].forEach(function (h) {
+    assert.strictEqual(ui.parseRoute(h), "home", "must not treat " + h + " as a detail route");
+    assert.strictEqual(ui.parseTokenRoute(h), null);
+  });
 });
 
 test("currency parsing falls back to USD", function () {
@@ -434,12 +451,17 @@ test("getBalances() surfaces the edge contract and converts amounts", function (
               { chain_id: 1, symbol: "ETH", address: null, amount: "1.25", decimals: 18 },
               { chain_id: 8453, symbol: "USDC", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", amount: "42.5", decimals: 6 },
             ],
+            chains: [
+              { chain_id: 1, state: "ok" },
+              { chain_id: 8453, state: "ok" },
+            ],
           });
         },
       });
     })
     .then(function (got) {
       assert.strictEqual(got.state, "ok");
+      assert.ok(Array.isArray(got.chains) && got.chains.length === 2, "the read report is surfaced");
       assert.strictEqual(got.balances.length, 2);
       assert.ok(Math.abs(got.balances[0].amount - 1.25) < 1e-9, "native amount converted to a number");
       assert.strictEqual(got.balances[0].chain_name, "Ethereum");
@@ -454,7 +476,102 @@ test("getBalances() failure is unknown — balances are never invented", functio
     return Promise.reject(new Error("edge down"));
   }).then(function (got) {
     assert.strictEqual(got.state, "unknown");
+    assert.ok(got.reason, "an unknown carries the reason it is unknown");
   });
+});
+
+test("getBalances() never calls an unreadable chain an empty wallet", function () {
+  const wallet = require("./wallet.js");
+  // The edge read one chain and could not read the other. The holdings list is
+  // empty, but "you own nothing" would be a lie: it must be partial.
+  return wallet
+    .getBalances("0x2222222222222222222222222222222222222222", [1, 8453], function () {
+      return Promise.resolve({
+        ok: true,
+        json: function () {
+          return Promise.resolve({
+            balances: [],
+            chains: [
+              { chain_id: 1, state: "ok" },
+              { chain_id: 8453, state: "unknown", error: "rpc timeout" },
+            ],
+          });
+        },
+      });
+    })
+    .then(function (got) {
+      assert.strictEqual(got.state, "partial", "an unread chain must not read as 'you own nothing'");
+      assert.strictEqual(got.balances.length, 0);
+      assert.strictEqual(got.chains[1].state, "unknown");
+      assert.ok(got.reason);
+    });
+});
+
+test("getBalances() treats a missing read report as partial, never as empty", function () {
+  const wallet = require("./wallet.js");
+  // Against an edge that does not report which chains it read, an empty list is
+  // unverifiable. Honest answer: partial, with the reason stated.
+  return wallet
+    .getBalances("0x2222222222222222222222222222222222222222", [1], function () {
+      return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ balances: [] }); } });
+    })
+    .then(function (got) {
+      assert.strictEqual(got.state, "partial");
+      assert.strictEqual(got.reason, "edge-no-read-status");
+    });
+});
+
+test("getBalances() sends user-added tokens as chain:address pairs", function () {
+  const wallet = require("./wallet.js");
+  const extra = "1:0x" + "Ab".repeat(20);
+  return wallet
+    .getBalances("0x2222222222222222222222222222222222222222", [1], function (url) {
+      assert.ok(String(url).indexOf("tokens=") !== -1, "added tokens must be requested: " + url);
+      assert.ok(String(url).indexOf(encodeURIComponent(extra)) !== -1, "the pair must be encoded");
+      return Promise.resolve({
+        ok: true,
+        json: function () {
+          return Promise.resolve({ balances: [], chains: [{ chain_id: 1, state: "ok" }] });
+        },
+      });
+    }, [extra])
+    .then(function (got) {
+      assert.strictEqual(got.state, "ok", "with every chain read, empty really is empty");
+    });
+});
+
+test("getTokenMeta() returns edge metadata, or a reason — never invented values", function () {
+  const wallet = require("./wallet.js");
+  return wallet
+    .getTokenMeta(8453, "0x" + "Ab".repeat(20), function (url) {
+      assert.ok(String(url).indexOf("/api/wallet/token?chain=8453&address=") === 0, url);
+      return Promise.resolve({
+        ok: true,
+        json: function () {
+          return Promise.resolve({
+            token: { chain_id: 8453, address: "0x" + "Ab".repeat(20), symbol: "USDC", name: "USD Coin", decimals: 6 },
+          });
+        },
+      });
+    })
+    .then(function (got) {
+      assert.strictEqual(got.state, "ok");
+      assert.strictEqual(got.token.symbol, "USDC");
+      assert.strictEqual(got.token.decimals, 6);
+      return wallet.getTokenMeta(8453, "0x" + "Ab".repeat(20), function () {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: function () {
+            return Promise.resolve({ ok: false, error: "not-a-token" });
+          },
+        });
+      });
+    })
+    .then(function (got) {
+      assert.strictEqual(got.state, "unknown");
+      assert.strictEqual(got.reason, "not-a-token");
+    });
 });
 
 test("API calls are same-origin for the PWA and absolute for the extension", function () {
@@ -658,37 +775,105 @@ test("gate errors hide via the hidden attribute, never the hidden class", functi
 });
 
 test("an unlocked wallet never shows the boot-time 'No wallet yet' card", function () {
-  // After import/unlock the header shows an address, so the token list must not
-  // contradict it with "No wallet yet" and an Import button. Balances are
-  // genuinely unavailable (no edge yet), and the empty state must say that.
+  // The empty list is now chosen by WHY it is empty: no wallet, locked, a
+  // complete read that found nothing, an incomplete read, or no read at all.
+  // Collapsing any of those into "No balances yet" is the bug this guards.
   const html = readFile("index.html");
   assert.ok(html.indexOf("data-empty-title") !== -1, "empty-state title must be addressable");
   const ui = readFile("ui.js");
   const rt = ui.match(/function renderTokens\(holdings, prices\) \{[\s\S]*?\n  \}/);
   assert.ok(rt, "renderTokens must exist");
-  assert.ok(/session\.address/.test(rt[0]), "the empty list must branch on the unlocked wallet");
-  assert.ok(rt[0].indexOf("No balances yet") !== -1, "unlocked empty state must say balances await the edge");
+  assert.ok(rt[0].indexOf("emptyStateFor()") !== -1, "the empty list must be chosen by reason");
+  const empty = ui.match(/function emptyStateFor\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(empty, "emptyStateFor must exist");
+  assert.ok(/session\.address/.test(empty[0]), "it must branch on the unlocked wallet");
+  assert.ok(/session\.locked/.test(empty[0]), "it must branch on the locked session");
+  assert.ok(empty[0].indexOf("Wallet locked") !== -1, "the locked state offers Unlock");
+  assert.ok(empty[0].indexOf("No balances yet") !== -1, "a complete read that found nothing says so");
+  assert.ok(
+    empty[0].indexOf("Balances unavailable") !== -1,
+    "an unknown read must say unknown, never 'No balances yet'"
+  );
+  assert.ok(empty[0].indexOf("Balances incomplete") !== -1, "a partial read must disclose the gap");
+  assert.ok(empty[0].indexOf("No wallet yet") !== -1, "only the no-wallet case offers import");
   const reveal = ui.match(/function revealAccount\(phrase\) \{[\s\S]*?\n  \}/);
   assert.ok(reveal && reveal[0].indexOf("renderTokens(null)") !== -1, "revealAccount must repaint the token list");
+});
+
+test("tapping a coin opens the detail screen instead of a dead click", function () {
+  const ui = readFile("ui.js");
+  // Both entry points navigate now; neither merely writes a status string.
+  assert.ok(
+    /goToken\(holding\.chain_id, holding\.address\)/.test(ui),
+    "a holding row must open its detail screen"
+  );
+  assert.ok(/goToken\(tok\.chain_id, tok\.address\)/.test(ui), "a search row must open its detail screen");
+  assert.ok(
+    ui.indexOf("Token details are not built yet") === -1,
+    "the old dead-click status string must be gone"
+  );
+  const html = readFile("index.html");
+  ["data-screen=\"detail\"", 'id="detail-back"', 'id="detail-copy"', 'id="detail-amount"', 'id="detail-contract"'].forEach(
+    function (needle) {
+      assert.ok(html.indexOf(needle) !== -1, "detail screen must include " + needle);
+    }
+  );
+  const detail = ui.match(/function renderDetail\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(detail, "renderDetail must exist");
+  assert.ok(detail[0].indexOf("go(") !== -1, "an invalid detail route must not render an empty shell");
+  // The native gas token has no contract: do not offer to copy one.
+  assert.ok(detail[0].indexOf("detail-copy") !== -1, "the detail screen owns the copy button");
+  assert.ok(/route\.asset/.test(detail[0]), "contract handling must depend on whether there is an address");
+});
+
+test("a failed read is retryable and never rendered as an empty wallet", function () {
+  const ui = readFile("ui.js");
+  const rb = ui.match(/function refreshBalances\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(rb, "refreshBalances must exist");
+  assert.ok(/res\.state === "ok"/.test(rb[0]), "the ok state is handled");
+  assert.ok(/res\.state === "partial"/.test(rb[0]), "the partial state keeps its rows and discloses the gap");
+  assert.ok(rb[0].indexOf("Balances unknown") !== -1, "the unknown state says unknown");
+  assert.ok(rb[0].indexOf("uiData.lastBalances = res") !== -1, "the read report is retained for rendering");
+  assert.ok(ui.indexOf("renderBalancesNotice") !== -1, "an incomplete read must be visible, not silent");
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('id="balances-retry"') !== -1, "the notice must offer Retry");
+  assert.ok(html.indexOf('id="balances-notice"') !== -1, "the notice container must exist");
+});
+
+test("holdings coverage is disclosed and a token can be added by address", function () {
+  const html = readFile("index.html");
+  ["id=\"holdings-scope\"", "id=\"add-token-btn\"", "id=\"add-token-form\"", "id=\"add-token-address\""].forEach(function (n) {
+    assert.ok(html.indexOf(n) !== -1, "index.html must include " + n);
+  });
+  const ui = readFile("ui.js");
+  assert.ok(ui.indexOf("holdingsScopeText") !== -1, "the scope of the list must be stated");
+  assert.ok(ui.indexOf("getTokenMeta") !== -1, "adding a token must read its metadata from the edge");
+  assert.ok(ui.indexOf("TOKENS_KEY") !== -1, "added tokens must persist");
+  const wallet = readFile("wallet.js");
+  assert.ok(wallet.indexOf("getTokenMeta: getTokenMeta") !== -1, "wallet.js must export getTokenMeta");
+  // Only public metadata is stored — never anything from the vault.
+  const store = ui.match(/function storeTokens\(list\) \{[\s\S]*?\n  \}/);
+  assert.ok(store && store[0].indexOf("JSON.stringify(list)") !== -1, "stored tokens are the metadata list");
 });
 
 test("unlock fetches real balances from the edge and locks on expiry", function () {
   const ui = readFile("ui.js");
   // Unlock -> getBalances -> render -> prices: the actual data path.
-  assert.ok(ui.indexOf("getBalances(session.address, [1, 8453])") !== -1, "unlock must fetch Mainnet + Base balances");
+  assert.ok(
+    /getBalances\(session\.address, \[1, 8453\]/.test(ui),
+    "unlock must fetch Mainnet + Base balances"
+  );
   const reveal = ui.match(/function revealAccount\(phrase\) \{[\s\S]*?\n  \}/);
   assert.ok(reveal && reveal[0].indexOf("refreshBalances()") !== -1, "revealAccount must start the balance fetch");
   assert.ok(reveal && reveal[0].indexOf("scheduleLock()") !== -1, "revealAccount must arm the auto-lock timer");
-  // A locked wallet must clear key material and holdings.
+  // A locked wallet must clear key material, holdings, and the read report.
   const lock = ui.match(/function lockNow\(reason\) \{[\s\S]*?\n  \}/);
   assert.ok(lock, "lockNow must exist");
-  ["session.address = null", "uiData.lastHoldings = null", "renderTokens(null)"].forEach(function (s) {
-    assert.ok(lock[0].indexOf(s) !== -1, "lockNow must " + s);
-  });
-  // The locked empty state offers Unlock, never Import.
-  const rt = ui.match(/function renderTokens\(holdings, prices\) \{[\s\S]*?\n  \}/);
-  assert.ok(/session\.locked/.test(rt[0]), "the empty list must branch on the locked session");
-  assert.ok(rt[0].indexOf("Wallet locked") !== -1, "locked empty state must say so");
+  ["session.address = null", "uiData.lastHoldings = null", "uiData.lastBalances = null", "renderTokens(null)"].forEach(
+    function (s) {
+      assert.ok(lock[0].indexOf(s) !== -1, "lockNow must " + s);
+    }
+  );
   const wallet = readFile("wallet.js");
   assert.ok(wallet.indexOf("getBalances: getBalances") !== -1, "wallet.js must export getBalances");
 });
@@ -720,6 +905,277 @@ test("crypto: signTransaction recovers the signer on Ethereum and Base", functio
   assert.strictEqual(c.recoverTxSigner(c.signTransaction(priv, tx), 1), w.evmAddress);
   const base = Object.assign({}, tx, { nonce: 5, gasPrice: 1000000000n, gasLimit: 30000n, to: "0x" + "1".repeat(40), value: "1000000000000000000", chainId: 8453 });
   assert.strictEqual(c.recoverTxSigner(c.signTransaction(priv, base), 8453), w.evmAddress);
+});
+
+/* ---------------------------------------------------------------------------
+ * M3.1 — the dev edge must never report a read failure as "you own nothing".
+ * docs/research/balances-empty-state.md; docs/specs/edge-server.md §3.3.
+ * ------------------------------------------------------------------------- */
+
+const edge = require("./tools/dev-edge.js");
+
+const ADDR = "0x" + "11".repeat(20);
+const EXTRA = "0x" + "Ab".repeat(20);
+
+function rpcReply(result) {
+  return {
+    json: function () {
+      return Promise.resolve({ jsonrpc: "2.0", id: 1, result: result });
+    },
+  };
+}
+
+function balancesUrl(query) {
+  return new URL("http://127.0.0.1:8899/api/wallet/balances?" + query);
+}
+
+/* Fake RPC transport. `plan(method, params, url)` returns a result string,
+ * throws/rejects to simulate a failure. */
+function fakeRpc(plan) {
+  return function (u, opts) {
+    const req = JSON.parse(opts.body);
+    return Promise.resolve()
+      .then(function () {
+        return plan(req.method, req.params, u);
+      })
+      .then(rpcReply);
+  };
+}
+
+function chainOf(u) {
+  return String(u).indexOf("base") !== -1 ? 8453 : 1;
+}
+
+function abiEncodeString(s) {
+  const hex = Buffer.from(s, "utf8").toString("hex");
+  const len = (hex.length / 2).toString(16).padStart(64, "0");
+  const data = hex.padEnd(Math.ceil(hex.length / 64) * 64, "0");
+  return "0x" + "20".padStart(64, "0") + len + data;
+}
+
+test("dev edge: when no chain can be read the answer is 502, never an empty 200", function () {
+  return edge
+    .balancesHandler(balancesUrl("address=" + ADDR + "&chains=1,8453"), function () {
+      return Promise.reject(new Error("rpc down"));
+    })
+    .then(function (res) {
+      assert.strictEqual(res.code, 502, "a total read failure must not be a success status");
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.ok, false, "errors use the §3 envelope");
+      assert.strictEqual(body.error, "chain-read-failed");
+      assert.ok(body.detail, "the envelope carries human-readable detail");
+      assert.strictEqual(body.balances, undefined, "never an empty wallet in success shape");
+    });
+});
+
+test("dev edge: a failed chain is disclosed as unknown while partial success survives", function () {
+  const fetchFn = fakeRpc(function (method, params, u) {
+    if (chainOf(u) === 1) {
+      throw new Error("ethereum rpc timeout");
+    }
+    return method === "eth_getBalance" ? "0xde0b6b3a7640000" : "0x0"; // 1 ETH on Base, no tokens
+  });
+  return edge.balancesHandler(balancesUrl("address=" + ADDR + "&chains=1,8453"), fetchFn).then(function (res) {
+    assert.strictEqual(res.code, 200, "partial success is still a success");
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.balances.length, 1, "the readable chain's holding is shown");
+    assert.strictEqual(body.balances[0].chain_id, 8453);
+    const status = {};
+    body.chains.forEach(function (c) {
+      status[c.chain_id] = c;
+    });
+    assert.strictEqual(status[1].state, "unknown", "the unreadable chain must say unknown");
+    assert.ok(status[1].error, "and carry the real reason");
+    assert.strictEqual(status[8453].state, "ok");
+  });
+});
+
+test("dev edge: an empty list means 'you own none' ONLY when every chain was read", function () {
+  const emptyButRead = fakeRpc(function (method) {
+    return "0x0";
+  });
+  return edge.balancesHandler(balancesUrl("address=" + ADDR + "&chains=1,8453"), emptyButRead).then(function (res) {
+    assert.strictEqual(res.code, 200);
+    const body = JSON.parse(res.body);
+    assert.deepStrictEqual(body.balances, [], "a genuinely empty wallet is an empty list");
+    assert.strictEqual(body.chains.length, 2);
+    body.chains.forEach(function (c) {
+      assert.strictEqual(c.state, "ok", "and every chain is reported read");
+    });
+  });
+});
+
+test("dev edge: a partially readable chain is reported as partial", function () {
+  // Native read works; every token read fails -> we know the gas balance but not
+  // the token set, and the response says so instead of implying "no tokens".
+  const fetchFn = fakeRpc(function (method, params) {
+    if (method === "eth_getBalance") {
+      return "0x0";
+    }
+    throw new Error("token read failed");
+  });
+  return edge.balancesHandler(balancesUrl("address=" + ADDR + "&chains=1"), fetchFn).then(function (res) {
+    assert.strictEqual(res.code, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.chains[0].state, "partial");
+    assert.ok(/token read/.test(body.chains[0].error), "the failure count is disclosed");
+  });
+});
+
+test("dev edge: validation errors use the documented envelope", function () {
+  return edge.balancesHandler(balancesUrl("address=not-an-address&chains=1"), fakeRpc(function () { return "0x0"; })).then(function (res) {
+    assert.strictEqual(res.code, 400);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, false);
+    assert.strictEqual(body.error, "bad-address");
+    assert.ok(body.detail);
+  });
+});
+
+test("dev edge: over-cap requests are rejected, not silently truncated", function () {
+  const nine = "1,2,3,4,5,6,7,8,9";
+  return edge.balancesHandler(balancesUrl("address=" + ADDR + "&chains=" + nine), fakeRpc(function () { return "0x0"; })).then(function (res) {
+    assert.strictEqual(res.code, 400, "the spec's cap must be enforced");
+    assert.strictEqual(JSON.parse(res.body).error, "too-many-chains");
+  });
+});
+
+test("dev edge: user-added tokens are read, malformed ones are ignored", function () {
+  const fetchFn = fakeRpc(function (method, params) {
+    const to = params[0] && params[0].to;
+    const data = params[0] && params[0].data;
+    if (method === "eth_getBalance") {
+      return "0x0";
+    }
+    if (data === "0x313ce567") {
+      return "0x" + "12"; // decimals() = 18
+    }
+    if (to && to.toLowerCase() === EXTRA.toLowerCase() && data.indexOf("0x70a08231") === 0) {
+      return "0x4563918244f40000"; // 5e18
+    }
+    return "0x0";
+  });
+  return edge
+    .balancesHandler(balancesUrl("address=" + ADDR + "&chains=1&tokens=1:" + EXTRA + ",1:nothex,9:0xdead"), fetchFn)
+    .then(function (res) {
+      assert.strictEqual(res.code, 200);
+      const body = JSON.parse(res.body);
+      const extra = body.balances.filter(function (b) {
+        return b.address && b.address.toLowerCase() === EXTRA.toLowerCase();
+      });
+      assert.strictEqual(extra.length, 1, "the added token is queried and reported");
+      assert.strictEqual(extra[0].amount, "5", "with its real decimals");
+      assert.strictEqual(body.balances.length, 1, "malformed and unrequested-chain tokens are ignored");
+    });
+});
+
+test("dev edge: token metadata endpoint labels an arbitrary ERC-20", function () {
+  const fetchFn = fakeRpc(function (method, params) {
+    const data = params[0] && params[0].data;
+    if (data === "0x313ce567") {
+      return "0x" + "6"; // decimals() = 6
+    }
+    if (data === "0x95d89b41") {
+      return abiEncodeString("USDC");
+    }
+    if (data === "0x06fdde03") {
+      return abiEncodeString("USD Coin");
+    }
+    return "0x0";
+  });
+  const u = new URL("http://127.0.0.1:8899/api/wallet/token?chain=8453&address=" + EXTRA);
+  return edge.tokenHandler(u, fetchFn).then(function (res) {
+    assert.strictEqual(res.code, 200);
+    const tok = JSON.parse(res.body).token;
+    assert.strictEqual(tok.symbol, "USDC");
+    assert.strictEqual(tok.name, "USD Coin");
+    assert.strictEqual(tok.decimals, 6);
+    assert.strictEqual(tok.chain_id, 8453);
+  });
+});
+
+test("dev edge: an address that is not a token is a 404, not invented metadata", function () {
+  const fetchFn = fakeRpc(function () {
+    throw new Error("execution reverted");
+  });
+  const u = new URL("http://127.0.0.1:8899/api/wallet/token?chain=8453&address=" + EXTRA);
+  return edge.tokenHandler(u, fetchFn).then(function (res) {
+    assert.strictEqual(res.code, 404);
+    assert.strictEqual(JSON.parse(res.body).error, "not-a-token");
+  });
+});
+
+test("dev edge: a price-source failure is 502 with the envelope, never empty prices", function () {
+  const fetchFn = function () {
+    return Promise.reject(new Error("coingecko down"));
+  };
+  const u = new URL("http://127.0.0.1:8899/api/wallet/prices?assets=1:native&vs=usd");
+  return edge.pricesHandler(u, fetchFn).then(function (res) {
+    assert.strictEqual(res.code, 502);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, false);
+    assert.strictEqual(body.error, "price-source-failed");
+    assert.strictEqual(body.prices, undefined, "a failure must not look like an empty price set");
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * Catalogue integrity. These are the offline structural half; the on-chain
+ * proof (bytecode + symbol + decimals for every address) is
+ * `npm run verify:catalogue`.
+ * ------------------------------------------------------------------------- */
+
+test("catalogue: every token address is well-formed and unique within its chain", function () {
+  const wallet = require("./wallet.js");
+  Object.keys(wallet.TOKENS).forEach(function (chainId) {
+    const seen = {};
+    wallet.TOKENS[chainId].forEach(function (t) {
+      if (!t.address) {
+        return; // native gas token
+      }
+      assert.ok(/^0x[0-9a-fA-F]{40}$/.test(t.address), "malformed address on chain " + chainId + ": " + t.address);
+      assert.ok(!seen[t.address.toLowerCase()], "duplicate address on chain " + chainId + ": " + t.address);
+      seen[t.address.toLowerCase()] = true;
+      assert.ok(t.symbol && t.name, "every token needs a symbol and a name");
+      assert.ok(Number.isInteger(t.decimals) && t.decimals >= 0 && t.decimals <= 36, "bad decimals for " + t.symbol);
+    });
+  });
+});
+
+test("catalogue: a token is never listed on a chain it is not deployed on (the OP bug)", function () {
+  const wallet = require("./wallet.js");
+  const mainnet = (wallet.TOKENS[1] || []).map(function (t) {
+    return t.address && t.address.toLowerCase();
+  });
+  // 0x4200…0042 is the GovernanceToken predeploy on OP Mainnet (chain 10); it has
+  // no bytecode on Ethereum. Cataloguing it as a mainnet token made every
+  // mainnet balance read silently drop a token. Verified against chain state and
+  // CoinGecko; guarded structurally here and on-chain by verify-catalogue.
+  assert.ok(
+    mainnet.indexOf("0x4200000000000000000000000000000000000042") === -1,
+    "the OP Mainnet predeploy must not be catalogued on Ethereum mainnet"
+  );
+  assert.strictEqual(
+    (wallet.TOKENS[1] || []).filter(function (t) {
+      return t.symbol === "OP";
+    }).length,
+    0,
+    "OP has no Ethereum mainnet deployment"
+  );
+});
+
+test("every element ui.js reaches for actually exists in index.html", function () {
+  // A typo here is invisible in unit tests and shows up as a blank field in the
+  // browser (it shipped once: the detail screen wrote the symbol into an id that
+  // did not exist, so the heading rendered empty).
+  const ui = readFile("ui.js");
+  const html = readFile("index.html");
+  const ids = Array.from(new Set(Array.from(ui.matchAll(/\bel\("([^"]+)"\)/g)).map(function (m) { return m[1]; })));
+  assert.ok(ids.length > 20, "expected the shell to reach for many ids, found " + ids.length);
+  const missing = ids.filter(function (id) {
+    return html.indexOf('id="' + id + '"') === -1;
+  });
+  assert.deepStrictEqual(missing, [], "ui.js references ids that index.html does not define");
 });
 
 run();

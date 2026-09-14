@@ -13,7 +13,7 @@
 (function (root) {
   "use strict";
 
-  var SCREENS = ["home", "swap", "activity", "search", "settings"];
+  var SCREENS = ["home", "swap", "activity", "search", "settings", "detail"];
   var DEFAULT_SCREEN = "home";
   var CURRENCIES = ["usd", "cad"];
   var STORAGE_KEY = "tkrwallet.currency";
@@ -26,8 +26,23 @@
 
   /* ---- pure helpers (unit-testable without a DOM) ---------------------- */
 
+  /** Parse a token-detail route: "#/token/<chain_id>:<native|0xaddress>".
+   * Returns { chainId, asset } (asset === null means the native gas token),
+   * or null when the hash is not a token route. Never throws. */
+  function parseTokenRoute(hash) {
+    var raw = String(hash == null ? "" : hash);
+    var m = raw.replace(/^#\/?/, "").match(/^token\/(\d+):(native|0x[0-9a-fA-F]{40})$/);
+    if (!m) {
+      return null;
+    }
+    return { chainId: Number(m[1]), asset: m[2].toLowerCase() === "native" ? null : m[2] };
+  }
+
   /** Parse a location hash like "#/swap" into a known screen. Never throws. */
   function parseRoute(hash) {
+    if (parseTokenRoute(hash)) {
+      return "detail";
+    }
     var raw = String(hash == null ? "" : hash);
     var name = raw.replace(/^#\/?/, "").split(/[?&#]/)[0].toLowerCase();
     return SCREENS.indexOf(name) === -1 ? DEFAULT_SCREEN : name;
@@ -187,6 +202,9 @@
         input.focus();
       }
     }
+    if (next === "detail") {
+      renderDetail();
+    }
     return next;
   }
 
@@ -199,6 +217,18 @@
       return next;
     }
     return showScreen(next);
+  }
+
+  /** Open a token's detail screen. `asset` is null for the native gas token or
+   * a contract address. Tapping a coin used to be a dead click; this is the
+   * route it now takes. */
+  function goToken(chainId, asset) {
+    var want = "#/token/" + Number(chainId) + ":" + (asset ? String(asset) : "native");
+    if (root.location && root.location.hash !== want) {
+      root.location.hash = want; // hashchange handler does the render
+      return "detail";
+    }
+    return showScreen("detail");
   }
 
   /** Reflect wallet state in the header. `unknown` never renders as zero. */
@@ -256,6 +286,83 @@
     return holding.amount * entry[state.currency];
   }
 
+  /** "Ethereum" / "Base · added by you" — the second line of a token row. */
+  function chainLineFor(holding) {
+    var name = holding.chain_name || "";
+    if (holding.custom) {
+      return name + " \u00b7 added by you";
+    }
+    return name;
+  }
+
+  /** The empty-state card, chosen from why the list is empty. "We could not
+   * check" and "you own nothing" must never render the same way. */
+  function emptyStateFor() {
+    var read = uiData.lastBalances;
+    if (session.address) {
+      if (read && read.state === "unknown") {
+        return {
+          title: "Balances unavailable",
+          body: "The wallet edge could not be reached, so your balances are unknown — not zero. Nothing was signed.",
+          cta: "Retry",
+          action: refreshBalances,
+        };
+      }
+      if (read && read.state === "partial") {
+        return {
+          title: "Balances incomplete",
+          body: "Some chains could not be read, so this list may be missing holdings. " + chainProblems(read),
+          cta: "Retry",
+          action: refreshBalances,
+        };
+      }
+      return {
+        title: "No balances yet",
+        body: "No Mainnet or Base holdings were found for this account. Your keys stay on this device.",
+        cta: "Refresh",
+        action: refreshBalances,
+      };
+    }
+    if (session.locked) {
+      return {
+        title: "Wallet locked",
+        body: "Unlock with your password to see your wallet. It locks itself after a period of inactivity.",
+        cta: "Unlock",
+        action: function () {
+          openGate("unlock");
+        },
+      };
+    }
+    return {
+      title: "No wallet yet",
+      body: "Import a wallet with a password or a recovery phrase. Your keys stay encrypted on this device \u2014 nothing leaves it.",
+      cta: "Import wallet",
+      action: function () {
+        openGate();
+      },
+    };
+  }
+
+  /** Human summary of which chains failed, e.g. "Ethereum could not be read." */
+  function chainProblems(read) {
+    if (!read || !read.chains) {
+      return "The edge did not report which chains it read.";
+    }
+    var names = [];
+    read.chains.forEach(function (c) {
+      if (!c || c.state === "ok") {
+        return;
+      }
+      var name = (root.tkrWalletData && root.tkrWalletData.chainName(c.chain_id)) || "chain " + c.chain_id;
+      if (c.state === "unknown") {
+        names.push(name + " could not be read");
+      } else {
+        names.push(name + " was read only in part");
+      }
+    });
+    return names.length ? names.join("; ") + "." : "";
+  }
+
   function renderTokens(holdings, prices) {
     var box = el("token-list");
     var tpl = el("tpl-token-row");
@@ -263,40 +370,19 @@
       return [];
     }
     box.textContent = "";
+    renderBalancesNotice();
     if (!holdings || !holdings.length) {
       var tplEmpty = el("tpl-token-empty");
       if (tplEmpty) {
         var node = tplEmpty.content.firstElementChild.cloneNode(true);
+        var state_ = emptyStateFor();
         var cta = node.querySelector("[data-import]");
-        if (session.address) {
-          // A wallet IS loaded: the list is empty only because the edge has not
-          // returned holdings. Saying "No wallet yet" and offering to import
-          // again would contradict the address in the header.
-          setText(node.querySelector("[data-empty-title]"), "No balances yet");
-          setText(
-            node.querySelector("[data-empty-body]"),
-            "Balances for this account arrive with the wallet edge. Your keys stay on this device."
-          );
-          if (cta) {
-            cta.setAttribute("hidden", "");
-          }
-        } else if (session.locked) {
-          // A vault exists on this device but the session is locked. The CTA
-          // becomes the unlock button — never "Import wallet".
-          setText(node.querySelector("[data-empty-title]"), "Wallet locked");
-          setText(
-            node.querySelector("[data-empty-body]"),
-            "Unlock with your password to see your wallet. It locks itself after a period of inactivity."
-          );
-          if (cta) {
-            setText(cta, "Unlock");
-            cta.addEventListener("click", function () {
-              openGate("unlock");
-            });
-          }
-        } else if (cta) {
+        setText(node.querySelector("[data-empty-title]"), state_.title);
+        setText(node.querySelector("[data-empty-body]"), state_.body);
+        if (cta) {
+          setText(cta, state_.cta);
           cta.addEventListener("click", function () {
-            openGate();
+            state_.action();
           });
         }
         box.appendChild(node);
@@ -306,11 +392,12 @@
     holdings.forEach(function (holding) {
       var row = tpl.content.firstElementChild.cloneNode(true);
       var badge = row.querySelector("[data-token-badge]");
+      // Tapping a coin opens its detail screen (this used to be a dead click).
       row.addEventListener("click", function () {
-        setWalletStatus("Token details are not built yet.");
+        goToken(holding.chain_id, holding.address);
       });
       setText(row.querySelector("[data-token-name]"), holding.symbol || "?");
-      setText(row.querySelector("[data-token-chain]"), holding.chain_name || "");
+      setText(row.querySelector("[data-token-chain]"), chainLineFor(holding));
       setText(
         row.querySelector("[data-token-amount]"),
         holding.state === "unknown" ? "\u2014" : formatAmount(holding.amount)
@@ -326,6 +413,29 @@
     return holdings;
   }
 
+  /** A visible, retryable notice when the read was not complete. Rows that did
+   * arrive stay on screen — partial success is not thrown away. */
+  function renderBalancesNotice() {
+    var box = el("balances-notice");
+    if (!box) {
+      return;
+    }
+    var read = uiData.lastBalances;
+    var show = Boolean(session.address) && read && read.state !== "ok";
+    if (!show) {
+      box.setAttribute("hidden", "");
+      return;
+    }
+    var text =
+      read.state === "unknown"
+        ? "Balances are unknown: " + (read.reason === "edge-unreachable" ? "the wallet edge could not be reached." : "the read failed.")
+        : "Some chains could not be read. " + chainProblems(read);
+    setText(el("balances-notice-text"), text);
+    var when = el("balances-checked");
+    setText(when, uiData.lastChecked ? "Last checked " + new Date(uiData.lastChecked).toLocaleTimeString() : "");
+    box.removeAttribute("hidden");
+  }
+
   /* ---- search ------------------------------------------------------------ */
 
   /** Filter the built-in catalogue. Offline and synchronous — the catalogue is
@@ -338,7 +448,7 @@
     }
     box.textContent = "";
     var q = String(query || "").trim();
-    var rows = q && root.tkrWalletData ? root.tkrWalletData.searchCatalog(q, 20) : [];
+    var rows = q && root.tkrWalletData ? root.tkrWalletData.searchCatalog(q, 20, readStoredTokens()) : [];
 
     if (!rows.length) {
       var hint = document.createElement("div");
@@ -372,7 +482,7 @@
         badge.textContent = String(tok.symbol).slice(0, 3);
       }
       row.addEventListener("click", function () {
-        setWalletStatus(tok.symbol + " on " + tok.chain_name + " selected. Token detail is not built yet.");
+        goToken(tok.chain_id, tok.address);
       });
       box.appendChild(row);
     });
@@ -381,12 +491,18 @@
 
   /* ---- wallet wiring: shell talks to the data layer only ------------------ */
 
-  var uiData = { lastHoldings: null, lastPrices: null, account: null };
+  var uiData = {
+    lastHoldings: null,
+    lastPrices: null,
+    account: null,
+    lastBalances: null, // { state, reason, chains } from the last read
+    lastChecked: null, // when that read happened
+  };
 
   /** Re-render the list and value from whatever we last knew. */
   function renderAll() {
+    renderTokens(uiData.lastHoldings, uiData.lastPrices);
     if (uiData.lastHoldings) {
-      renderTokens(uiData.lastHoldings, uiData.lastPrices);
       refreshValue();
     }
   }
@@ -427,32 +543,297 @@
   }
 
   /** Read balances for the unlocked account from the wallet edge, then price
-   * what came back. Every failure stays honest: unknown is rendered, never
-   * invented. */
+   * what came back. Three outcomes are kept distinct:
+   *   ok      — every chain was read; an empty list really means "none held"
+   *   partial — some chains failed; rows are shown AND the gap is disclosed
+   *   unknown — nothing readable; the UI says unknown, never "no balances"
+   * `unknown` is never rendered as a zero balance. */
   function refreshBalances() {
     var wallet = root.tkrWalletData;
     if (!wallet || !session.address) {
       return Promise.resolve(null);
     }
     setWalletStatus("Reading balances from the wallet edge\u2026");
+    uiData.lastBalances = null;
+    renderBalancesNotice();
+    var extras = readStoredTokens().map(function (t) {
+      return t.chain_id + ":" + t.address;
+    });
     return wallet
-      .getBalances(session.address, [1, 8453])
+      .getBalances(session.address, [1, 8453], null, extras)
       .then(function (res) {
-        if (res.state === "ok") {
+        uiData.lastChecked = Date.now();
+        uiData.lastBalances = res;
+        if (res.state === "ok" || res.state === "partial") {
           uiData.lastHoldings = res.balances || [];
           renderTokens(uiData.lastHoldings, null);
-          setWalletStatus(
-            uiData.lastHoldings.length + " holding" + (uiData.lastHoldings.length === 1 ? "" : "s") + " listed."
-          );
+          if (res.state === "ok") {
+            setWalletStatus(
+              uiData.lastHoldings.length + " holding" + (uiData.lastHoldings.length === 1 ? "" : "s") + " listed."
+            );
+          } else {
+            setWalletStatus("Balances may be incomplete. " + chainProblems(res));
+          }
           return refreshPrices();
         }
         uiData.lastHoldings = null;
         uiData.lastPrices = null;
         renderTokens(null);
-        setWalletStatus("Balances unavailable: the wallet edge did not respond.");
+        setWalletStatus("Balances unknown: the wallet edge did not answer. Nothing was signed.");
         setWalletValue(null, state.currency, "Balances unavailable until the wallet edge responds.");
         return null;
       });
+  }
+
+  /* ---- user-added tokens -------------------------------------------------
+   * Public token metadata only (symbol/name/decimals/address). Never key
+   * material, never anything from the vault. The built-in catalogue is a fixed
+   * list, so without this a wallet holding anything else looks empty. */
+
+  var TOKENS_KEY = "tkrwallet.tokens";
+
+  function readStoredTokens() {
+    try {
+      var raw = root.localStorage && root.localStorage.getItem(TOKENS_KEY);
+      var list = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(list)) {
+        return [];
+      }
+      return list.filter(function (t) {
+        return t && /^0x[0-9a-fA-F]{40}$/.test(t.address || "") && Number.isFinite(Number(t.chain_id));
+      });
+    } catch (e) {
+      return []; // private mode / corrupt value: the catalogue still works
+    }
+  }
+
+  function storeTokens(list) {
+    try {
+      if (root.localStorage) {
+        root.localStorage.setItem(TOKENS_KEY, JSON.stringify(list));
+      }
+    } catch (e) {
+      /* non-fatal for this session */
+    }
+  }
+
+  /** Say out loud what the holdings list covers. The old screen implied the
+   * list was the whole wallet; it is a fixed catalogue plus whatever the user
+   * added, on two chains. */
+  function holdingsScopeText() {
+    var data = root.tkrWalletData;
+    var count = 0;
+    if (data && data.TOKENS) {
+      [1, 8453].forEach(function (chainId) {
+        count += (data.TOKENS[chainId] || []).length;
+      });
+    }
+    var extra = readStoredTokens().length;
+    return (
+      "Mainnet and Base. " +
+      count +
+      " built-in tokens" +
+      (extra ? " plus " + extra + " you added" : "") +
+      ". Add any other token by its contract address."
+    );
+  }
+
+  function addToken(chainId, address) {
+    var wallet = root.tkrWalletData;
+    var errNode = el("add-token-error");
+    if (!wallet) {
+      return Promise.resolve(null);
+    }
+    var addr = String(address || "").trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
+      showAddTokenError("That is not a contract address. It must be 0x followed by 40 hex characters.");
+      return Promise.resolve(null);
+    }
+    if (readStoredTokens().some(function (t) {
+      return Number(t.chain_id) === Number(chainId) && t.address.toLowerCase() === addr.toLowerCase();
+    })) {
+      showAddTokenError("That token is already in your list.");
+      return Promise.resolve(null);
+    }
+    var builtIn = ((root.tkrWalletData && root.tkrWalletData.TOKENS[chainId]) || []).some(function (t) {
+      return t.address && t.address.toLowerCase() === addr.toLowerCase();
+    });
+    if (builtIn) {
+      showAddTokenError("That token is already built in — it is in the list above.");
+      return Promise.resolve(null);
+    }
+    showAddTokenError(null);
+    setWalletStatus("Looking up the token at " + shortAddress(addr, 6, 4) + "\u2026");
+    return wallet.getTokenMeta(chainId, addr).then(function (res) {
+      if (res.state !== "ok") {
+        showAddTokenError(
+          res.reason === "not-a-token"
+            ? "No ERC-20 answers at that address on this chain."
+            : "Could not read that token: " + res.reason
+        );
+        return null;
+      }
+      var list = readStoredTokens();
+      list.push({
+        chain_id: Number(chainId),
+        address: res.token.address,
+        symbol: res.token.symbol,
+        name: res.token.name,
+        decimals: res.token.decimals,
+      });
+      storeTokens(list);
+      setWalletStatus("Added " + res.token.symbol + ". Reading balances\u2026");
+      var form = el("add-token-form");
+      if (form) {
+        form.setAttribute("hidden", "");
+      }
+      var input = el("add-token-address");
+      if (input) {
+        input.value = "";
+      }
+      return refreshBalances();
+    });
+  }
+
+  function showAddTokenError(message) {
+    var node = el("add-token-error");
+    if (!node) {
+      return;
+    }
+    if (message) {
+      setText(node, message);
+      node.removeAttribute("hidden");
+    } else {
+      node.setAttribute("hidden", "");
+    }
+  }
+
+  /* ---- token detail: the screen a coin tap opens ------------------------- */
+
+  /** The holding for a route, if this wallet holds it (or the read said so). */
+  function holdingFor(chainId, asset) {
+    var list = uiData.lastHoldings || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].chain_id === Number(chainId) && String(list[i].address || "native").toLowerCase() === String(asset || "native").toLowerCase()) {
+        return list[i];
+      }
+    }
+    return null;
+  }
+
+  /** Catalogue/custom metadata for an asset, when we have it offline. */
+  function metaFor(chainId, asset) {
+    if (!asset) {
+      var chain = root.tkrWalletData && root.tkrWalletData.CHAINS[chainId];
+      return { symbol: chain ? chain.native : "?", name: chain ? chain.name + " native token" : "", decimals: 18 };
+    }
+    var custom = readStoredTokens().filter(function (t) {
+      return Number(t.chain_id) === Number(chainId) && t.address.toLowerCase() === String(asset).toLowerCase();
+    })[0];
+    if (custom) {
+      return custom;
+    }
+    var list = (root.tkrWalletData && root.tkrWalletData.TOKENS[chainId]) || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].address && list[i].address.toLowerCase() === String(asset).toLowerCase()) {
+        return list[i];
+      }
+    }
+    return null;
+  }
+
+  /** Render the detail screen for the current hash. An invalid route goes home
+   * rather than showing an empty shell. */
+  function renderDetail() {
+    var route = parseTokenRoute(root.location && root.location.hash);
+    var screen = document.querySelector('[data-screen="detail"]');
+    if (!route) {
+      go("home");
+      return null;
+    }
+    var holding = holdingFor(route.chainId, route.asset);
+    var meta = metaFor(route.chainId, route.asset);
+    var symbol = (holding && holding.symbol) || (meta && meta.symbol) || shortAddress(route.asset, 6, 4);
+    var name = (meta && meta.name) || (holding && holding.symbol) || "Token";
+    var chainName = (root.tkrWalletData && root.tkrWalletData.chainName(route.chainId)) || "chain " + route.chainId;
+
+    setText(el("detail-heading"), symbol);
+    setText(el("detail-name"), name);
+    setText(el("detail-chain"), chainName);
+    var badge = el("detail-badge");
+    if (badge) {
+      badge.style.backgroundColor = (holding && holding.color) || (root.tkrWalletData && root.tkrWalletData.colorFor(symbol)) || "#cfc8b8";
+      setText(badge, String(symbol).slice(0, 3));
+    }
+
+    // Amount: unknown stays an em dash. "Not held" is only claimed when every
+    // chain was actually read.
+    var read = uiData.lastBalances;
+    if (holding && holding.state === "ok") {
+      setText(el("detail-amount"), formatAmount(holding.amount));
+      setText(el("detail-fiat"), formatFiat(fiatFor(holding, uiData.lastPrices), state.currency));
+    } else {
+      setText(el("detail-amount"), "\u2014");
+      setText(el("detail-fiat"), "\u2014");
+    }
+    var note;
+    if (!holding) {
+      if (!session.address) {
+        note = "Unlock your wallet to see whether you hold this token.";
+      } else if (!read) {
+        note = "Balances have not been read yet.";
+      } else if (read.state === "ok") {
+        note = "Not held in this wallet, according to the last complete read.";
+      } else {
+        note = "This wallet's balances are not fully known right now, so this token may or may not be held.";
+      }
+    } else if (holding.state !== "ok") {
+      note = "The balance for this token could not be read.";
+    } else {
+      note = "Your keys stay on this device.";
+    }
+    setText(el("detail-note"), note);
+
+    // Contract row: the native gas token has no contract.
+    var row = el("detail-contract-row");
+    var copy = el("detail-copy");
+    if (route.asset) {
+      if (row) {
+        row.removeAttribute("hidden");
+      }
+      if (copy) {
+        copy.removeAttribute("hidden");
+      }
+      setText(el("detail-contract"), route.asset);
+    } else {
+      if (row) {
+        row.setAttribute("hidden", "");
+      }
+      if (copy) {
+        // Nothing to copy for ETH/SOL: hide the button rather than let it fail.
+        copy.setAttribute("hidden", "");
+      }
+    }
+    return { symbol: symbol, chainId: route.chainId, asset: route.asset };
+  }
+
+  function copyDetailContract() {
+    var route = parseTokenRoute(root.location && root.location.hash);
+    var text = route && route.asset ? route.asset : "";
+    if (!text) {
+      setWalletStatus("The native gas token has no contract address to copy.");
+      return;
+    }
+    try {
+      if (root.navigator && root.navigator.clipboard && root.navigator.clipboard.writeText) {
+        root.navigator.clipboard.writeText(text);
+        setWalletStatus("Contract address copied.");
+        return;
+      }
+    } catch (e) {
+      /* fall through to the honest message */
+    }
+    setWalletStatus("Copy is unavailable in this browser. The address is shown above.");
   }
 
   /* ---- wallet gate: unlock with password, or import a recovery phrase ----- */
@@ -549,9 +930,11 @@
     var w = c.importMnemonic(phrase);
     session.address = w.evmAddress;
     session.locked = false;
+    uiData.lastBalances = null; // never show a previous wallet's read
+    uiData.lastChecked = null;
     setAccount(w.evmAddress);
     setWalletStatus("Wallet " + w.evmAddress + " unlocked. Reading balances\u2026");
-    setWalletValue(null, state.currency, "Balances for this account arrive with the wallet edge.");
+    setWalletValue(null, state.currency, "Reading balances from the wallet edge\u2026");
     // Repaint the list so the empty state reflects the now-unlocked wallet
     // instead of the boot-time "No wallet yet" card, then pull real balances.
     renderTokens(null);
@@ -643,6 +1026,8 @@
     session.locked = session.locked || wasUnlocked;
     uiData.lastHoldings = null;
     uiData.lastPrices = null;
+    uiData.lastBalances = null;
+    uiData.lastChecked = null;
     closeGate();
     setAccount(null, "Locked");
     setWalletStatus(
@@ -832,6 +1217,59 @@
       });
     }
 
+    /* Retry: the balance read is no longer a single shot. If it failed or came
+     * back partial, the user can ask again instead of reloading the page. */
+    var retry = el("balances-retry");
+    if (retry) {
+      retry.addEventListener("click", function () {
+        refreshBalances();
+      });
+    }
+
+    /* Add token by address: the built-in catalogue is fixed, so this is how a
+     * holding outside it becomes visible. */
+    var addBtn = el("add-token-btn");
+    if (addBtn) {
+      addBtn.addEventListener("click", function () {
+        var form = el("add-token-form");
+        if (!form) {
+          return;
+        }
+        if (form.hasAttribute("hidden")) {
+          form.removeAttribute("hidden");
+          showAddTokenError(null);
+          var address = el("add-token-address");
+          if (address) {
+            address.focus();
+          }
+        } else {
+          form.setAttribute("hidden", "");
+        }
+      });
+    }
+    var addForm = el("add-token-form");
+    if (addForm) {
+      addForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var sel = el("add-token-chain");
+        var input = el("add-token-address");
+        addToken(sel ? sel.value : 1, input ? input.value : "");
+      });
+    }
+
+    var detailBack = el("detail-back");
+    if (detailBack) {
+      detailBack.addEventListener("click", function () {
+        go("home");
+      });
+    }
+    var detailCopy = el("detail-copy");
+    if (detailCopy) {
+      detailCopy.addEventListener("click", copyDetailContract);
+    }
+
+    setText(el("holdings-scope"), holdingsScopeText());
+
     if (root.addEventListener) {
       root.addEventListener("hashchange", function () {
         showScreen(parseRoute(root.location.hash));
@@ -939,6 +1377,7 @@
   var api = {
     SCREENS: SCREENS,
     parseRoute: parseRoute,
+    parseTokenRoute: parseTokenRoute,
     parseCurrency: parseCurrency,
     parseAutolockMinutes: parseAutolockMinutes,
     AUTOLOCK_OPTIONS: AUTOLOCK_OPTIONS,
@@ -948,6 +1387,7 @@
     formatAmount: formatAmount,
     showScreen: showScreen,
     go: go,
+    goToken: goToken,
     setAccount: setAccount,
     setStatus: setStatus,
     setWalletStatus: setWalletStatus,
@@ -957,7 +1397,11 @@
     searchResults: searchResults,
     maybePreview: maybePreview,
     renderAll: renderAll,
+    renderDetail: renderDetail,
     refreshBalances: refreshBalances,
+    readStoredTokens: readStoredTokens,
+    addToken: addToken,
+    holdingsScopeText: holdingsScopeText,
     openGate: openGate,
     closeGate: closeGate,
     showGateForm: showGateForm,

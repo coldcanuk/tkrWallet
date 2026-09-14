@@ -182,14 +182,18 @@ exposes no balance RPC either**, so the v1 wallet called
 `https://api.mainnet-beta.solana.com` directly — a third-party RPC. Under the
 §0 rule that is not acceptable.
 
-**`GET /api/wallet/balances?address=<0x…>&chains=1,8453`** (implemented client-side
-by `wallet.js#getBalances`; the dev edge ships a working implementation in
-`tools/dev-edge.js`)
+**`GET /api/wallet/balances?address=<0x…>&chains=1,8453[&tokens=1:0x…,8453:0x…]`**
+(implemented client-side by `wallet.js#getBalances`; the dev edge ships a working
+implementation in `tools/dev-edge.js`)
 
 ```json
 { "balances": [
     { "chain_id": 1, "symbol": "ETH",  "address": null,                 "amount": "1.25",  "decimals": 18 },
     { "chain_id": 8453, "symbol": "USDC", "address": "0x8335…2913", "amount": "42.5", "decimals": 6 }
+  ],
+  "chains": [
+    { "chain_id": 1,    "state": "ok" },
+    { "chain_id": 8453, "state": "unknown", "error": "rpc timeout" }
   ],
   "as_of": 1737000000 }
 ```
@@ -197,10 +201,35 @@ by `wallet.js#getBalances`; the dev edge ships a working implementation in
 - `address` is the EIP-55 owner; `chains` is a comma list of numeric chain ids
   (cap 8 per request, `400` beyond). Native gas tokens use `address: null`.
 - `amount` is an exact **decimal string** — never a float — the client converts.
-- **Zero balances are omitted**, not returned as `0.0`: an empty `balances`
-  array is "you hold none of the catalogued tokens", never "we did not check".
-  A chain read that fails omits that asset; the client renders what it got.
+- `tokens` is optional: extra `chain:address` pairs the user added by hand. They
+  are read in addition to the built-in catalogue. Each address must match
+  `0x` + 40 hex; anything else is ignored, never fatal.
+- **`chains` is required, and reports the read outcome for every requested
+  chain** — `"ok"` or `"unknown"`, with an optional `error` string. This is the
+  field that lets the client honour `unknown ≠ zero`.
+- **Zero balances are omitted**, not returned as `0.0`. An empty `balances`
+  array means *"you hold none of the catalogued tokens"* **only when every entry
+  in `chains` is `"ok"`.** A chain read that fails must be marked `"unknown"` in
+  `chains`; the client then renders the failure and must not claim the wallet is
+  empty.
+- **If no requested chain could be read, the response is `502`**, not a `200`
+  with an empty array. Success-with-nothing for a total read failure is
+  indistinguishable from a genuinely empty wallet — a lie the wallet would then
+  repeat to the user.
 - Public (no auth): balance data is what a chain explorer already exposes.
+
+**`GET /api/wallet/token?chain=<id>&address=<0x…>`** — metadata for an arbitrary
+token the client learned about by address. This is the "optional companion" of
+§3.5 promoted to the contract that the *Add token by address* flow relies on.
+
+```json
+→ 200 { "token": { "chain_id": 8453, "address": "0x8335…2913",
+                   "symbol": "USDC", "name": "USD Coin", "decimals": 6 } }
+```
+
+- `400` for a malformed address; `404` when the address answers no
+  `symbol()`/`decimals()` (it is not an ERC-20). The client shows the reason
+  rather than inventing metadata.
 
 Solana reads still need one of:
 - **`GET /api/wallet/solana/tokens?address=<pubkey>`** →
@@ -287,7 +316,7 @@ proxy token metadata for anything the client already knows by address.
 for an arbitrary address, so the client can label a token it learned about from
 a transaction instead of shipping a hardcoded table.
 
-### 3.5 Discover — optional
+### 3.6 Discover — optional
 
 If we keep a Discover section (index cards, scoreboard, launches), it needs a
 small tier-filtered read. Anonymous callers must get the public tier only. This
