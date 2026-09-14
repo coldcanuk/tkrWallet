@@ -282,8 +282,16 @@ test("service worker refuses cross-origin and non-GET requests", function () {
 
 test("service worker is network-first for the shell", function () {
   const sw = readFile("sw.js");
-  assert.ok(sw.indexOf("fetch(event.request)") !== -1, "missing network fetch");
+  assert.ok(sw.indexOf("fetch(event.request") !== -1, "missing network fetch");
   assert.ok(sw.indexOf("caches.match(event.request)") !== -1, "missing cache fallback");
+});
+
+test("service worker bypasses the HTTP cache and sweeps legacy caches", function () {
+  const sw = readFile("sw.js");
+  assert.ok(sw.indexOf('cache: "no-store"') !== -1, "must bypass the HTTP cache");
+  // Full sweep on activate (no `filter(k !== CACHE)`): purges cache-first
+  // leftovers from older workers in one activation.
+  assert.ok(sw.indexOf("keys.map((k) => caches.delete(k))") !== -1, "activate must delete every cache");
 });
 
 test("shell loads the data layer before the shell controller", function () {
