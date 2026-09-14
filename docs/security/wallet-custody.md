@@ -62,10 +62,10 @@ at rest (IndexedDB):
   EIP-1193 connect, and no MetaMask/Uniswap/Brave integration. The only way in
   is importing a recovery phrase or unlocking the local vault with a password.
 - An unlocked wallet's balances come from the wallet edge
-  (`GET /api/wallet/balances`, `GET /api/wallet/prices` — see
-  `docs/specs/edge-server.md`). The production edge is not deployed yet; the
-  local dev edge (`npm run dev`) implements the same contract from one origin,
-  so the single-origin CSP still holds.
+  (`GET /api/wallet/balances`, `GET /api/wallet/prices`, `GET /api/wallet/token` —
+  see `docs/specs/edge-server.md`). Production is `https://tkrwallet.scratchpost.ai`
+  (same origin as the PWA). `npm run dev` is a local stand-in of that contract,
+  not a second allowed host. Current posture: [`2026-09-14-security-audit.md`](./2026-09-14-security-audit.md).
 - EVM signing is implemented and vector-verified. Solana signing is **not**
   implemented (only the address is derived); that is a separate ed25519
   transaction-builder task, deliberately deferred.

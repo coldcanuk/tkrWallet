@@ -1,5 +1,7 @@
 # tkrWallet — Security Audit
 
+> **Superseded for current-tree claims.** Use [`2026-09-14-security-audit.md`](./2026-09-14-security-audit.md). This file audited `feat/scratchpost-wallet` @ `24c9a87`.
+
 **Scope:** the wallet client at `feat/scratchpost-wallet` @ `24c9a87`, and the
 nginx router templates at `blockchain-infrastructure@0207ff8`
 (`the backend host/nginx/`, `the chain host/nginx/`).
