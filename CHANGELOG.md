@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 — self-custody import / unlock + local signing
+
+- Import a BIP-39 recovery phrase or unlock a local wallet with a password; the
+  phrase is encrypted (PBKDF2-SHA256 600k → AES-GCM) and stored on-device only.
+- Derives Ethereum and Solana addresses; signs EIP-191 messages and legacy
+  EIP-155 transactions locally with audited @noble/@scure primitives.
+- vendor/noble.js committed unminified + reproducible (check:crypto).
+- Locked by the canonical BIP-39 vector; 55 tests, 0 failures.
+- Docs: docs/security/wallet-custody.md.
+
 ## 0.4.0 — Scratchpost repurpose, hardening, data layer
 
 Divorce from tkrShell (v1) complete; the wallet is now built for the Scratchpost

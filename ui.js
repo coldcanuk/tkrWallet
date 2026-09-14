@@ -229,18 +229,17 @@
         var node = tplEmpty.content.firstElementChild.cloneNode(true);
         var cta = node.querySelector("[data-connect]");
         if (cta) {
-          cta.addEventListener("click", connectWallet);
+          cta.addEventListener("click", function () {
+            openGate();
+          });
         }
         // The extension popup is its own security context: no other wallet can
-        // inject a provider into it, so say what actually works there.
+        // inject a provider into it, so import/unlock is the honest path there.
         if (isExtension()) {
           setText(
             node.querySelector("[data-empty-body]"),
-            "An extension popup cannot see your wallet \u2014 other extensions cannot inject into it. Open tkrwallet.scratchpost.ai in a browser tab to connect."
+            "Import a wallet with a recovery phrase, or unlock the one already on this device."
           );
-          if (cta) {
-            cta.textContent = "How to connect";
-          }
         }
         box.appendChild(node);
       }
@@ -418,6 +417,172 @@
     return String((root.location && root.location.protocol) || "").indexOf("chrome-extension") === 0;
   }
 
+  /* ---- wallet gate: unlock with password, or import a recovery phrase ----- */
+
+  var session = { vault: null, address: null };
+
+  function crypto() {
+    return root.tkrCrypto || null;
+  }
+  function store() {
+    return root.tkrStore || null;
+  }
+
+  function showGateForm(mode) {
+    var unlock = el("gate-unlock");
+    var importForm = el("gate-import");
+    var toggle = el("gate-toggle");
+    var importing = mode === "import";
+    if (unlock) {
+      unlock.hidden = importing;
+    }
+    if (importForm) {
+      importForm.hidden = !importing;
+    }
+    setText(el("gate-title"), importing ? "Import wallet" : "Unlock wallet");
+    if (toggle) {
+      toggle.textContent = importing ? "Unlock with password instead" : "Use a recovery phrase instead";
+    }
+  }
+
+  function showGateError(id, message) {
+    var node = el(id);
+    if (!node) {
+      return;
+    }
+    if (message) {
+      setText(node, message);
+      node.removeAttribute("hidden");
+    } else {
+      node.setAttribute("hidden", "");
+    }
+  }
+
+  function openGate(mode) {
+    var gate = el("wallet-gate");
+    if (!gate) {
+      return;
+    }
+    gate.removeAttribute("hidden");
+    showGateError("gate-error", null);
+    showGateError("gate-import-error", null);
+    if (mode === "unlock" || mode === "import") {
+      showGateForm(mode);
+      return;
+    }
+    // Auto-detect: unlock if a vault exists, else import.
+    var s = store();
+    if (!s) {
+      showGateForm("import");
+      return;
+    }
+    s.loadVault()
+      .then(function (vault) {
+        showGateForm(vault ? "unlock" : "import");
+      })
+      .catch(function () {
+        showGateForm("import");
+      });
+  }
+
+  function closeGate() {
+    var gate = el("wallet-gate");
+    if (gate) {
+      gate.setAttribute("hidden", "");
+    }
+    var pw = el("gate-password");
+    var np = el("gate-new-password");
+    var mn = el("gate-mnemonic");
+    if (pw) {
+      pw.value = "";
+    }
+    if (np) {
+      np.value = "";
+    }
+    if (mn) {
+      mn.value = "";
+    }
+  }
+
+  /* Derive + reveal the account. The plaintext phrase exists only for the
+   * duration of this function; it is never stored outside the vault. */
+  function revealAccount(phrase) {
+    var c = crypto();
+    var w = c.importMnemonic(phrase);
+    session.address = w.evmAddress;
+    setAccount(w.evmAddress);
+    setWalletStatus("Imported " + w.evmAddress + ". Balances for this account need the wallet edge \u2014 not built yet.");
+    setWalletValue(null, state.currency, "Balances for this account arrive with the wallet edge.");
+    return w;
+  }
+
+  function onUnlock() {
+    var password = (el("gate-password") || {}).value || "";
+    if (!password) {
+      showGateError("gate-error", "Enter your password.");
+      return;
+    }
+    var s = store();
+    var c = crypto();
+    if (!s || !c) {
+      showGateError("gate-error", "Wallet storage unavailable in this browser.");
+      return;
+    }
+    s.loadVault()
+      .then(function (vault) {
+        if (!vault) {
+          showGateForm("import");
+          throw new Error("no vault");
+        }
+        return c.decryptVault(vault, password);
+      })
+      .then(function (phrase) {
+        session.vault = null;
+        revealAccount(phrase);
+        closeGate();
+      })
+      .catch(function (err) {
+        if (err && err.message === "wrong-password") {
+          showGateError("gate-error", "Wrong password.");
+        } else if (err && err.message !== "no vault") {
+          showGateError("gate-error", "Could not unlock this wallet.");
+        }
+      });
+  }
+
+  function onImport() {
+    var phrase = ((el("gate-mnemonic") || {}).value || "").trim();
+    var password = (el("gate-new-password") || {}).value || "";
+    if (password.length < 8) {
+      showGateError("gate-import-error", "Use at least 8 characters.");
+      return;
+    }
+    var c = crypto();
+    var s = store();
+    if (!c || !s) {
+      showGateError("gate-import-error", "Wallet storage unavailable in this browser.");
+      return;
+    }
+    var wallet;
+    try {
+      wallet = c.importMnemonic(phrase); // throws invalid-mnemonic
+    } catch (e) {
+      showGateError("gate-import-error", "That phrase is not a valid recovery phrase.");
+      return;
+    }
+    c.encryptVault(phrase, password)
+      .then(function (vault) {
+        return s.saveVault(vault);
+      })
+      .then(function () {
+        revealAccount(phrase);
+        closeGate();
+      })
+      .catch(function () {
+        showGateError("gate-import-error", "Could not store the wallet on this device.");
+      });
+  }
+
   var state = {
     screen: DEFAULT_SCREEN,
     currency: "usd",
@@ -443,7 +608,29 @@
     var accountBtn = el("account-btn");
     if (accountBtn) {
       accountBtn.addEventListener("click", function () {
-        connectWallet();
+        openGate();
+      });
+    }
+
+    var unlockForm = el("gate-unlock");
+    if (unlockForm) {
+      unlockForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        onUnlock();
+      });
+    }
+    var importForm = el("gate-import");
+    if (importForm) {
+      importForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        onImport();
+      });
+    }
+    var toggle = el("gate-toggle");
+    if (toggle) {
+      toggle.addEventListener("click", function () {
+        var importing = importForm && !importForm.hidden;
+        showGateForm(importing ? "unlock" : "import");
       });
     }
 
@@ -496,6 +683,20 @@
     if (!uiData.lastHoldings) {
       renderTokens(null); // the one shared empty-state design
       searchResults("");
+    }
+    // If a wallet is already on this device, prompt for the password on boot —
+    // but not in preview mode, which is for looking at the design.
+    if (!uiData.lastHoldings && store()) {
+      store()
+        .loadVault()
+        .then(function (vault) {
+          if (vault) {
+            openGate("unlock");
+          }
+        })
+        .catch(function () {
+          /* storage unavailable — stay on the empty state */
+        });
     }
   }
 
@@ -557,6 +758,10 @@
     searchResults: searchResults,
     maybePreview: maybePreview,
     renderAll: renderAll,
+    openGate: openGate,
+    closeGate: closeGate,
+    showGateForm: showGateForm,
+    session: session,
     uiData: uiData,
     bind: bind,
     state: state,
