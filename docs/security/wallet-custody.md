@@ -1,8 +1,9 @@
 # Wallet custody — security posture
 
 The wallet import/unlock feature changes one thing about the security model:
-tkrWallet is now a **key holder**, not just a provider reader. This file records
-the new invariants so the change is deliberate, not accidental.
+tkrWallet is a **key holder** — a pure self-custody wallet, not a reader of any
+injected provider. This file records the new invariants so the change is
+deliberate, not accidental.
 
 ## The model
 
@@ -51,9 +52,11 @@ at rest (IndexedDB):
 
 ## Threat-model notes
 
-- The imported wallet's balances cannot be read from an injected provider (that
-  key is not in the provider). Displaying balances for an imported account
-  requires the wallet edge, which does not exist yet — the UI says so honestly.
+- The wallet has no injected-provider path: there is no `window.ethereum`, no
+  EIP-1193 connect, and no MetaMask/Uniswap/Brave integration. The only way in
+  is importing a recovery phrase or unlocking the local vault with a password.
+- An unlocked wallet's balances require the wallet edge, which does not exist
+  yet — the UI says so honestly rather than pretending to read them.
 - EVM signing is implemented and vector-verified. Solana signing is **not**
   implemented (only the address is derived); that is a separate ed25519
   transaction-builder task, deliberately deferred.

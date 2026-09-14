@@ -27,8 +27,9 @@ brain, not a public RPC. This is enforced, not promised:
 - `host_permissions` grants exactly `https://tkrwallet.scratchpost.ai/*`, and a
   test greps every shipped file and fails on any other origin.
 
-EVM balances are read from the user's own injected provider (MetaMask, Brave,
-…). The wallet never contacts a chain node itself.
+EVM balances for an unlocked wallet arrive from the wallet edge — they are not
+read from any injected provider, and the wallet never contacts a chain node
+itself.
 
 ## What works today
 
@@ -40,8 +41,10 @@ EVM balances are read from the user's own injected provider (MetaMask, Brave,
   Derives the Ethereum (`m/44'/60'/0'/0/0`) and Solana (`m/44'/501'/0'/0'`)
   addresses, and signs EIP-191 messages and legacy EIP-155 transactions locally
   with audited `@noble`/`@scure` primitives — never a server.
-- Wallet connect via EIP-1193: native + ERC-20 balances for Ethereum, Base and
-  Robinhood, with honest failure states — a failed RPC renders `—`, never `0`.
+- Wallet balances arrive from the wallet edge (not built yet): an imported or
+  unlocked wallet shows its address, and the balance/value card says so honestly
+  rather than pretending. There is no injected-provider (MetaMask/Brave/Uniswap)
+  connect path — the wallet is pure self-custody.
 - Service worker: network-first shell, offline fallback, same-origin only.
 - Honest placeholders: Swap is under construction (no router exists in this
   stack yet), Activity is device-local (the chain nodes are pruned).

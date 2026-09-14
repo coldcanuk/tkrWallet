@@ -11,8 +11,8 @@ index.html          markup only. Templates + static structure. CSP meta tag.
 ui.js               shell controller. Routing, currency, render primitives,
                     account chip, status announcements. NO network calls —
                     asserted by test.
-wallet.js           data layer. THE ONLY network caller. Provider reads
-                    (EIP-1193) + edge fetch. Single origin constant.
+wallet.js           data layer. THE ONLY network caller. Edge fetch only.
+                    Single origin constant.
 sw.js               service worker. Network-first for the shell, cache
                     fallback, same-origin GET only, lifecycle correct.
 app.css             committed Tailwind build (tools/src/app.css).
@@ -54,13 +54,13 @@ icons/              shape-only SVG source + PNG 16/32/48/128.
 
 | id | Name | Native | Queried via | Status |
 |---|---|---|---|---|
-| 1 | Ethereum | ETH | injected provider | active |
-| 8453 | Base | ETH | injected provider | active |
-| 4663 | Robinhood | ETH | injected provider | active |
+| 1 | Ethereum | ETH | wallet edge | active |
+| 8453 | Base | ETH | wallet edge | active |
+| 4663 | Robinhood | ETH | wallet edge | active |
 | 900001 | Solana | SOL | — | **catalogued-not-queried** (D10: no balance RPC; edge reads pending) |
 
-Unsupported EVM chains degrade to native-only, never to another chain's token
-addresses (audit F2).
+Balances for an unlocked wallet arrive from the wallet edge, never from an
+injected provider. There is no EIP-1193 connect path.
 
 ## Invariants → tests
 
@@ -74,4 +74,4 @@ addresses (audit F2).
 | shell has no network | `ui.js` free of fetch/XHR/WS/EventSource |
 | no markup sinks | `ui.js` free of innerHTML family + eval |
 | SW lifecycle | `sw.js` contains skipWaiting/clients.claim/activate + origin check |
-| unknown ≠ zero | wallet.js unit tests with a failing fake provider |
+| unknown ≠ zero | wallet.js unit tests: absent/omitted prices and unknown states stay `—`, never `0` |
