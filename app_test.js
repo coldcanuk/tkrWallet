@@ -12,6 +12,21 @@ const path = require("path");
 const ROOT = __dirname;
 const ALLOWED_ORIGIN = "https://tkrwallet.scratchpost.ai";
 const SHIPPED = ["index.html", "ui.js", "wallet.js", "crypto.js", "store.js", "sw.js", "manifest.json", "manifest.webmanifest", "README.md"];
+/* Browser-loaded artifacts only. README/CHANGELOG/deploy/tools are not this list. */
+const CLIENT_SHIPPED = [
+  "index.html",
+  "ui.js",
+  "wallet.js",
+  "crypto.js",
+  "store.js",
+  "sw.js",
+  "manifest.json",
+  "manifest.webmanifest",
+];
+const RFC1918 =
+  /\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b/;
+const DOT_LOCAL = /\b[a-z0-9-]+\.local\b/i;
+const INTERNAL_HOST = /\b(?:eva|caesar|icehut|athena|kiff|rathole)\b/i;
 
 let failures = [];
 let count = 0;
@@ -260,6 +275,28 @@ test("shipped files reference only the wallet origin", function () {
       assert.strictEqual(m[0], ALLOWED_ORIGIN, file + " references a foreign origin: " + m[0]);
     }
   });
+});
+
+test("shipped client files contain no lab IPs, internal hostnames, or extra origins", function () {
+  const urlRe = /https?:\/\/[a-zA-Z0-9._-]+/g;
+  CLIENT_SHIPPED.forEach(function (file) {
+    const src = readFile(file);
+    assert.ok(src.length > 0, file + " must exist and be readable");
+    const ip = src.match(RFC1918);
+    assert.strictEqual(ip, null, file + " contains a private IPv4: " + (ip && ip[0]));
+    const local = src.match(DOT_LOCAL);
+    assert.strictEqual(local, null, file + " contains a .local hostname: " + (local && local[0]));
+    const internal = src.match(INTERNAL_HOST);
+    assert.strictEqual(internal, null, file + " names an internal host: " + (internal && internal[0]));
+    let m;
+    urlRe.lastIndex = 0;
+    while ((m = urlRe.exec(src)) !== null) {
+      assert.strictEqual(m[0], ALLOWED_ORIGIN, file + " references a foreign origin: " + m[0]);
+    }
+  });
+  assert.ok(readFile("wallet.js").indexOf("/api/wallet/balances") !== -1);
+  assert.ok(readFile("wallet.js").indexOf("/api/wallet/prices") !== -1);
+  assert.ok(readFile("wallet.js").indexOf("/api/wallet/token") !== -1);
 });
 
 /* ── manifest.json: the extension ───────────────────────────────────────── */
