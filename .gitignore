@@ -23,3 +23,4 @@ catalyst-ui-kit/
 # CRX signing key (private). Never commit; the public half lives in manifest.json.
 key.pem
 .extension-id
+.ui-shots/

@@ -168,8 +168,8 @@
     setText(el("account-label"), connected ? shortAddress(address) : label || "Not connected");
     setText(el("account-status"), connected ? "Connected " + String(address) : "Not connected");
     if (dot) {
-      dot.classList.toggle("bg-up-400", connected);
-      dot.classList.toggle("bg-cream-500", !connected);
+      dot.classList.remove("bg-up-400", "bg-cream-500", "bg-ember-400");
+      dot.classList.add(connected ? "bg-up-400" : "bg-cream-500");
     }
   }
 
@@ -184,9 +184,19 @@
   }
 
   function setWalletValue(value, currency, note) {
-    setText(el("wallet-value"), formatFiat(value, currency || state.currency));
+    var box = el("wallet-value");
+    var unknown = value === null || value === undefined || value === "" || isNaN(Number(value));
+    setText(box, formatFiat(value, currency || state.currency));
+    if (box) {
+      // A placeholder must never carry hero weight (data-empty styling).
+      if (unknown) {
+        box.setAttribute("data-empty", "");
+      } else {
+        box.removeAttribute("data-empty");
+      }
+    }
     if (note !== undefined) {
-      setText(el("wallet-value-note"), note);
+      setText(el("wallet-value-note"), note || "");
     }
   }
 
@@ -214,15 +224,23 @@
     }
     box.textContent = "";
     if (!holdings || !holdings.length) {
-      var empty = document.createElement("p");
-      empty.className = "px-4 py-6 text-center text-sm text-cream-500";
-      empty.textContent = "No tokens yet. Connect a wallet to list them.";
-      box.appendChild(empty);
+      var tplEmpty = el("tpl-token-empty");
+      if (tplEmpty) {
+        var node = tplEmpty.content.firstElementChild.cloneNode(true);
+        var cta = node.querySelector("[data-connect]");
+        if (cta) {
+          cta.addEventListener("click", connectWallet);
+        }
+        box.appendChild(node);
+      }
       return [];
     }
     holdings.forEach(function (holding) {
       var row = tpl.content.firstElementChild.cloneNode(true);
       var badge = row.querySelector("[data-token-badge]");
+      row.addEventListener("click", function () {
+        setWalletStatus("Token details are not built yet.");
+      });
       setText(row.querySelector("[data-token-name]"), holding.symbol || "?");
       setText(row.querySelector("[data-token-chain]"), holding.chain_name || "");
       setText(
@@ -261,7 +279,7 @@
     var est = wallet.estimateValue(holdings, uiData.lastPrices, state.currency);
     if (est.state === "ok") {
       var note = est.priced < est.total ? est.priced + " of " + est.total + " holdings priced" : "";
-      setWalletValue(est.value, state.currency, note || undefined);
+      setWalletValue(est.value, state.currency, note);
     } else {
       setWalletValue(null, state.currency, "Prices unavailable until the wallet edge ships.");
     }
@@ -296,6 +314,11 @@
       return Promise.resolve(null);
     }
     setStatus("Requesting wallet connection\u2026");
+    var dot = el("account-dot");
+    if (dot) {
+      dot.classList.remove("bg-cream-500", "bg-up-400");
+      dot.classList.add("bg-ember-400");
+    }
     return wallet
       .connect()
       .then(function (account) {
@@ -388,6 +411,37 @@
     state.currency = readStoredCurrency();
     renderCurrency();
     showScreen(parseRoute(root.location && root.location.hash));
+    maybePreview();
+    if (!uiData.lastHoldings) {
+      renderTokens(null); // the one shared empty-state design
+    }
+  }
+
+  /* Preview mode: opt-in via ?preview=1, clearly labelled, sample data only.
+   * Never triggered in normal use; production paths never read it. */
+  function maybePreview() {
+    var wallet = root.tkrWalletData;
+    var q = (root.location && root.location.search) || "";
+    if (!wallet || !/(^|[?&])preview=1([&#]|$)/.test(q)) {
+      return false;
+    }
+    uiData.lastHoldings = wallet.PREVIEW_HOLDINGS;
+    uiData.lastPrices = wallet.PREVIEW_PRICES;
+    var pill = el("preview-pill");
+    if (pill) {
+      pill.removeAttribute("hidden");
+    }
+    // The header must agree with the body: this is a preview, not a connection.
+    setText(el("account-label"), "Preview");
+    var dot = el("account-dot");
+    if (dot) {
+      dot.classList.remove("bg-cream-500", "bg-up-400");
+      dot.classList.add("bg-ember-400");
+    }
+    setText(el("account-status"), "Preview mode: sample data. Nothing is real.");
+    renderAll();
+    setWalletStatus("Preview mode: sample holdings shown for design review. Nothing is real.");
+    return true;
   }
 
   function registerServiceWorker() {
@@ -418,6 +472,7 @@
     setCurrency: setCurrency,
     renderTokens: renderTokens,
     connectWallet: connectWallet,
+    maybePreview: maybePreview,
     renderAll: renderAll,
     uiData: uiData,
     bind: bind,

@@ -48,10 +48,29 @@
     WETH: "#a8a29e",
     USDC: "#4d9de0",
     USDT: "#26a17b",
-    SOL: "#8a5cf6",
+    SOL: "#e8a33d",
   };
 
   var BALANCE_SELECTOR = "0x70a08231";
+
+  /* Preview mode (?preview=1): the operator's mockup numbers, clearly labelled
+   * in the UI. Never used unless the query flag is present; production paths
+   * never read these. */
+  var PREVIEW_HOLDINGS = [
+    row("SOL", 900001, 0.12345, null, 9),
+    row("ETH", 1, 0.12345, null, 18),
+    row("ETH", 8453, 0.34567, null, 18),
+    row("ETH", 4663, 0.45678, null, 18),
+  ];
+  var PREVIEW_PRICES = {
+    state: "ok",
+    prices: {
+      "900001:native": { usd: 145.2, cad: 199.65 },
+      "1:native": { usd: 3120.55, cad: 4291.2 },
+      "8453:native": { usd: 3120.55, cad: 4291.2 },
+      "4663:native": { usd: 0.42, cad: 0.58 },
+    },
+  };
 
   function padAddress(addr) {
     var hex = String(addr || "").toLowerCase().replace(/^0x/, "");
@@ -242,6 +261,8 @@
     listHoldings: listHoldings,
     getPrices: getPrices,
     estimateValue: estimateValue,
+    PREVIEW_HOLDINGS: PREVIEW_HOLDINGS,
+    PREVIEW_PRICES: PREVIEW_PRICES,
   };
 
   if (typeof module === "object" && module.exports) {

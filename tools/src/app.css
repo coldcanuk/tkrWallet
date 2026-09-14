@@ -49,15 +49,22 @@
 
   /* ---- Shape */
   --radius-card: 1.25rem;
+
+  /* ---- Elevation. Dark mode has no cheap light, so depth comes from a hairline
+   * highlight on top and a soft drop behind. */
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 32px -20px rgba(0, 0, 0, 0.9);
+  --shadow-tile: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px -16px rgba(0, 0, 0, 0.85);
 }
 
 @layer base {
   /* Safe-area insets are plain custom properties, not @theme spacing tokens:
-   * Tailwind tree-shakes unused theme variables, and these are read from JS and
-   * from the shell CSS rather than through a utility class. */
+   * Tailwind tree-shakes unused theme variables, and these are read from shell
+   * CSS classes rather than inline style attributes — inline style="" is
+   * blocked by our own CSP (style-src 'self'). */
   :root {
     --safe-t: env(safe-area-inset-top, 0px);
     --safe-b: env(safe-area-inset-bottom, 0px);
+    color-scheme: dark;
   }
 
   /* 100vh, not 100%: iOS PWA standalone otherwise leaves a chin gap. */
@@ -69,10 +76,32 @@
   body {
     margin: 0;
     background-color: var(--color-ink-950);
+    /* Depth: a faint warm glow at the top of the viewport over the ink base. */
+    background-image: radial-gradient(120% 55% at 50% 0%, #2a231c 0%, #12100e 55%);
+    background-attachment: fixed;
     color: var(--color-cream-100);
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     -webkit-font-smoothing: antialiased;
     overscroll-behavior-y: none;
+  }
+
+  .safe-t {
+    padding-top: var(--safe-t);
+  }
+  .safe-b {
+    padding-bottom: var(--safe-b);
+  }
+
+  /* Bottom-nav active indicator: the dot under the current tab. The markup's
+   * dot span has no colour utility so this base rule owns it. */
+  nav a[aria-current="page"] .nav-dot {
+    background-color: var(--color-ember-400);
+  }
+
+  /* A placeholder balance must never carry hero weight in near-white. */
+  #wallet-value[data-empty] {
+    color: var(--color-cream-500);
+    font-size: 2rem;
   }
 
   /* The wallet shows live numbers; tabular figures stop them jittering. */
