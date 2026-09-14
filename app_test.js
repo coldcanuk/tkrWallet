@@ -1161,4 +1161,18 @@ test("catalogue: a token is never listed on a chain it is not deployed on (the O
   );
 });
 
+test("every element ui.js reaches for actually exists in index.html", function () {
+  // A typo here is invisible in unit tests and shows up as a blank field in the
+  // browser (it shipped once: the detail screen wrote the symbol into an id that
+  // did not exist, so the heading rendered empty).
+  const ui = readFile("ui.js");
+  const html = readFile("index.html");
+  const ids = Array.from(new Set(Array.from(ui.matchAll(/\bel\("([^"]+)"\)/g)).map(function (m) { return m[1]; })));
+  assert.ok(ids.length > 20, "expected the shell to reach for many ids, found " + ids.length);
+  const missing = ids.filter(function (id) {
+    return html.indexOf('id="' + id + '"') === -1;
+  });
+  assert.deepStrictEqual(missing, [], "ui.js references ids that index.html does not define");
+});
+
 run();

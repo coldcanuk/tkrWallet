@@ -655,6 +655,13 @@
       showAddTokenError("That token is already in your list.");
       return Promise.resolve(null);
     }
+    var builtIn = ((root.tkrWalletData && root.tkrWalletData.TOKENS[chainId]) || []).some(function (t) {
+      return t.address && t.address.toLowerCase() === addr.toLowerCase();
+    });
+    if (builtIn) {
+      showAddTokenError("That token is already built in — it is in the list above.");
+      return Promise.resolve(null);
+    }
     showAddTokenError(null);
     setWalletStatus("Looking up the token at " + shortAddress(addr, 6, 4) + "\u2026");
     return wallet.getTokenMeta(chainId, addr).then(function (res) {
@@ -750,7 +757,7 @@
     var name = (meta && meta.name) || (holding && holding.symbol) || "Token";
     var chainName = (root.tkrWalletData && root.tkrWalletData.chainName(route.chainId)) || "chain " + route.chainId;
 
-    setText(el("detail-symbol"), symbol);
+    setText(el("detail-heading"), symbol);
     setText(el("detail-name"), name);
     setText(el("detail-chain"), chainName);
     var badge = el("detail-badge");
