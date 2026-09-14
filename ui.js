@@ -231,6 +231,17 @@
         if (cta) {
           cta.addEventListener("click", connectWallet);
         }
+        // The extension popup is its own security context: no other wallet can
+        // inject a provider into it, so say what actually works there.
+        if (isExtension()) {
+          setText(
+            node.querySelector("[data-empty-body]"),
+            "An extension popup cannot see your wallet \u2014 other extensions cannot inject into it. Open tkrwallet.scratchpost.ai in a browser tab to connect."
+          );
+          if (cta) {
+            cta.textContent = "How to connect";
+          }
+        }
         box.appendChild(node);
       }
       return [];
@@ -256,6 +267,57 @@
       box.appendChild(row);
     });
     return holdings;
+  }
+
+  /* ---- search ------------------------------------------------------------ */
+
+  /** Filter the built-in catalogue. Offline and synchronous — the catalogue is
+   * already in the client. A chain-wide search needs the edge catalogue. */
+  function searchResults(query) {
+    var box = el("search-results");
+    var tpl = el("tpl-search-row");
+    if (!box) {
+      return [];
+    }
+    box.textContent = "";
+    var q = String(query || "").trim();
+    var rows = q && root.tkrWalletData ? root.tkrWalletData.searchCatalog(q, 20) : [];
+
+    if (!rows.length) {
+      var hint = document.createElement("div");
+      hint.className = "px-4 py-6 text-center";
+      var line = document.createElement("p");
+      line.className = "text-sm text-cream-300";
+      line.textContent = q ? "No match in the built-in catalogue." : "Search the built-in catalogue";
+      var sub = document.createElement("p");
+      sub.className = "mt-1 text-xs text-cream-500";
+      sub.textContent = q
+        ? "Only the tokens this wallet ships with are searchable until the edge catalogue lands."
+        : "Ethereum, Base and Robinhood tokens this wallet knows about. Full chain-wide search needs the wallet edge.";
+      hint.appendChild(line);
+      hint.appendChild(sub);
+      box.appendChild(hint);
+      return [];
+    }
+
+    rows.forEach(function (tok) {
+      var row = tpl.content.firstElementChild.cloneNode(true);
+      var badge = row.querySelector("[data-token-badge]");
+      setText(row.querySelector("[data-token-name]"), tok.symbol);
+      setText(
+        row.querySelector("[data-token-chain]"),
+        tok.address ? tok.chain_name + " \u00b7 " + shortAddress(tok.address, 6, 4) : tok.chain_name + " \u00b7 native"
+      );
+      if (badge) {
+        badge.style.backgroundColor = tok.color || "#cfc8b8";
+        badge.textContent = String(tok.symbol).slice(0, 3);
+      }
+      row.addEventListener("click", function () {
+        setWalletStatus(tok.symbol + " on " + tok.chain_name + " selected. Token detail is not built yet.");
+      });
+      box.appendChild(row);
+    });
+    return rows;
   }
 
   /* ---- wallet wiring: shell talks to the data layer only ------------------ */
@@ -337,11 +399,23 @@
         uiData.account = null;
         uiData.lastHoldings = null;
         uiData.lastPrices = null;
-        setAccount(null, "Install an injected wallet to connect.");
-        setStatus((err && err.message) || "Wallet connect failed.");
+        var raw = (err && err.message) || "";
+        var msg = /provider/i.test(raw)
+          ? "No wallet detected here. Install MetaMask or Brave, then reload \u2014 or open tkrWallet in a browser tab."
+          : raw || "Wallet connect failed.";
+        setAccount(null, isExtension() ? "Open in a browser tab" : "Not connected");
+        setStatus(msg);
         setWalletValue(null, state.currency, "Connect a wallet to see your balance.");
+        renderTokens(null);
         return null;
       });
+  }
+
+  /* Extension popups are their own security context: other wallets cannot
+   * inject a provider into them, so EIP-1193 connect is impossible there. The
+   * extension points at the hosted wallet instead of pretending. */
+  function isExtension() {
+    return String((root.location && root.location.protocol) || "").indexOf("chrome-extension") === 0;
   }
 
   var state = {
@@ -370,6 +444,13 @@
     if (accountBtn) {
       accountBtn.addEventListener("click", function () {
         connectWallet();
+      });
+    }
+
+    var searchInput = el("search-input");
+    if (searchInput) {
+      searchInput.addEventListener("input", function (event) {
+        searchResults(event.currentTarget.value);
       });
     }
 
@@ -414,6 +495,7 @@
     maybePreview();
     if (!uiData.lastHoldings) {
       renderTokens(null); // the one shared empty-state design
+      searchResults("");
     }
   }
 
@@ -472,6 +554,7 @@
     setCurrency: setCurrency,
     renderTokens: renderTokens,
     connectWallet: connectWallet,
+    searchResults: searchResults,
     maybePreview: maybePreview,
     renderAll: renderAll,
     uiData: uiData,

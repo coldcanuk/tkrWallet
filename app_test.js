@@ -482,4 +482,27 @@ test("preview mode ships the mockup numbers and is opt-in only", function () {
   assert.ok(ui.indexOf("preview=1") !== -1, "preview must require the query flag");
 });
 
+test("searchCatalog filters by symbol and address, offline", function () {
+  const wallet = require("./wallet.js");
+  assert.deepStrictEqual(wallet.searchCatalog(""), [], "an empty query returns nothing");
+  const usdc = wallet.searchCatalog("usdc");
+  assert.ok(usdc.length >= 2, "USDC exists on more than one chain");
+  assert.ok(usdc.every((t) => t.symbol === "USDC"), "only USDC matches");
+  const byAddr = wallet.searchCatalog("0x833589fcd6edb6e08f4c7c32d4f71b54bda02913");
+  assert.strictEqual(byAddr.length, 1, "address search finds exactly one token");
+  assert.strictEqual(byAddr[0].chain_id, 8453, "and it is the Base entry");
+  assert.strictEqual(byAddr[0].chain_name, "Base");
+  assert.deepStrictEqual(wallet.searchCatalog("no-such-token"), []);
+  assert.ok(wallet.searchCatalog("eth").length >= 1);
+});
+
+test("search is wired to the input and documented as catalogue-scoped", function () {
+  const ui = readFile("ui.js");
+  assert.ok(ui.indexOf("searchResults") !== -1, "ui.js must implement search");
+  assert.ok(ui.indexOf('el("search-input")') !== -1, "search input must be bound");
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('id="tpl-search-row"') !== -1, "missing search row template");
+  assert.ok(html.indexOf("Type to search the token catalog") === -1, "the placeholder lie must be gone");
+});
+
 run();

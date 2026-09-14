@@ -248,6 +248,40 @@
     return { state: "ok", value: value, priced: priced, total: total };
   }
 
+  /* Search the built-in catalogue for tokens, filtered by symbol or address —
+   * the same matching a server-side catalogue would do, applied to the list we
+   * already hold. Pure and offline: no network call.
+   *
+   * Chain-wide search (every Base/mainnet token, not just this curated set)
+   * needs the edge catalogue endpoint, because "which tokens exist" is an
+   * index question, not a chain-state question. See docs/specs/icehut-edge.md. */
+  function searchCatalog(query, limit) {
+    var q = String(query || "").trim().toLowerCase();
+    if (!q) {
+      return [];
+    }
+    var max = limit || 20;
+    var out = [];
+    Object.keys(TOKENS).forEach(function (chainKey) {
+      var chainId = Number(chainKey);
+      TOKENS[chainKey].forEach(function (tok) {
+        var bySymbol = tok.symbol.toLowerCase().indexOf(q) !== -1;
+        var byAddress = !!tok.address && tok.address.toLowerCase().indexOf(q) !== -1;
+        if (bySymbol || byAddress) {
+          out.push({
+            symbol: tok.symbol,
+            address: tok.address || null,
+            chain_id: chainId,
+            chain_name: chainName(chainId),
+            decimals: tok.decimals || 18,
+            color: colorFor(tok.symbol),
+          });
+        }
+      });
+    });
+    return out.slice(0, max);
+  }
+
   var api = {
     BASE_URL: BASE_URL,
     CHAINS: CHAINS,
@@ -261,6 +295,7 @@
     listHoldings: listHoldings,
     getPrices: getPrices,
     estimateValue: estimateValue,
+    searchCatalog: searchCatalog,
     PREVIEW_HOLDINGS: PREVIEW_HOLDINGS,
     PREVIEW_PRICES: PREVIEW_PRICES,
   };
