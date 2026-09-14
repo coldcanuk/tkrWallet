@@ -62,9 +62,11 @@ function readFile(rel) {
 
 test("ui.js exports the shell API", function () {
   const ui = require("./ui.js");
-  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings"]);
+  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings", "detail"]);
   assert.strictEqual(typeof ui.renderTokens, "function");
   assert.strictEqual(typeof ui.setWalletValue, "function");
+  assert.strictEqual(typeof ui.renderDetail, "function");
+  assert.strictEqual(typeof ui.goToken, "function");
 });
 
 test("route parsing is strict and never throws", function () {
@@ -75,6 +77,21 @@ test("route parsing is strict and never throws", function () {
   assert.strictEqual(ui.parseRoute(null), "home");
   assert.strictEqual(ui.parseRoute("#/ACTIVITY?x=1"), "activity");
   assert.strictEqual(ui.parseRoute("#/settings"), "settings");
+});
+
+test("token routes parse to a detail screen, and malformed ones fall home", function () {
+  const ui = require("./ui.js");
+  assert.strictEqual(ui.parseRoute("#/token/1:native"), "detail");
+  assert.deepStrictEqual(ui.parseTokenRoute("#/token/1:native"), { chainId: 1, asset: null });
+  assert.deepStrictEqual(ui.parseTokenRoute("#/token/8453:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"), {
+    chainId: 8453,
+    asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  });
+  // Half a route is not a route: never render an empty detail shell.
+  ["#/token/1", "#/token/1:", "#/token/abc:native", "#/token/1:0xnope", "#/token/"].forEach(function (h) {
+    assert.strictEqual(ui.parseRoute(h), "home", "must not treat " + h + " as a detail route");
+    assert.strictEqual(ui.parseTokenRoute(h), null);
+  });
 });
 
 test("currency parsing falls back to USD", function () {
@@ -758,37 +775,102 @@ test("gate errors hide via the hidden attribute, never the hidden class", functi
 });
 
 test("an unlocked wallet never shows the boot-time 'No wallet yet' card", function () {
-  // After import/unlock the header shows an address, so the token list must not
-  // contradict it with "No wallet yet" and an Import button. Balances are
-  // genuinely unavailable (no edge yet), and the empty state must say that.
+  // The empty list is now chosen by WHY it is empty: no wallet, locked, a
+  // complete read that found nothing, an incomplete read, or no read at all.
+  // Collapsing any of those into "No balances yet" is the bug this guards.
   const html = readFile("index.html");
   assert.ok(html.indexOf("data-empty-title") !== -1, "empty-state title must be addressable");
   const ui = readFile("ui.js");
   const rt = ui.match(/function renderTokens\(holdings, prices\) \{[\s\S]*?\n  \}/);
   assert.ok(rt, "renderTokens must exist");
-  assert.ok(/session\.address/.test(rt[0]), "the empty list must branch on the unlocked wallet");
-  assert.ok(rt[0].indexOf("No balances yet") !== -1, "unlocked empty state must say balances await the edge");
+  assert.ok(rt[0].indexOf("emptyStateFor()") !== -1, "the empty list must be chosen by reason");
+  const empty = ui.match(/function emptyStateFor\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(empty, "emptyStateFor must exist");
+  assert.ok(/session\.address/.test(empty[0]), "it must branch on the unlocked wallet");
+  assert.ok(/session\.locked/.test(empty[0]), "it must branch on the locked session");
+  assert.ok(empty[0].indexOf("Wallet locked") !== -1, "the locked state offers Unlock");
+  assert.ok(empty[0].indexOf("No balances yet") !== -1, "a complete read that found nothing says so");
+  assert.ok(
+    empty[0].indexOf("Balances unavailable") !== -1,
+    "an unknown read must say unknown, never 'No balances yet'"
+  );
+  assert.ok(empty[0].indexOf("Balances incomplete") !== -1, "a partial read must disclose the gap");
+  assert.ok(empty[0].indexOf("No wallet yet") !== -1, "only the no-wallet case offers import");
   const reveal = ui.match(/function revealAccount\(phrase\) \{[\s\S]*?\n  \}/);
   assert.ok(reveal && reveal[0].indexOf("renderTokens(null)") !== -1, "revealAccount must repaint the token list");
+});
+
+test("tapping a coin opens the detail screen instead of a dead click", function () {
+  const ui = readFile("ui.js");
+  // Both entry points navigate now; neither merely writes a status string.
+  assert.ok(
+    /goToken\(holding\.chain_id, holding\.address\)/.test(ui),
+    "a holding row must open its detail screen"
+  );
+  assert.ok(/goToken\(tok\.chain_id, tok\.address\)/.test(ui), "a search row must open its detail screen");
+  assert.ok(
+    ui.indexOf("Token details are not built yet") === -1,
+    "the old dead-click status string must be gone"
+  );
+  const html = readFile("index.html");
+  ["data-screen=\"detail\"", 'id="detail-back"', 'id="detail-copy"', 'id="detail-amount"', 'id="detail-contract"'].forEach(
+    function (needle) {
+      assert.ok(html.indexOf(needle) !== -1, "detail screen must include " + needle);
+    }
+  );
+  const detail = ui.match(/function renderDetail\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(detail, "renderDetail must exist");
+  assert.ok(detail[0].indexOf("go(") !== -1, "an invalid detail route must not render an empty shell");
+});
+
+test("a failed read is retryable and never rendered as an empty wallet", function () {
+  const ui = readFile("ui.js");
+  const rb = ui.match(/function refreshBalances\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(rb, "refreshBalances must exist");
+  assert.ok(/res\.state === "ok"/.test(rb[0]), "the ok state is handled");
+  assert.ok(/res\.state === "partial"/.test(rb[0]), "the partial state keeps its rows and discloses the gap");
+  assert.ok(rb[0].indexOf("Balances unknown") !== -1, "the unknown state says unknown");
+  assert.ok(rb[0].indexOf("uiData.lastBalances = res") !== -1, "the read report is retained for rendering");
+  assert.ok(ui.indexOf("renderBalancesNotice") !== -1, "an incomplete read must be visible, not silent");
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('id="balances-retry"') !== -1, "the notice must offer Retry");
+  assert.ok(html.indexOf('id="balances-notice"') !== -1, "the notice container must exist");
+});
+
+test("holdings coverage is disclosed and a token can be added by address", function () {
+  const html = readFile("index.html");
+  ["id=\"holdings-scope\"", "id=\"add-token-btn\"", "id=\"add-token-form\"", "id=\"add-token-address\""].forEach(function (n) {
+    assert.ok(html.indexOf(n) !== -1, "index.html must include " + n);
+  });
+  const ui = readFile("ui.js");
+  assert.ok(ui.indexOf("holdingsScopeText") !== -1, "the scope of the list must be stated");
+  assert.ok(ui.indexOf("getTokenMeta") !== -1, "adding a token must read its metadata from the edge");
+  assert.ok(ui.indexOf("TOKENS_KEY") !== -1, "added tokens must persist");
+  const wallet = readFile("wallet.js");
+  assert.ok(wallet.indexOf("getTokenMeta: getTokenMeta") !== -1, "wallet.js must export getTokenMeta");
+  // Only public metadata is stored — never anything from the vault.
+  const store = ui.match(/function storeTokens\(list\) \{[\s\S]*?\n  \}/);
+  assert.ok(store && store[0].indexOf("JSON.stringify(list)") !== -1, "stored tokens are the metadata list");
 });
 
 test("unlock fetches real balances from the edge and locks on expiry", function () {
   const ui = readFile("ui.js");
   // Unlock -> getBalances -> render -> prices: the actual data path.
-  assert.ok(ui.indexOf("getBalances(session.address, [1, 8453])") !== -1, "unlock must fetch Mainnet + Base balances");
+  assert.ok(
+    /getBalances\(session\.address, \[1, 8453\]/.test(ui),
+    "unlock must fetch Mainnet + Base balances"
+  );
   const reveal = ui.match(/function revealAccount\(phrase\) \{[\s\S]*?\n  \}/);
   assert.ok(reveal && reveal[0].indexOf("refreshBalances()") !== -1, "revealAccount must start the balance fetch");
   assert.ok(reveal && reveal[0].indexOf("scheduleLock()") !== -1, "revealAccount must arm the auto-lock timer");
-  // A locked wallet must clear key material and holdings.
+  // A locked wallet must clear key material, holdings, and the read report.
   const lock = ui.match(/function lockNow\(reason\) \{[\s\S]*?\n  \}/);
   assert.ok(lock, "lockNow must exist");
-  ["session.address = null", "uiData.lastHoldings = null", "renderTokens(null)"].forEach(function (s) {
-    assert.ok(lock[0].indexOf(s) !== -1, "lockNow must " + s);
-  });
-  // The locked empty state offers Unlock, never Import.
-  const rt = ui.match(/function renderTokens\(holdings, prices\) \{[\s\S]*?\n  \}/);
-  assert.ok(/session\.locked/.test(rt[0]), "the empty list must branch on the locked session");
-  assert.ok(rt[0].indexOf("Wallet locked") !== -1, "locked empty state must say so");
+  ["session.address = null", "uiData.lastHoldings = null", "uiData.lastBalances = null", "renderTokens(null)"].forEach(
+    function (s) {
+      assert.ok(lock[0].indexOf(s) !== -1, "lockNow must " + s);
+    }
+  );
   const wallet = readFile("wallet.js");
   assert.ok(wallet.indexOf("getBalances: getBalances") !== -1, "wallet.js must export getBalances");
 });
