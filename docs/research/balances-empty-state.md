@@ -98,13 +98,28 @@ There is no token-detail route, screen, or template anywhere in the tree.
 
 ## Finding 4 — holdings outside the built-in catalogue are invisible, silently
 
-`wallet.js:46-90` hard-codes 37 tokens across Mainnet and Base.
-`dev-edge.js:133` queries exactly those and nothing else. There is no
+`wallet.js:46-90` hard-codes 38 catalogue rows across Mainnet and Base (36 ERC-20
+entries plus the two native rows), plus a native-only Robinhood row — 39 rows in
+total. `dev-edge.js:133` queries exactly those and nothing else. There is no
 custom-token path and no per-address token discovery, so any ERC-20 the user
 actually holds that is not on that list contributes no row and no explanation.
 The search screen discloses the catalogue scope (`ui.js:352`); the holdings list
 does not. Solana is catalogued but never queried (`wallet.js:32-34`), likewise
 undisclosed on the home screen.
+
+## Finding 4b — this is not a new bug; a High finding already demanded the fix
+
+`docs/reviews/technical-review.md:125-155` (F1, severity **High**) says it in
+advance:
+
+> For a wallet, *"I could not check"* must never be presented as *"you have
+> nothing."* This is the highest-value fix in this review.
+
+Its recommendation — a per-asset failure marker, a "balances unknown" banner,
+and preserved partial success — was never implemented. `docs/specs/edge-server.md`
+§3.3 (cited in Finding 2) then *codified the opposite* in the wire contract, so
+the client could not implement F1 even if it wanted to. Finding 2 is F1, still
+open, now with a spec that forbids the fix.
 
 ## Finding 5 — changing the dev port silently loses the wallet
 
@@ -145,11 +160,36 @@ the resolved source path in a comment, so building from a worktree whose
 `// node_modules/@scure/…` and the gate fails spuriously. Worktrees must hold a
 real copy of the tooling. (Encountered and worked around during Phase 0.)
 
+## Finding 9 — the dev edge drifts from the spec it claims to implement
+
+Documented deviations in `tools/dev-edge.js`, each a small lie about the contract
+the production edge is being built to fit:
+
+- Error bodies are `{ "error": "…" }` (`:115`, `:240`), but the spec's envelope is
+  `{ "ok": false, "error": "code", "detail": "…" }` (`edge-server.md:106-111`).
+- The `chains` cap of 8 and the `assets` cap of 64 are **silently truncated**
+  (`:117-121`, `:165`) where the spec requires `400`.
+- `/api/*` is served `cache-control: no-store` (`:237`); the spec asks prices to
+  be `public, max-age=15` (`edge-server.md:172`).
+- `pricesHandler` throws on a CoinGecko failure and returns `502` (`:185-187`),
+  while `balancesHandler` swallows its upstream failures (Finding 2). The two
+  endpoints disagree about honesty.
+
+## Finding 10 — assorted repository drift found while researching
+
+- `docs/systems/README.md` and `docs/systems/tkrwallet.mmd` still describe the v1
+  world (GitHub Pages, `app.js`, injected providers, a public Solana RPC). F14 in
+  `docs/reviews/technical-review.md:466-480` flagged the stale pin and it was
+  never closed. They are actively misleading about the current tree.
+- `package.json:3` says `0.4.0`; `CHANGELOG.md` tops out at `0.6.0`.
+- `docs/specs/edge-server.md` numbers two different sections `§3.5` (`:257`
+  catalogue, `:290` Discover).
+
 ## Answers to the operator's questions
 
 | Question | Answer |
 | --- | --- |
-| Why no balances / no tokens? | If any chain read failed, the edge reports success-with-nothing and the UI states it as fact. If reads succeeded, the address holds none of the 37 catalogued tokens on Mainnet/Base — undisclosed. |
+| Why no balances / no tokens? | If any chain read failed, the edge reports success-with-nothing and the UI states it as fact. If reads succeeded, the address holds none of the 39 catalogued rows on Mainnet/Base — undisclosed. |
 | Why did I have to import again? | Different origin (port 9000 vs 8899) ⇒ different IndexedDB ⇒ no vault. Not data loss. |
 | Why does clicking a coin do nothing? | No detail screen exists; the handler only writes a status string. |
 | Why did search "finally" work? | Search is offline against the built-in catalogue and needs no edge. |

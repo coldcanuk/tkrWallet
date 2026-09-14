@@ -40,17 +40,45 @@ icons/              shape-only SVG source + PNG 16/32/48/128.
 ## Data shapes
 
 ```js
-// wallet.js — holdings
+// wallet.js — holdings (one row per non-zero balance the edge could read)
 { symbol: "ETH", address: null,            // null = native gas
   chain_id: 1, chain_name: "Ethereum",
-  amount: 1.25, state: "ok" }              // or { amount: null, state: "unknown" }
+  amount: 1.25, decimals: 18, color: "#a8a29e",
+  state: "ok" }                            // or { amount: null, state: "unknown" }
+
+// wallet.js — getBalances() result. `chains` mirrors the edge's read report.
+{ state: "ok",      balances: [...], chains: [ { chain_id: 1, state: "ok" } ], as_of: 1737000000 }
+{ state: "partial", balances: [...], chains: [ { chain_id: 1, state: "ok" },
+                                               { chain_id: 8453, state: "unknown", error: "…" } ] }
+{ state: "unknown", reason: "edge-unreachable" | "all-chains-failed" | "bad-response" }
 
 // prices (edge, M6)
 { "1:native": { usd: 3120.55, cad: 4291.20 } }   // absent asset = unpriced
 
 // estimate
-{ state: "ok", value: 3900.68 } | { state: "unknown" }
+{ state: "ok", value: 3900.68, priced: 2, total: 3 } | { state: "unknown" }
+
+// user-added tokens (localStorage, public metadata only — never key material)
+{ "8453": [ { "address": "0x8335…2913", "symbol": "USDC", "name": "USD Coin", "decimals": 6 } ] }
 ```
+
+**State semantics.** `ok` means *every requested chain was read*; `partial` means
+*some were*; `unknown` means *none were, or the edge could not be reached*. Only
+`ok` with an empty `balances` array may be rendered as "you hold none of the
+catalogued tokens". `partial` and `unknown` must disclose the failure and offer a
+retry. This is the client half of the edge contract in
+`docs/specs/edge-server.md` §3.3.
+
+## Routes
+
+| Hash | Screen |
+|---|---|
+| `#/home` | wallet value, actions, holdings |
+| `#/swap` | under-construction placeholder |
+| `#/activity` | device-local placeholder |
+| `#/search` | catalogue search |
+| `#/settings` | auto-lock, currency, lock now |
+| `#/token/<chain_id>:<native\|0xaddress>` | **token detail** (reachable from a holding row and a search row) |
 
 ## Chain catalog
 
