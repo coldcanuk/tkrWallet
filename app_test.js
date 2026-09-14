@@ -529,6 +529,21 @@ test("gate errors hide via the hidden attribute, never the hidden class", functi
   });
 });
 
+test("an unlocked wallet never shows the boot-time 'No wallet yet' card", function () {
+  // After import/unlock the header shows an address, so the token list must not
+  // contradict it with "No wallet yet" and an Import button. Balances are
+  // genuinely unavailable (no edge yet), and the empty state must say that.
+  const html = readFile("index.html");
+  assert.ok(html.indexOf("data-empty-title") !== -1, "empty-state title must be addressable");
+  const ui = readFile("ui.js");
+  const rt = ui.match(/function renderTokens\(holdings, prices\) \{[\s\S]*?\n  \}/);
+  assert.ok(rt, "renderTokens must exist");
+  assert.ok(/session\.address/.test(rt[0]), "the empty list must branch on the unlocked wallet");
+  assert.ok(rt[0].indexOf("No balances yet") !== -1, "unlocked empty state must say balances await the edge");
+  const reveal = ui.match(/function revealAccount\(phrase\) \{[\s\S]*?\n  \}/);
+  assert.ok(reveal && reveal[0].indexOf("renderTokens(null)") !== -1, "revealAccount must repaint the token list");
+});
+
 test("shipped files still reference only the wallet origin", function () {
   // crypto.js + store.js are now in SHIPPED; confirm the scan covers them.
   assert.ok(SHIPPED.indexOf("crypto.js") !== -1 && SHIPPED.indexOf("store.js") !== -1);

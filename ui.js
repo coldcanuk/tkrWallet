@@ -236,7 +236,19 @@
       if (tplEmpty) {
         var node = tplEmpty.content.firstElementChild.cloneNode(true);
         var cta = node.querySelector("[data-import]");
-        if (cta) {
+        if (session.address) {
+          // A wallet IS loaded: the list is empty only because there is no
+          // balance source. Saying "No wallet yet" and offering to import again
+          // would contradict the address in the header.
+          setText(node.querySelector("[data-empty-title]"), "No balances yet");
+          setText(
+            node.querySelector("[data-empty-body]"),
+            "Balances for this account arrive with the wallet edge, which is not built yet. Your keys stay on this device."
+          );
+          if (cta) {
+            cta.setAttribute("hidden", "");
+          }
+        } else if (cta) {
           cta.addEventListener("click", function () {
             openGate();
           });
@@ -462,6 +474,9 @@
     setAccount(w.evmAddress);
     setWalletStatus("Imported " + w.evmAddress + ". Balances for this account need the wallet edge \u2014 not built yet.");
     setWalletValue(null, state.currency, "Balances for this account arrive with the wallet edge.");
+    // Repaint the list so the empty state reflects the now-unlocked wallet
+    // instead of the boot-time "No wallet yet" card.
+    renderTokens(null);
     return w;
   }
 
