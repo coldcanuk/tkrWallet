@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # No root node_modules: package.json has no dependencies by design.
+      - name: Unit tests
+        run: node app_test.js
+
+      - name: Install build tooling
+        run: npm --prefix tools ci
+
+      # app.css is committed and loaded directly by index.html. If a source file
+      # gains a class that is not in the committed CSS, the wallet renders
+      # unstyled in production while looking fine locally.
+      - name: Committed CSS is up to date
+        run: |
+          npm --prefix tools run build:css
+          git diff --exit-code -- app.css
+
+      - name: Every class used exists in app.css
+        run: node tools/check-classes.js

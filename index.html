@@ -2,79 +2,210 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>tkrWallet</title>
+    <meta name="description" content="Self-custody wallet. You hold the keys." />
+    <meta name="theme-color" content="#12100e" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- Enforces the single-origin rule in the browser before any server header
+         exists: connect-src 'self' means the wallet cannot call another origin,
+         so "never talks to eva" is refused by the browser, not just by review.
+         The extension gets the equivalent policy in manifest.json. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; worker-src 'self'"
+    />
     <link rel="manifest" href="manifest.webmanifest" />
-    <meta name="theme-color" content="#1c1917" />
-    <style>
-      :root { color-scheme: light; }
-      body { margin: 0; font: 16px/1.5 ui-sans-serif, system-ui; background: #f3f0e6; color: #1c1917; }
-      main { max-width: 40rem; margin: 0 auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
-      h1 { font-family: Georgia, serif; font-weight: 400; font-size: 2rem; }
-      section { background: #faf8f2; border: 1px solid #d4cfbf; border-radius: 1rem; padding: 1rem; }
-      a { color: #1c1917; }
-      button { min-height: 44px; font: inherit; padding: 0.5rem 1rem; border-radius: 999px; border: 1px solid #d4cfbf; background: #fff; }
-    </style>
+    <link rel="icon" href="icon.svg" />
+    <!-- app.css is committed, built from tools/src/app.css. MV3 forbids remote
+         code and cannot relax script-src, so there is no CDN fallback. -->
+    <link rel="stylesheet" href="./app.css" />
   </head>
   <body>
-    <main>
-      <h1>tkrWallet</h1>
-      <p>Open-source signer. You hold the keys. Quotes and fills go through tkrShell. You sign every fill.</p>
-      <section id="wallet-login" data-wallet-login>
-        <h2>Login</h2>
-        <p>Connect an injected wallet. This never auto-executes a swap. Ledger signs on tkrpik.</p>
-        <p>
-          <button type="button" id="wallet-login-btn">Connect wallet</button>
-          <a href="https://tkrpik.com/login?next=tkrswap">Sign in on tkrpik</a>
-        </p>
-        <p id="wallet-login-status"></p>
-      </section>
-      <section data-batch-intent>
-        <h2>Consolidate / split</h2>
-        <p>Batch intents are quoted on tkrSwap. This wallet presents them. It does not shop a second broker.</p>
-        <p id="batch-intent">Open a consolidate or split intent from tkrSwap.</p>
-      </section>
-      <section data-holdings id="holdings">
-        <h2>Holdings</h2>
-        <p>Start a tkrSwap from a holding already in this wallet. Lists native ETH plus USDC, USDT, and WETH on Ethereum and Base, and SOL plus USDC/USDT on Solana when Phantom reports a balance. Quotes stay on tkrSwap.</p>
-        <div id="holdings-list">Connect a wallet to list holdings.</div>
-      </section>
-      <section data-tkrswap-routing>
-        <h2>tkrSwap routing</h2>
-        <p>Quotes, swaps, and index snapshots go through tkrShell. This app does not call aggregators or hold vendor keys.</p>
-        <p><a href="https://tkrswap.com/">Open tkrSwap</a> · <a href="https://tkrpik.com/swap">tkrpik.com/swap</a></p>
-      </section>
-      <section data-hosted-wallet>
-        <h2>Hosted wallet</h2>
-        <p>Paid attach through tkrShell after review. tkrWallet never stores a hosted key.</p>
-        <p>
-          <button type="button" id="hosted-attach-btn">Attach hosted wallet</button>
-        </p>
-        <p id="hosted-attach-status">Not attached. Plan-only.</p>
-      </section>
-      <section data-tkrpik-cards>
-        <h2>tkrpik index cards</h2>
-        <p>Your sealed books of conviction live on tkrDesk. This pane lists public cards from the product.</p>
-        <p><a href="https://tkrpik.com/dashboard">Open index cards</a></p>
-        <div id="index-cards">Loading cards…</div>
-      </section>
-      <section data-tkrpik-scoreboard>
-        <h2>Scoreboard</h2>
-        <p>Public locked cards ranked by book return.</p>
-        <p><a href="https://tkrpik.com/scoreboard">Open scoreboard</a></p>
-        <div id="scoreboard">Loading scoreboard…</div>
-      </section>
-      <section data-beaver-nickels>
-        <h2>Beaver Nickels</h2>
-        <p>Beaver coin points from the 7-day ledger (up minus down). Bragging rights, not a token we mint here.</p>
-        <p id="beaver-nickels">Sign in on tkrpik to see your nickels.</p>
-      </section>
-    </main>
-    <script src="./app.js"></script>
-    <script>
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("./sw.js");
-      }
-    </script>
+    <div id="app" class="flex h-full flex-col bg-ink-950 text-cream-100">
+      <a
+        href="#main"
+        class="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-ember-400 focus:px-3 focus:py-2 focus:text-ink-950"
+        >Skip to content</a
+      >
+
+      <!-- Header -->
+      <header
+        class="sticky top-0 z-30 border-b border-ink-800 bg-ink-950/95 backdrop-blur"
+        style="padding-top: var(--safe-t)"
+      >
+        <div class="mx-auto flex max-w-md items-center gap-3 px-4 py-3">
+          <span class="text-lg font-semibold tracking-tight text-cream-50">tkrWallet</span>
+
+          <button
+            type="button"
+            id="account-btn"
+            class="ml-auto flex min-h-11 items-center gap-2 rounded-full bg-ink-900 ring-1 ring-inset ring-white/10 px-3 text-sm text-cream-300 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+            aria-describedby="account-status"
+          >
+            <span id="account-dot" class="size-2 shrink-0 rounded-full bg-cream-500" aria-hidden="true"></span>
+            <span id="account-label" class="tnum max-w-28 truncate">Not connected</span>
+          </button>
+
+          <button
+            type="button"
+            id="header-search"
+            class="flex size-11 items-center justify-center rounded-full bg-ink-900 ring-1 ring-inset ring-white/10 text-cream-300 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+            aria-label="Search"
+          >
+            <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" />
+              <path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+        <!-- Screen readers announce connection state and errors. -->
+        <p id="account-status" class="sr-only" role="status" aria-live="polite"></p>
+        <p id="wallet-status" class="sr-only" role="status" aria-live="polite"></p>
+      </header>
+
+      <!-- Screens -->
+      <main id="main" class="mx-auto w-full max-w-md flex-1 overflow-y-auto px-4 pb-28 pt-4">
+        <!-- Home -->
+        <section data-screen="home" aria-labelledby="home-heading">
+          <h1 id="home-heading" class="sr-only">Wallet home</h1>
+
+          <div class="rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 p-5">
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-cream-500">Wallet value</span>
+              <div role="group" aria-label="Display currency" class="flex rounded-full bg-ink-950 ring-1 ring-inset ring-white/10 p-0.5">
+                <button type="button" data-currency="usd" aria-pressed="true" class="min-h-8 rounded-full px-3 text-xs font-medium aria-pressed:bg-ember-400 aria-pressed:text-ink-950">USD</button>
+                <button type="button" data-currency="cad" aria-pressed="false" class="min-h-8 rounded-full px-3 text-xs font-medium aria-pressed:bg-ember-400 aria-pressed:text-ink-950">CAD</button>
+              </div>
+            </div>
+
+            <p id="wallet-value" class="tnum mt-2 text-4xl font-semibold tracking-tight text-cream-50">&mdash;</p>
+            <p id="wallet-value-note" class="mt-1 text-xs text-cream-500">
+              Connect a wallet to see your balance.
+            </p>
+          </div>
+
+          <div class="mt-4 grid grid-cols-4 gap-2">
+            <button type="button" data-action="send" class="flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 text-xs text-cream-300 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
+              <svg viewBox="0 0 24 24" fill="none" class="size-6 text-ember-400" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Send
+            </button>
+            <button type="button" data-action="swap" class="flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 text-xs text-cream-300 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
+              <svg viewBox="0 0 24 24" fill="none" class="size-6 text-ember-400" aria-hidden="true"><path d="M4 8h13m0 0-3-3m3 3-3 3M20 16H7m0 0 3-3m-3 3 3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Swap
+            </button>
+            <button type="button" data-action="receive" class="flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 text-xs text-cream-300 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
+              <svg viewBox="0 0 24 24" fill="none" class="size-6 text-ember-400" aria-hidden="true"><path d="M12 5v14m0 0 6-6m-6 6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Receive
+            </button>
+            <button type="button" data-action="buy" class="flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 text-xs text-cream-300 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
+              <svg viewBox="0 0 24 24" fill="none" class="size-6 text-ember-400" aria-hidden="true"><path d="M12 5v14m0-14a4 4 0 0 0-4 4m4-4a4 4 0 0 1 4 4M6 12h12M6 12a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Buy
+            </button>
+          </div>
+
+          <h2 class="mb-2 mt-6 px-1 text-sm font-medium text-cream-500">Tokens</h2>
+          <div id="token-list" class="overflow-hidden rounded-card bg-ink-900 ring-1 ring-inset ring-white/10">
+            <p class="px-4 py-6 text-center text-sm text-cream-500">Connect a wallet to list tokens.</p>
+          </div>
+        </section>
+
+        <!-- Swap: honest placeholder. No fake quote, no pretend button. -->
+        <section data-screen="swap" hidden aria-labelledby="swap-heading">
+          <h1 id="swap-heading" class="sr-only">Swap</h1>
+          <div class="rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 p-5">
+            <span class="inline-block rounded-full border border-warn-400/40 bg-warn-400/10 px-2.5 py-1 text-xs font-medium text-warn-400">
+              Under construction
+            </span>
+            <p class="mt-3 text-sm leading-relaxed text-cream-300">
+              Swapping on our own nodes is not built yet. Routing has to be
+              written for this stack &mdash; there is no quote engine behind it
+              today, and the old one belonged to the aggregator we are leaving.
+            </p>
+            <p class="mt-3 text-sm leading-relaxed text-cream-500">
+              Until it lands, nothing here will pretend to quote. Your keys stay
+              on this device either way.
+            </p>
+          </div>
+        </section>
+
+        <!-- Activity -->
+        <section data-screen="activity" hidden aria-labelledby="activity-heading">
+          <h1 id="activity-heading" class="sr-only">Activity</h1>
+          <div class="rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 p-5">
+            <p class="text-sm text-cream-300">No activity yet.</p>
+            <p class="mt-2 text-xs text-cream-500">
+              History is stored on this device only. The chain nodes are pruned,
+              so older receipts cannot be recovered &mdash; this list will not
+              claim to be complete.
+            </p>
+          </div>
+        </section>
+
+        <!-- Search -->
+        <section data-screen="search" hidden aria-labelledby="search-heading">
+          <h1 id="search-heading" class="sr-only">Search</h1>
+          <label for="search-input" class="sr-only">Search tokens</label>
+          <input
+            id="search-input"
+            type="search"
+            placeholder="Search tokens"
+            autocomplete="off"
+            class="min-h-11 w-full rounded-full bg-ink-900 ring-1 ring-inset ring-white/10 px-4 text-sm text-cream-100 placeholder:text-cream-500 focus:ring-2 focus:ring-ember-400 focus:outline-none"
+          />
+          <div id="search-results" class="mt-3 overflow-hidden rounded-card bg-ink-900 ring-1 ring-inset ring-white/10">
+            <p class="px-4 py-6 text-center text-sm text-cream-500">Type to search the token catalog.</p>
+          </div>
+        </section>
+      </main>
+
+      <!-- Bottom navigation -->
+      <nav
+        aria-label="Sections"
+        class="fixed inset-x-0 bottom-0 z-30 border-t border-ink-800 bg-ink-950/95 backdrop-blur"
+        style="padding-bottom: var(--safe-b)"
+      >
+        <div class="mx-auto flex max-w-md">
+          <a href="#/home" data-nav="home" aria-current="page"class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-current:text-ember-400">
+            <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+            Home
+          </a>
+          <a href="#/swap" data-nav="swap" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-current:text-ember-400">
+            <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true"><path d="M4 8h13m0 0-3-3m3 3-3 3M20 16H7m0 0 3-3m-3 3 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Swap
+          </a>
+          <a href="#/activity" data-nav="activity" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-current:text-ember-400">
+            <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true"><path d="M12 7v5l3 2M4 12a8 8 0 1 0 8-8 8 8 0 0 0-8 8Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Activity
+          </a>
+          <a href="#/search" data-nav="search" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-current:text-ember-400">
+            <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            Search
+          </a>
+        </div>
+      </nav>
+    </div>
+
+    <!-- Token row template. Cloned by ui.js and filled via textContent, so no
+         dynamic value ever reaches innerHTML. -->
+    <template id="tpl-token-row">
+      <div class="flex items-center gap-3 border-b border-ink-800 px-4 py-3 last:border-b-0">
+        <span class="flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-ink-950" data-token-badge aria-hidden="true"></span>
+        <span class="min-w-0 flex-1">
+          <span class="block truncate text-sm text-cream-100" data-token-name></span>
+          <span class="block truncate text-xs text-cream-500" data-token-chain></span>
+        </span>
+        <span class="text-right">
+          <span class="tnum block text-sm text-cream-100" data-token-amount></span>
+          <span class="tnum block text-xs text-cream-500" data-token-fiat></span>
+        </span>
+      </div>
+    </template>
+
+    <!-- No inline script: MV3 blocks it, so boot lives in ui.js. The data layer
+         loads first; the shell never fetches — wallet.js is the only caller. -->
+    <script src="./wallet.js"></script>
+    <script src="./ui.js"></script>
   </body>
 </html>

@@ -1,0 +1,23 @@
+{
+  "name": "tkrwallet",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Self-custody wallet for Scratchpost. PWA + MV3 Chrome extension, one tree.",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/coldcanuk/tkrWallet.git"
+  },
+  "scripts": {
+    "setup": "npm --prefix tools install --cache tools/.npm-cache",
+    "test": "node app_test.js",
+    "build:css": "npm --prefix tools run build:css",
+    "watch:css": "npm --prefix tools run watch:css",
+    "check:classes": "node tools/check-classes.js",
+    "check:css": "npm run build:css && git diff --exit-code -- app.css",
+    "check": "npm test && npm run check:css && npm run check:classes"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

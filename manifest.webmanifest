@@ -1,11 +1,11 @@
 {
   "name": "tkrWallet",
   "short_name": "tkrWallet",
-  "description": "Open-source signer for tkrSwap. tkrpik index cards, scoreboard, and Beaver Nickels.",
+  "description": "Self-custody wallet for the Scratchpost stack. You hold the keys.",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#f3f0e6",
-  "theme_color": "#1c1917",
+  "background_color": "#12100e",
+  "theme_color": "#12100e",
   "icons": [
     {
       "src": "icon.svg",
