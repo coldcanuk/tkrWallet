@@ -434,12 +434,17 @@ test("getBalances() surfaces the edge contract and converts amounts", function (
               { chain_id: 1, symbol: "ETH", address: null, amount: "1.25", decimals: 18 },
               { chain_id: 8453, symbol: "USDC", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", amount: "42.5", decimals: 6 },
             ],
+            chains: [
+              { chain_id: 1, state: "ok" },
+              { chain_id: 8453, state: "ok" },
+            ],
           });
         },
       });
     })
     .then(function (got) {
       assert.strictEqual(got.state, "ok");
+      assert.ok(Array.isArray(got.chains) && got.chains.length === 2, "the read report is surfaced");
       assert.strictEqual(got.balances.length, 2);
       assert.ok(Math.abs(got.balances[0].amount - 1.25) < 1e-9, "native amount converted to a number");
       assert.strictEqual(got.balances[0].chain_name, "Ethereum");
@@ -454,7 +459,102 @@ test("getBalances() failure is unknown — balances are never invented", functio
     return Promise.reject(new Error("edge down"));
   }).then(function (got) {
     assert.strictEqual(got.state, "unknown");
+    assert.ok(got.reason, "an unknown carries the reason it is unknown");
   });
+});
+
+test("getBalances() never calls an unreadable chain an empty wallet", function () {
+  const wallet = require("./wallet.js");
+  // The edge read one chain and could not read the other. The holdings list is
+  // empty, but "you own nothing" would be a lie: it must be partial.
+  return wallet
+    .getBalances("0x2222222222222222222222222222222222222222", [1, 8453], function () {
+      return Promise.resolve({
+        ok: true,
+        json: function () {
+          return Promise.resolve({
+            balances: [],
+            chains: [
+              { chain_id: 1, state: "ok" },
+              { chain_id: 8453, state: "unknown", error: "rpc timeout" },
+            ],
+          });
+        },
+      });
+    })
+    .then(function (got) {
+      assert.strictEqual(got.state, "partial", "an unread chain must not read as 'you own nothing'");
+      assert.strictEqual(got.balances.length, 0);
+      assert.strictEqual(got.chains[1].state, "unknown");
+      assert.ok(got.reason);
+    });
+});
+
+test("getBalances() treats a missing read report as partial, never as empty", function () {
+  const wallet = require("./wallet.js");
+  // Against an edge that does not report which chains it read, an empty list is
+  // unverifiable. Honest answer: partial, with the reason stated.
+  return wallet
+    .getBalances("0x2222222222222222222222222222222222222222", [1], function () {
+      return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ balances: [] }); } });
+    })
+    .then(function (got) {
+      assert.strictEqual(got.state, "partial");
+      assert.strictEqual(got.reason, "edge-no-read-status");
+    });
+});
+
+test("getBalances() sends user-added tokens as chain:address pairs", function () {
+  const wallet = require("./wallet.js");
+  const extra = "1:0x" + "Ab".repeat(20);
+  return wallet
+    .getBalances("0x2222222222222222222222222222222222222222", [1], function (url) {
+      assert.ok(String(url).indexOf("tokens=") !== -1, "added tokens must be requested: " + url);
+      assert.ok(String(url).indexOf(encodeURIComponent(extra)) !== -1, "the pair must be encoded");
+      return Promise.resolve({
+        ok: true,
+        json: function () {
+          return Promise.resolve({ balances: [], chains: [{ chain_id: 1, state: "ok" }] });
+        },
+      });
+    }, [extra])
+    .then(function (got) {
+      assert.strictEqual(got.state, "ok", "with every chain read, empty really is empty");
+    });
+});
+
+test("getTokenMeta() returns edge metadata, or a reason — never invented values", function () {
+  const wallet = require("./wallet.js");
+  return wallet
+    .getTokenMeta(8453, "0x" + "Ab".repeat(20), function (url) {
+      assert.ok(String(url).indexOf("/api/wallet/token?chain=8453&address=") === 0, url);
+      return Promise.resolve({
+        ok: true,
+        json: function () {
+          return Promise.resolve({
+            token: { chain_id: 8453, address: "0x" + "Ab".repeat(20), symbol: "USDC", name: "USD Coin", decimals: 6 },
+          });
+        },
+      });
+    })
+    .then(function (got) {
+      assert.strictEqual(got.state, "ok");
+      assert.strictEqual(got.token.symbol, "USDC");
+      assert.strictEqual(got.token.decimals, 6);
+      return wallet.getTokenMeta(8453, "0x" + "Ab".repeat(20), function () {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: function () {
+            return Promise.resolve({ ok: false, error: "not-a-token" });
+          },
+        });
+      });
+    })
+    .then(function (got) {
+      assert.strictEqual(got.state, "unknown");
+      assert.strictEqual(got.reason, "not-a-token");
+    });
 });
 
 test("API calls are same-origin for the PWA and absolute for the extension", function () {

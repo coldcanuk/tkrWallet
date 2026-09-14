@@ -202,14 +202,27 @@
   /* Balances from the edge (contract: docs/specs/edge-server.md §3.3).
    * amount strings are converted to numbers; assets the response omits are
    * simply absent (the user's real holdings are what the edge returns).
-   * Network/parse failure -> { state: "unknown" } — never fabricated zeros. */
-  function getBalances(address, chainIds, fetchFn) {
+   *
+   * The result distinguishes three outcomes, because "we could not check" and
+   * "you own nothing" are different claims and this wallet must never confuse
+   * them:
+   *   { state: "ok",      balances: [...], chains: [...] }  every chain read
+   *   { state: "partial", balances: [...], chains: [...] }  some chains failed
+   *   { state: "unknown", reason: "…" }                     none readable
+   * Only `ok` with an empty array may be rendered as "you hold none".
+   *
+   * `extraTokens` are user-added "chain:address" strings, read in addition to
+   * the built-in catalogue. */
+  function getBalances(address, chainIds, fetchFn, extraTokens) {
     fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
     if (!fetchFn) {
-      return Promise.resolve({ state: "unknown" });
+      return Promise.resolve({ state: "unknown", reason: "no-fetch" });
     }
     var chains = (chainIds && chainIds.length ? chainIds : [1, 8453]).join(",");
     var q = "address=" + encodeURIComponent(String(address || "")) + "&chains=" + encodeURIComponent(chains);
+    if (extraTokens && extraTokens.length) {
+      q += "&tokens=" + encodeURIComponent(extraTokens.join(","));
+    }
     return fetchFn(apiUrl("/api/wallet/balances?" + q))
       .then(function (res) {
         if (!res.ok) {
@@ -219,19 +232,77 @@
       })
       .then(function (body) {
         if (!body || typeof body !== "object" || !Array.isArray(body.balances)) {
-          return { state: "unknown" };
+          return { state: "unknown", reason: "bad-response" };
         }
+        var rows = body.balances.map(function (b) {
+          var amount = typeof b.amount === "string" ? Number(b.amount) : b.amount;
+          return row(b.symbol, b.chain_id, Number.isFinite(amount) ? amount : null, b.address || null, b.decimals || 18);
+        });
+        var reported = Array.isArray(body.chains) ? body.chains : null;
+        if (!reported) {
+          // The edge did not say which chains it read. An empty list here cannot
+          // honestly be shown as "you own nothing", so it is a partial result.
+          return { state: "partial", balances: rows, chains: null, reason: "edge-no-read-status" };
+        }
+        var problems = reported.filter(function (c) {
+          return !c || c.state !== "ok";
+        });
+        if (!problems.length) {
+          return { state: "ok", balances: rows, chains: reported, as_of: body.as_of || null };
+        }
+        var readable = reported.some(function (c) {
+          return c && c.state !== "unknown";
+        });
+        if (rows.length || readable) {
+          return {
+            state: "partial",
+            balances: rows,
+            chains: reported,
+            reason: "some-chains-failed",
+            as_of: body.as_of || null,
+          };
+        }
+        return { state: "unknown", balances: rows, chains: reported, reason: "all-chains-failed" };
+      })
+      .catch(function () {
+        return { state: "unknown", reason: "edge-unreachable" };
+      });
+  }
+
+  /* Metadata for an arbitrary ERC-20 the user added by address — the edge reads
+   * symbol()/decimals() so the client never ships a table of every token.
+   * { state: "ok", token } | { state: "unknown", reason }. */
+  function getTokenMeta(chainId, address, fetchFn) {
+    fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
+    if (!fetchFn) {
+      return Promise.resolve({ state: "unknown", reason: "no-fetch" });
+    }
+    var q = "chain=" + encodeURIComponent(String(chainId)) + "&address=" + encodeURIComponent(String(address || ""));
+    return fetchFn(apiUrl("/api/wallet/token?" + q))
+      .then(function (res) {
+        return res.json().then(function (body) {
+          return { ok: res.ok, status: res.status, body: body };
+        });
+      })
+      .then(function (r) {
+        if (!r.ok || !r.body || !r.body.token) {
+          return { state: "unknown", reason: (r.body && r.body.error) || "HTTP " + r.status };
+        }
+        var t = r.body.token;
         return {
           state: "ok",
-          as_of: body.as_of || null,
-          balances: body.balances.map(function (b) {
-            var amount = typeof b.amount === "string" ? Number(b.amount) : b.amount;
-            return row(b.symbol, b.chain_id, Number.isFinite(amount) ? amount : null, b.address || null, b.decimals || 18);
-          }),
+          token: {
+            symbol: t.symbol,
+            name: t.name || t.symbol,
+            address: t.address,
+            chain_id: t.chain_id,
+            decimals: typeof t.decimals === "number" ? t.decimals : 18,
+            color: colorFor(t.symbol),
+          },
         };
       })
       .catch(function () {
-        return { state: "unknown" };
+        return { state: "unknown", reason: "edge-unreachable" };
       });
   }
 
@@ -272,32 +343,57 @@
    * a chain-state question. See docs/specs/edge-server.md. */
   var SEARCHABLE_CHAINS = { 1: true, 8453: true };
 
-  function searchCatalog(query, limit) {
+  function searchCatalog(query, limit, extras) {
     var q = String(query || "").trim().toLowerCase();
     if (!q) {
       return [];
     }
     var max = limit || 20;
     var out = [];
+    var seen = Object.create(null);
+
+    function matches(tok) {
+      return (
+        String(tok.symbol || "").toLowerCase().indexOf(q) !== -1 ||
+        (!!tok.name && String(tok.name).toLowerCase().indexOf(q) !== -1) ||
+        (!!tok.address && String(tok.address).toLowerCase().indexOf(q) !== -1)
+      );
+    }
+
+    function push(tok, chainId) {
+      var key = chainId + ":" + String(tok.address || "native").toLowerCase();
+      if (seen[key]) {
+        return;
+      }
+      seen[key] = true;
+      out.push({
+        symbol: tok.symbol,
+        name: tok.name || tok.symbol,
+        address: tok.address || null,
+        chain_id: chainId,
+        chain_name: chainName(chainId),
+        decimals: tok.decimals || 18,
+        color: colorFor(tok.symbol),
+        custom: !!tok.custom,
+      });
+    }
+
+    // User-added tokens rank first: the user explicitly asked for them.
+    (extras || []).forEach(function (tok) {
+      var chainId = Number(tok.chain_id);
+      if (SEARCHABLE_CHAINS[chainId] && matches(tok)) {
+        push(tok, chainId);
+      }
+    });
+
     Object.keys(TOKENS).forEach(function (chainKey) {
       var chainId = Number(chainKey);
       if (!SEARCHABLE_CHAINS[chainId]) {
         return; // Mainnet + Base only
       }
       TOKENS[chainKey].forEach(function (tok) {
-        var bySymbol = tok.symbol.toLowerCase().indexOf(q) !== -1;
-        var byName = !!tok.name && tok.name.toLowerCase().indexOf(q) !== -1;
-        var byAddress = !!tok.address && tok.address.toLowerCase().indexOf(q) !== -1;
-        if (bySymbol || byName || byAddress) {
-          out.push({
-            symbol: tok.symbol,
-            name: tok.name || tok.symbol,
-            address: tok.address || null,
-            chain_id: chainId,
-            chain_name: chainName(chainId),
-            decimals: tok.decimals || 18,
-            color: colorFor(tok.symbol),
-          });
+        if (matches(tok)) {
+          push(tok, chainId);
         }
       });
     });
@@ -314,6 +410,7 @@
     assetKey: assetKey,
     getPrices: getPrices,
     getBalances: getBalances,
+    getTokenMeta: getTokenMeta,
     estimateValue: estimateValue,
     searchCatalog: searchCatalog,
     PREVIEW_HOLDINGS: PREVIEW_HOLDINGS,
