@@ -407,7 +407,7 @@ The emitters already use `eth_subscribe` over `ws://the chain host` and
 1. **Mixed content.** A PWA served over HTTPS, and a `chrome-extension://` page
    (also a secure context), are both **blocked from opening an insecure `ws://`**
    endpoint. This is enforced by the browser, not a policy choice.
-2. **They bind `0.0.0.0` on the LAN** (`OPERATIONS.md:13,15`) — not publicly
+2. **They bind on all interfaces on the LAN** (`OPERATIONS.md:13,15`) — not publicly
    routable.
 
 So live updates must be **polling over HTTPS** or a **backend-proxied `wss://`**

@@ -37,7 +37,7 @@ real gaps, several of which matter the moment anything is exposed.
 ### 2.1 Verified clean
 
 ```
-grep -rE '192\.168\.|10\.[0-9]|127\.0\.0\.1|localhost|:NNNN|\.local'
+grep -rE 'a\.b\.c\.d|w\.x\.y\.z|localhost|:NNNN|\.local'
      index.html ui.js app.js sw.js manifest.json manifest.webmanifest
 → no matches
 ```
@@ -209,7 +209,7 @@ proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
 
 `$http_*` is the **incoming request header**, verbatim. This does not *derive*
 the client IP; it *forwards whatever the caller sent*. Any peer that can reach
-the origin directly — which R-1 permits — sets `CF-Connecting-IP: 1.2.3.4` and
+the origin directly — which R-1 permits — sets `CF-Connecting-IP: a.b.c.d` and
 the backend sees it as fact.
 
 `X-Real-IP $remote_addr` is set correctly on the same lines, which makes this
@@ -277,9 +277,9 @@ to a grep):
 
 The four without one are protected by their own headers' claims — *"FW (UniFi) is
 the real allowlist"*, *"LAN allowlist is Host FW"*, *"LAN/AdGuard only"* — and by
-binding a LAN address rather than `0.0.0.0`. So they are not internet-routable.
+binding a LAN address rather than all interfaces. So they are not internet-routable.
 The gap is **within** the LAN and VPN: any peer that can route to
-`the backend host` reaches `` and ``, and that control lives in a firewall
+the backend host reaches those faces, and that control lives in a firewall
 rule on a different host, not in git, not reviewed in a PR, and with no
 defence in depth behind it.
 
