@@ -62,7 +62,7 @@ function readFile(rel) {
 
 test("ui.js exports the shell API", function () {
   const ui = require("./ui.js");
-  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search"]);
+  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings"]);
   assert.strictEqual(typeof ui.renderTokens, "function");
   assert.strictEqual(typeof ui.setWalletValue, "function");
 });
@@ -74,6 +74,7 @@ test("route parsing is strict and never throws", function () {
   assert.strictEqual(ui.parseRoute("#/nope"), "home");
   assert.strictEqual(ui.parseRoute(null), "home");
   assert.strictEqual(ui.parseRoute("#/ACTIVITY?x=1"), "activity");
+  assert.strictEqual(ui.parseRoute("#/settings"), "settings");
 });
 
 test("currency parsing falls back to USD", function () {
@@ -81,6 +82,22 @@ test("currency parsing falls back to USD", function () {
   assert.strictEqual(ui.parseCurrency("CAD"), "cad");
   assert.strictEqual(ui.parseCurrency("eur"), "usd");
   assert.strictEqual(ui.parseCurrency(null), "usd");
+});
+
+test("auto-lock minutes: clamped, snapped, never off, never past an hour", function () {
+  const ui = require("./ui.js");
+  assert.strictEqual(ui.parseAutolockMinutes(5), 5);
+  assert.strictEqual(ui.parseAutolockMinutes(15), 15);
+  assert.strictEqual(ui.parseAutolockMinutes(60), 60, "1 hour is the longest session");
+  assert.strictEqual(ui.parseAutolockMinutes(90), 60, "over an hour clamps to 60");
+  assert.strictEqual(ui.parseAutolockMinutes(120), 60);
+  assert.strictEqual(ui.parseAutolockMinutes(0), 1, "zero means off — forbidden; clamps up");
+  assert.strictEqual(ui.parseAutolockMinutes(-3), 1);
+  assert.strictEqual(ui.parseAutolockMinutes(null), 5, "missing value falls back to the default");
+  assert.strictEqual(ui.parseAutolockMinutes("nonsense"), 5);
+  assert.strictEqual(ui.parseAutolockMinutes(7), 5, "snaps to the nearest offered option");
+  assert.deepStrictEqual(ui.AUTOLOCK_OPTIONS, [1, 5, 15, 30, 60]);
+  assert.ok(ui.AUTOLOCK_OPTIONS.every((m) => m >= 1 && m <= 60), "no off option, nothing over an hour");
 });
 
 test("address shortening", function () {
@@ -105,13 +122,32 @@ test("amount formatting: unknown renders an em dash, zero renders 0", function (
 
 /* ── index.html: the shell ──────────────────────────────────────────────── */
 
-test("shell structure: four screens and four nav entries", function () {
+test("shell structure: five screens, four nav entries, and a settings gear", function () {
   const html = readFile("index.html");
   assert.ok(html.indexOf('id="main"') !== -1, "missing main region");
-  ["home", "swap", "activity", "search"].forEach(function (screen) {
+  ["home", "swap", "activity", "search", "settings"].forEach(function (screen) {
     assert.ok(html.indexOf('data-screen="' + screen + '"') !== -1, "missing screen " + screen);
+  });
+  ["home", "swap", "activity", "search"].forEach(function (screen) {
     assert.ok(html.indexOf('data-nav="' + screen + '"') !== -1, "missing nav entry " + screen);
   });
+  // Settings lives behind the header gear, not the bottom nav.
+  assert.ok(html.indexOf('id="header-settings"') !== -1, "missing settings gear");
+});
+
+test("auto-lock settings: fixed options only, never off, longest is 1 hour", function () {
+  const html = readFile("index.html");
+  const options = Array.from(html.matchAll(/data-autolock="(\d+)"/g)).map((m) => Number(m[1]));
+  assert.deepStrictEqual(options, [1, 5, 15, 30, 60], "exactly the five offered options");
+  assert.ok(options.every((m) => m >= 1 && m <= 60), "no off option, nothing past an hour");
+  assert.ok(html.indexOf("cannot be turned off") !== -1, "settings must say auto-lock cannot be disabled");
+  assert.ok(html.indexOf("1 hour") !== -1, "settings must state the one-hour cap");
+  assert.ok(html.indexOf('data-action="lock"') !== -1, "settings must offer Lock now");
+  const ui = readFile("ui.js");
+  ["lockNow", "scheduleLock", "resetActivity", "visibilitychange", "readStoredAutolock"].forEach(function (fn) {
+    assert.ok(ui.indexOf(fn) !== -1, "ui.js must implement " + fn);
+  });
+  assert.ok(ui.indexOf("60000") !== -1, "the timer must run in minutes");
 });
 
 test("shell loads the committed CSS and boots from ui.js", function () {
@@ -194,10 +230,16 @@ test("ui.js makes no network calls — the shell never fetches", function () {
 
 test("shipped files reference only the wallet origin", function () {
   const re = /https?:\/\/[a-zA-Z0-9._-]+/g;
+  // Loopback dev URLs are not foreign origins: the invariant is "no other
+  // public host", not "no localhost". README documents the dev server.
+  const LOCAL = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/;
   SHIPPED.forEach(function (file) {
     const src = readFile(file);
     let m;
     while ((m = re.exec(src)) !== null) {
+      if (LOCAL.test(m[0])) {
+        continue;
+      }
       assert.strictEqual(m[0], ALLOWED_ORIGIN, file + " references a foreign origin: " + m[0]);
     }
   });
@@ -286,6 +328,13 @@ test("service worker is network-first for the shell", function () {
   assert.ok(sw.indexOf("caches.match(event.request)") !== -1, "missing cache fallback");
 });
 
+test("service worker never caches API responses", function () {
+  const sw = readFile("sw.js");
+  // Balances/prices must never come out of a cache — a stale balance is a lie.
+  assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
+  assert.ok(sw.indexOf('"tkrwallet-v3"') !== -1, "cache version must bump so the new worker activates");
+});
+
 test("service worker bypasses the HTTP cache and sweeps legacy caches", function () {
   const sw = readFile("sw.js");
   assert.ok(sw.indexOf('cache: "no-store"') !== -1, "must bypass the HTTP cache");
@@ -343,7 +392,7 @@ test("getPrices() surfaces the edge contract and never invents a price", functio
   const wallet = require("./wallet.js");
   return wallet
     .getPrices(["1:native", "1:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"], ["usd", "cad"], function (url) {
-      assert.ok(String(url).indexOf(ALLOWED_ORIGIN + "/api/wallet/prices?assets=") === 0, url);
+      assert.ok(String(url).indexOf("/api/wallet/prices?assets=") === 0, url);
       assert.ok(String(url).indexOf("1%3Anative") !== -1, "assets must be encoded");
       return Promise.resolve({
         ok: true,
@@ -368,6 +417,76 @@ test("getPrices() failure is unknown, not empty prices", function () {
   }).then(function (got) {
     assert.strictEqual(got.state, "unknown");
   });
+});
+
+test("getBalances() surfaces the edge contract and converts amounts", function () {
+  const wallet = require("./wallet.js");
+  return wallet
+    .getBalances("0x2222222222222222222222222222222222222222", [1, 8453], function (url) {
+      assert.ok(String(url).indexOf("/api/wallet/balances?address=") === 0, url);
+      assert.ok(String(url).indexOf("chains=1%2C8453") !== -1, "chains must be encoded");
+      return Promise.resolve({
+        ok: true,
+        json: function () {
+          return Promise.resolve({
+            as_of: 1737000000,
+            balances: [
+              { chain_id: 1, symbol: "ETH", address: null, amount: "1.25", decimals: 18 },
+              { chain_id: 8453, symbol: "USDC", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", amount: "42.5", decimals: 6 },
+            ],
+          });
+        },
+      });
+    })
+    .then(function (got) {
+      assert.strictEqual(got.state, "ok");
+      assert.strictEqual(got.balances.length, 2);
+      assert.ok(Math.abs(got.balances[0].amount - 1.25) < 1e-9, "native amount converted to a number");
+      assert.strictEqual(got.balances[0].chain_name, "Ethereum");
+      assert.strictEqual(got.balances[0].address, null);
+      assert.ok(Math.abs(got.balances[1].amount - 42.5) < 1e-9, "USDC amount converted to a number");
+    });
+});
+
+test("getBalances() failure is unknown — balances are never invented", function () {
+  const wallet = require("./wallet.js");
+  return wallet.getBalances("0x2222222222222222222222222222222222222222", [1], function () {
+    return Promise.reject(new Error("edge down"));
+  }).then(function (got) {
+    assert.strictEqual(got.state, "unknown");
+  });
+});
+
+test("API calls are same-origin for the PWA and absolute for the extension", function () {
+  const wallet = require("./wallet.js");
+  return wallet
+    .getPrices(["1:native"], ["usd"], function (url) {
+      // The PWA is served FROM the edge, so paths are relative: same origin,
+      // no CORS, and the CSP holds in local dev on the dev-edge too.
+      assert.ok(String(url).indexOf("/api/wallet/prices?") === 0, "PWA must call its own origin: " + url);
+      return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ prices: {} }); } });
+    })
+    .then(function () {
+      const prev = global.location;
+      global.location = { protocol: "chrome-extension:" };
+      return wallet
+        .getPrices(["1:native"], ["usd"], function (url) {
+          // Extension pages have origin chrome-extension://, so they call the
+          // edge origin explicitly (the extension CSP allow-lists exactly it).
+          assert.ok(String(url).indexOf(ALLOWED_ORIGIN + "/api/wallet/prices?") === 0, "extension must call the edge origin: " + url);
+          return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ prices: {} }); } });
+        })
+        .then(
+          function (res) {
+            if (prev === undefined) { delete global.location; } else { global.location = prev; }
+            return res;
+          },
+          function (err) {
+            if (prev === undefined) { delete global.location; } else { global.location = prev; }
+            throw err;
+          }
+        );
+    });
 });
 
 test("estimateValue() reports ok/partial/unknown honestly", function () {
@@ -408,18 +527,27 @@ test("preview mode ships the mockup numbers and is opt-in only", function () {
   assert.ok(ui.indexOf("preview=1") !== -1, "preview must require the query flag");
 });
 
-test("searchCatalog filters by symbol and address, offline", function () {
+test("searchCatalog filters by symbol, name and address, offline", function () {
   const wallet = require("./wallet.js");
   assert.deepStrictEqual(wallet.searchCatalog(""), [], "an empty query returns nothing");
   const usdc = wallet.searchCatalog("usdc");
   assert.ok(usdc.length >= 2, "USDC exists on more than one chain");
-  assert.ok(usdc.every((t) => t.symbol === "USDC"), "only USDC matches");
+  assert.ok(
+    usdc.every((t) => t.symbol.toLowerCase().indexOf("usdc") !== -1 || t.name.toLowerCase().indexOf("usdc") !== -1),
+    "only USDC-family tokens match"
+  );
   const byAddr = wallet.searchCatalog("0x833589fcd6edb6e08f4c7c32d4f71b54bda02913");
   assert.strictEqual(byAddr.length, 1, "address search finds exactly one token");
   assert.strictEqual(byAddr[0].chain_id, 8453, "and it is the Base entry");
   assert.strictEqual(byAddr[0].chain_name, "Base");
   assert.deepStrictEqual(wallet.searchCatalog("no-such-token"), []);
   assert.ok(wallet.searchCatalog("eth").length >= 1);
+  // Names, not just symbols: a user typing what the asset is called must hit.
+  assert.ok(wallet.searchCatalog("tether").every((t) => t.symbol === "USDT"), "tether finds USDT");
+  assert.ok(wallet.searchCatalog("bitcoin").some((t) => t.symbol === "WBTC"), "bitcoin finds WBTC");
+  assert.ok(wallet.searchCatalog("bitcoin").some((t) => t.symbol === "cbBTC"), "bitcoin finds cbBTC");
+  assert.ok(wallet.searchCatalog("chainlink").every((t) => t.symbol === "LINK"), "chainlink finds LINK");
+  assert.ok(wallet.searchCatalog("aave").some((t) => t.symbol === "AAVE"), "aave finds AAVE");
 });
 
 test("searchCatalog is Mainnet + Base only — never Robinhood or Solana", function () {
@@ -542,6 +670,27 @@ test("an unlocked wallet never shows the boot-time 'No wallet yet' card", functi
   assert.ok(rt[0].indexOf("No balances yet") !== -1, "unlocked empty state must say balances await the edge");
   const reveal = ui.match(/function revealAccount\(phrase\) \{[\s\S]*?\n  \}/);
   assert.ok(reveal && reveal[0].indexOf("renderTokens(null)") !== -1, "revealAccount must repaint the token list");
+});
+
+test("unlock fetches real balances from the edge and locks on expiry", function () {
+  const ui = readFile("ui.js");
+  // Unlock -> getBalances -> render -> prices: the actual data path.
+  assert.ok(ui.indexOf("getBalances(session.address, [1, 8453])") !== -1, "unlock must fetch Mainnet + Base balances");
+  const reveal = ui.match(/function revealAccount\(phrase\) \{[\s\S]*?\n  \}/);
+  assert.ok(reveal && reveal[0].indexOf("refreshBalances()") !== -1, "revealAccount must start the balance fetch");
+  assert.ok(reveal && reveal[0].indexOf("scheduleLock()") !== -1, "revealAccount must arm the auto-lock timer");
+  // A locked wallet must clear key material and holdings.
+  const lock = ui.match(/function lockNow\(reason\) \{[\s\S]*?\n  \}/);
+  assert.ok(lock, "lockNow must exist");
+  ["session.address = null", "uiData.lastHoldings = null", "renderTokens(null)"].forEach(function (s) {
+    assert.ok(lock[0].indexOf(s) !== -1, "lockNow must " + s);
+  });
+  // The locked empty state offers Unlock, never Import.
+  const rt = ui.match(/function renderTokens\(holdings, prices\) \{[\s\S]*?\n  \}/);
+  assert.ok(/session\.locked/.test(rt[0]), "the empty list must branch on the locked session");
+  assert.ok(rt[0].indexOf("Wallet locked") !== -1, "locked empty state must say so");
+  const wallet = readFile("wallet.js");
+  assert.ok(wallet.indexOf("getBalances: getBalances") !== -1, "wallet.js must export getBalances");
 });
 
 test("shipped files still reference only the wallet origin", function () {

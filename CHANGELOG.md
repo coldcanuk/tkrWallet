@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.0 — auto-lock, working search, edge balances
+
+- **Auto-lock**: 5-minute default, configurable in Settings (1/5/15/30/60 min).
+  Cannot be turned off; the longest session is 1 hour. Idle timer resets on
+  activity, re-checks after background-tab throttling, and a "Lock now" button
+  wipes key material and holdings on demand. Locked state re-prompts for the
+  password — never an import.
+- **Search that works**: the built-in catalogue grew to 38 Mainnet + Base
+  tokens (names, symbols, verified addresses); matching covers symbol, name and
+  address, so "tether", "bitcoin" and "chainlink" all hit. Rows show name ·
+  chain · short address.
+- **Real balances after unlock**: `wallet.js#getBalances` reads
+  `GET /api/wallet/balances` from the edge (contract specified in
+  `docs/specs/edge-server.md` §3.3); unlock fetches Mainnet + Base holdings,
+  then prices, and renders the value. The service worker never caches `/api/*`.
+- **Local dev edge** (`npm run dev`, `tools/dev-edge.js`): serves the app and
+  `/api/wallet/balances` + `/api/wallet/prices` from one origin — balances via
+  server-side public chain RPCs, prices via CoinGecko. Dev-only stand-in for
+  the production edge, so the single-origin CSP behaves like production.
+- 62 tests, 0 failures.
+
 ## 0.5.0 — self-custody import / unlock + local signing
 
 - Import a BIP-39 recovery phrase or unlock a local wallet with a password; the

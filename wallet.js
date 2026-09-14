@@ -1,8 +1,8 @@
 /* tkrWallet — data layer.
  *
  * This is the ONLY file that makes network calls: fetch to the wallet edge for
- * prices. The single origin is BASE_URL; the test suite greps every shipped
- * file and fails on any other origin.
+ * balances and prices. The single origin is BASE_URL; the test suite greps
+ * every shipped file and fails on any other origin.
  *
  * Hard rules carried from the audits:
  *   - unknown != zero. Every read failure yields { state: "unknown" }, and no
@@ -15,6 +15,20 @@
 
   var BASE_URL = "https://tkrwallet.scratchpost.ai";
 
+  /* The API base for a path.
+   *
+   * The PWA is served FROM the edge, so API calls are relative ("/api/…"):
+   * same origin, no CORS, and the single-origin CSP holds in local dev too
+   * (the dev edge serves app + API from one origin). Extension pages have
+   * origin chrome-extension://, so they call the edge origin explicitly —
+   * the extension CSP allow-lists exactly that origin. */
+  function apiUrl(path) {
+    var isExtension =
+      typeof location !== "undefined" &&
+      String(location.protocol || "").indexOf("chrome-extension") === 0;
+    return isExtension ? BASE_URL + path : path;
+  }
+
   /* Chain catalogue. Solana is catalogued-not-queried: there is no balance
    * source until the edge provides reads (D10), so it has no TOKENS entry and
    * produces no RPC calls. */
@@ -25,20 +39,54 @@
     900001: { name: "Solana", native: "SOL" },
   };
 
+  /* Built-in catalogue: Mainnet + Base tokens the wallet knows by name,
+   * symbol, address and decimals. Search runs against this list offline;
+   * balances for it are read by the edge (see /api/wallet/balances). Every
+   * address below is a well-known, documented contract. */
   var TOKENS = {
     1: [
-      { symbol: "ETH" },
-      { symbol: "WETH", address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", decimals: 18 },
-      { symbol: "USDC", address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", decimals: 6 },
-      { symbol: "USDT", address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", decimals: 6 },
+      { symbol: "ETH", name: "Ether" },
+      { symbol: "WETH", name: "Wrapped Ether", address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", decimals: 18 },
+      { symbol: "USDC", name: "USD Coin", address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", decimals: 6 },
+      { symbol: "USDT", name: "Tether USD", address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", decimals: 6 },
+      { symbol: "DAI", name: "Dai", address: "0x6B175474E89094C44Da98b954EedeAC495271d0F", decimals: 18 },
+      { symbol: "WBTC", name: "Wrapped Bitcoin", address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", decimals: 8 },
+      { symbol: "LINK", name: "Chainlink", address: "0x514910771AF9Ca656af840dff83E8264EcF986CA", decimals: 18 },
+      { symbol: "UNI", name: "Uniswap", address: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", decimals: 18 },
+      { symbol: "AAVE", name: "Aave", address: "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9", decimals: 18 },
+      { symbol: "SHIB", name: "Shiba Inu", address: "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE", decimals: 18 },
+      { symbol: "PEPE", name: "Pepe", address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933", decimals: 18 },
+      { symbol: "ARB", name: "Arbitrum", address: "0xB50721BCf8d664c30412Cfbc6cf7a15145234ad1", decimals: 18 },
+      { symbol: "OP", name: "Optimism", address: "0x4200000000000000000000000000000000000042", decimals: 18 },
+      { symbol: "MATIC", name: "Polygon", address: "0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0", decimals: 18 },
+      { symbol: "CRV", name: "Curve DAO", address: "0xD533a949740bb3306d119CC777fa900bA034cd52", decimals: 18 },
+      { symbol: "MKR", name: "Maker", address: "0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2", decimals: 18 },
+      { symbol: "LDO", name: "Lido DAO", address: "0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32", decimals: 18 },
+      { symbol: "GRT", name: "The Graph", address: "0xc944E90C64B2c07662A292be6244BDf05Cda44a7", decimals: 18 },
+      { symbol: "SNX", name: "Synthetix", address: "0xC011a73ee8576Fb46F5E1c5751cA3B9Fe0af2a6F", decimals: 18 },
+      { symbol: "COMP", name: "Compound", address: "0xc00e94Cb662C3520282E6f5717214004A7f26888", decimals: 18 },
+      { symbol: "ENS", name: "Ethereum Name Service", address: "0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72", decimals: 18 },
+      { symbol: "APE", name: "ApeCoin", address: "0x4d224452801ACEd8B2F0aebE155379bb5D594381", decimals: 18 },
+      { symbol: "INJ", name: "Injective", address: "0xe28b3B32B6c345A34Ff64674606124Dd5Aceca30", decimals: 18 },
+      { symbol: "RNDR", name: "Render", address: "0x6De037ef9aD2725EB40118Bb1702EBb27e4Aeb24", decimals: 18 },
     ],
     8453: [
-      { symbol: "ETH" },
-      { symbol: "WETH", address: "0x4200000000000000000000000000000000000006", decimals: 18 },
-      { symbol: "USDC", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", decimals: 6 },
-      { symbol: "USDT", address: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2", decimals: 6 },
+      { symbol: "ETH", name: "Ether" },
+      { symbol: "WETH", name: "Wrapped Ether", address: "0x4200000000000000000000000000000000000006", decimals: 18 },
+      { symbol: "USDC", name: "USD Coin", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", decimals: 6 },
+      { symbol: "USDT", name: "Tether USD", address: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2", decimals: 6 },
+      { symbol: "DAI", name: "Dai", address: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", decimals: 18 },
+      { symbol: "cbBTC", name: "Coinbase Wrapped Bitcoin", address: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf", decimals: 8 },
+      { symbol: "AERO", name: "Aerodrome Finance", address: "0x940181a94A35A4569E4529A3CDfB74e38FD98631", decimals: 18 },
+      { symbol: "BRETT", name: "Brett", address: "0x532f27101965dd16442E59d40670FaF5eBB142E4", decimals: 18 },
+      { symbol: "DEGEN", name: "Degen", address: "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed", decimals: 18 },
+      { symbol: "WELL", name: "Moonwell", address: "0xA88594D404727625A9437C3f886C7643872296AE", decimals: 18 },
+      { symbol: "VIRTUAL", name: "Virtuals Protocol", address: "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b", decimals: 18 },
+      { symbol: "USDbC", name: "USDC (Bridged)", address: "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA", decimals: 6 },
+      { symbol: "cbETH", name: "Coinbase Wrapped Staked ETH", address: "0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22", decimals: 18 },
+      { symbol: "wstETH", name: "Wrapped liquid staked Ether", address: "0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452", decimals: 18 },
     ],
-    4663: [{ symbol: "ETH" }],
+    4663: [{ symbol: "ETH", name: "Ether" }],
   };
 
   /* Local colour table. Never a wire-supplied colour (audit W8/S-7). */
@@ -47,6 +95,35 @@
     WETH: "#a8a29e",
     USDC: "#4d9de0",
     USDT: "#26a17b",
+    DAI: "#f5ac37",
+    WBTC: "#f7931a",
+    LINK: "#2a5ada",
+    UNI: "#ff007a",
+    AAVE: "#b6509e",
+    SHIB: "#ffa409",
+    PEPE: "#3d9e2f",
+    ARB: "#28a0f0",
+    OP: "#ff0420",
+    MATIC: "#8247e5",
+    CRV: "#00c2a8",
+    MKR: "#1aab9b",
+    LDO: "#00a3ff",
+    GRT: "#6747ed",
+    SNX: "#00d1ff",
+    COMP: "#00d395",
+    ENS: "#5298ff",
+    APE: "#054dcd",
+    INJ: "#00f3ff",
+    RNDR: "#e9448a",
+    cbBTC: "#0052ff",
+    AERO: "#20b9e8",
+    BRETT: "#74a0ff",
+    DEGEN: "#a36efd",
+    WELL: "#9c3cff",
+    VIRTUAL: "#1b49f1",
+    USDbC: "#4d9de0",
+    cbETH: "#0052ff",
+    wstETH: "#00a3ff",
     SOL: "#e8a33d",
   };
 
@@ -105,7 +182,7 @@
     }
     var vs = (currencies && currencies.length ? currencies : ["usd"]).join(",");
     var q = "assets=" + encodeURIComponent(assets.join(",")) + "&vs=" + encodeURIComponent(vs);
-    return fetchFn(BASE_URL + "/api/wallet/prices?" + q)
+    return fetchFn(apiUrl("/api/wallet/prices?" + q))
       .then(function (res) {
         if (!res.ok) {
           throw new Error("HTTP " + res.status);
@@ -117,6 +194,42 @@
           return { state: "unknown" };
         }
         return { state: "ok", prices: body.prices, as_of: body.as_of || null };
+      })
+      .catch(function () {
+        return { state: "unknown" };
+      });
+  }
+
+  /* Balances from the edge (contract: docs/specs/edge-server.md §3.3).
+   * amount strings are converted to numbers; assets the response omits are
+   * simply absent (the user's real holdings are what the edge returns).
+   * Network/parse failure -> { state: "unknown" } — never fabricated zeros. */
+  function getBalances(address, chainIds, fetchFn) {
+    fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
+    if (!fetchFn) {
+      return Promise.resolve({ state: "unknown" });
+    }
+    var chains = (chainIds && chainIds.length ? chainIds : [1, 8453]).join(",");
+    var q = "address=" + encodeURIComponent(String(address || "")) + "&chains=" + encodeURIComponent(chains);
+    return fetchFn(apiUrl("/api/wallet/balances?" + q))
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error("HTTP " + res.status);
+        }
+        return res.json();
+      })
+      .then(function (body) {
+        if (!body || typeof body !== "object" || !Array.isArray(body.balances)) {
+          return { state: "unknown" };
+        }
+        return {
+          state: "ok",
+          as_of: body.as_of || null,
+          balances: body.balances.map(function (b) {
+            var amount = typeof b.amount === "string" ? Number(b.amount) : b.amount;
+            return row(b.symbol, b.chain_id, Number.isFinite(amount) ? amount : null, b.address || null, b.decimals || 18);
+          }),
+        };
       })
       .catch(function () {
         return { state: "unknown" };
@@ -150,9 +263,9 @@
     return { state: "ok", value: value, priced: priced, total: total };
   }
 
-  /* Search the built-in catalogue for tokens, filtered by symbol or address —
-   * the same matching a server-side catalogue would do, applied to the list we
-   * already hold. Pure and offline: no network call.
+  /* Search the built-in catalogue by symbol, name or address — the same
+   * matching a server-side catalogue would do, applied to the list we already
+   * hold. Pure and offline: no network call.
    *
    * Scope is Mainnet + Base only, per product direction. Chain-wide search
    * (every Mainnet/Base token, not just this curated set) needs the edge
@@ -174,10 +287,12 @@
       }
       TOKENS[chainKey].forEach(function (tok) {
         var bySymbol = tok.symbol.toLowerCase().indexOf(q) !== -1;
+        var byName = !!tok.name && tok.name.toLowerCase().indexOf(q) !== -1;
         var byAddress = !!tok.address && tok.address.toLowerCase().indexOf(q) !== -1;
-        if (bySymbol || byAddress) {
+        if (bySymbol || byName || byAddress) {
           out.push({
             symbol: tok.symbol,
+            name: tok.name || tok.symbol,
             address: tok.address || null,
             chain_id: chainId,
             chain_name: chainName(chainId),
@@ -199,6 +314,7 @@
     colorFor: colorFor,
     assetKey: assetKey,
     getPrices: getPrices,
+    getBalances: getBalances,
     estimateValue: estimateValue,
     searchCatalog: searchCatalog,
     PREVIEW_HOLDINGS: PREVIEW_HOLDINGS,

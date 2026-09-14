@@ -10,6 +10,7 @@
   },
   "scripts": {
     "setup": "npm --prefix tools install --cache tools/.npm-cache",
+    "dev": "node tools/dev-edge.js",
     "test": "node app_test.js",
     "build:css": "npm --prefix tools run build:css",
     "watch:css": "npm --prefix tools run watch:css",

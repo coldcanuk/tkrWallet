@@ -34,18 +34,26 @@ itself.
 ## What works today
 
 - Mobile-first shell: wallet value (USD/CAD), Send/Swap/Receive/Buy row, token
-  list, four-tab navigation (Home/Swap/Activity/Search).
+  list, four-tab navigation (Home/Swap/Activity/Search) plus a Settings screen.
 - **Self-custody import / unlock**: import a 12/24-word BIP-39 recovery phrase
   or unlock an existing local wallet with a password. The phrase is encrypted
   (PBKDF2-SHA256 at 600k iterations → AES-GCM) and stored only on this device.
   Derives the Ethereum (`m/44'/60'/0'/0/0`) and Solana (`m/44'/501'/0'/0'`)
   addresses, and signs EIP-191 messages and legacy EIP-155 transactions locally
   with audited `@noble`/`@scure` primitives — never a server.
-- Wallet balances arrive from the wallet edge (not built yet): an imported or
-  unlocked wallet shows its address, and the balance/value card says so honestly
-  rather than pretending. There is no injected-provider (MetaMask/Brave/Uniswap)
-  connect path — the wallet is pure self-custody.
-- Service worker: network-first shell, offline fallback, same-origin only.
+- **Auto-lock**: the wallet locks itself after inactivity — 5 minutes by
+  default, configurable in Settings (1/5/15/30/60 min). It cannot be turned
+  off and the longest session is 1 hour. "Lock now" is one tap away.
+- **Balances from the edge** (`GET /api/wallet/balances` + `/api/wallet/prices`,
+  see `docs/specs/edge-server.md` §3.2–3.3): an unlocked wallet reads real
+  Mainnet + Base holdings and fiat value. The production edge is not deployed
+  yet, so `npm run dev` serves a working local edge (`tools/dev-edge.js`) —
+  same origin, so the single-origin CSP still holds. There is no
+  injected-provider (MetaMask/Brave/Uniswap) connect path.
+- **Token search**: a 38-token Mainnet + Base catalogue searchable offline by
+  symbol, name, or address.
+- Service worker: network-first shell, offline fallback, same-origin only,
+  `/api/*` never cached.
 - Honest placeholders: Swap is under construction (no router exists in this
   stack yet), Activity is device-local (the chain nodes are pruned).
 
@@ -61,13 +69,19 @@ canonical BIP-39 test vector. See `docs/security/wallet-custody.md`.
 
 ```bash
 npm run setup      # installs the Tailwind build tooling (tools/node_modules)
+npm run dev        # local wallet + edge API on http://127.0.0.1:8899 (one origin)
 npm run check      # tests + committed-CSS freshness + class-resolution guard
 npm run build:css  # rebuild app.css from tools/src/app.css (committed output)
 ```
 
-There are **no runtime dependencies** and no JS build: the shipped tree is the
-reviewed tree. `app.css` is committed because MV3 forbids the Tailwind CDN and
-cannot relax `script-src`.
+`npm run dev` serves the app **and** `/api/wallet/balances` + `/api/wallet/prices`
+from one origin, so balances, prices and the CSP all behave like production.
+Balances are read server-side from public chain RPCs and prices from CoinGecko —
+dev-only stand-ins for the real edge.
+
+There are **no runtime dependencies** and no JS build for the app itself: the
+shipped tree is the reviewed tree. `app.css` is committed because MV3 forbids
+the Tailwind CDN and cannot relax `script-src`.
 
 ## Run as PWA
 
