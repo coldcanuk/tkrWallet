@@ -8,7 +8,7 @@
  *   - Old caches are deleted on activate; new workers take over immediately.
  */
 const CACHE = "tkrwallet-v1";
-const SHELL = ["./", "./index.html", "./ui.js", "./wallet.js", "./app.css", "./manifest.webmanifest"];
+const SHELL = ["./", "./index.html", "./ui.js", "./wallet.js", "./crypto.js", "./vendor/noble.js", "./app.css", "./manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));

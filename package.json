@@ -15,7 +15,8 @@
     "watch:css": "npm --prefix tools run watch:css",
     "check:classes": "node tools/check-classes.js",
     "check:css": "npm run build:css && git diff --exit-code -- app.css",
-    "check": "npm test && npm run check:css && npm run check:classes"
+    "check:crypto": "npm --prefix tools run build:crypto && git diff --exit-code -- vendor/noble.js",
+    "check": "npm test && npm run check:css && npm run check:crypto && npm run check:classes"
   },
   "engines": {
     "node": ">=20"

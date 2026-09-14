@@ -4,11 +4,17 @@
   "private": true,
   "description": "Build-only tooling for tkrWallet. Never shipped to the browser.",
   "devDependencies": {
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "@scure/bip32": "^2.4.0",
+    "@scure/bip39": "^2.4.0",
     "@tailwindcss/cli": "^4.3.3",
+    "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3"
   },
   "scripts": {
     "build:css": "tailwindcss -i ./src/app.css -o ../app.css --minify",
-    "watch:css": "tailwindcss -i ./src/app.css -o ../app.css --watch"
+    "watch:css": "tailwindcss -i ./src/app.css -o ../app.css --watch",
+    "build:crypto": "esbuild ./noble-entry.js --bundle --format=iife --global-name=nobleCrypto --outfile=../vendor/noble.js --footer:js=\"if(typeof module==='object'&&module.exports)module.exports=nobleCrypto;\""
   }
 }

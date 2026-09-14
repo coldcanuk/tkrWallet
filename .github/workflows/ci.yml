@@ -32,3 +32,11 @@ jobs:
 
       - name: Every class used exists in app.css
         run: node tools/check-classes.js
+
+      # vendor/noble.js is a committed, unminified bundle of audited @noble/@scure
+      # primitives. It must be reproducible from tools/noble-entry.js so a
+      # tampered or stale copy cannot ship.
+      - name: Committed crypto bundle is up to date
+        run: |
+          npm --prefix tools run build:crypto
+          git diff --exit-code -- vendor/noble.js

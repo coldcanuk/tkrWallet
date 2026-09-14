@@ -11,7 +11,7 @@ const path = require("path");
 
 const ROOT = __dirname;
 const ALLOWED_ORIGIN = "https://tkrwallet.scratchpost.ai";
-const SHIPPED = ["index.html", "ui.js", "wallet.js", "sw.js", "manifest.json", "manifest.webmanifest", "README.md"];
+const SHIPPED = ["index.html", "ui.js", "wallet.js", "crypto.js", "sw.js", "manifest.json", "manifest.webmanifest", "README.md"];
 
 let failures = [];
 let count = 0;
@@ -503,6 +503,57 @@ test("search is wired to the input and documented as catalogue-scoped", function
   const html = readFile("index.html");
   assert.ok(html.indexOf('id="tpl-search-row"') !== -1, "missing search row template");
   assert.ok(html.indexOf("Type to search the token catalog") === -1, "the placeholder lie must be gone");
+});
+
+/* ── crypto.js: wallet import / vault (audited primitives) ──────────────── */
+
+test("crypto: BIP-39/44 vector derives the canonical EVM address", function () {
+  const c = require("./crypto.js");
+  const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  const w = c.importMnemonic(phrase);
+  assert.strictEqual(w.evmAddress, "0x9858EfFD232B4033E47d90003D41EC34EcaEda94");
+  assert.strictEqual(w.solAddress.length, 44, "Solana address is base58");
+});
+
+test("crypto: invalid mnemonic is rejected before any key material is derived", function () {
+  const c = require("./crypto.js");
+  assert.throws(function () { c.importMnemonic("foo bar baz"); }, /invalid-mnemonic/);
+  assert.throws(function () { c.importMnemonic(""); }, /invalid-mnemonic/);
+});
+
+test("crypto: generateWallet returns a valid 12-word wallet, idempotent", function () {
+  const c = require("./crypto.js");
+  const w = c.generateWallet();
+  assert.strictEqual(w.mnemonic.split(" ").length, 12);
+  assert.ok(/^0x[0-9a-fA-F]{40}$/.test(w.evmAddress));
+  assert.strictEqual(c.importMnemonic(w.mnemonic).evmAddress, w.evmAddress);
+});
+
+test("crypto: vault round-trips and rejects a wrong password", function () {
+  const c = require("./crypto.js");
+  const phrase = "legal winner thank year wave sausage worth useful legal winner thank yellow";
+  return c.encryptVault(phrase, "correct horse battery staple").then(function (vault) {
+    assert.strictEqual(vault.v, 1);
+    assert.strictEqual(vault.kdf, "pbkdf2-sha256");
+    assert.strictEqual(vault.iterations, 600000, "KDF must stay at 600k");
+    assert.ok(JSON.stringify(vault).indexOf(phrase) === -1, "plaintext must not be in the vault");
+    return c.decryptVault(vault, "correct horse battery staple").then(function (back) {
+      assert.strictEqual(back, phrase);
+      return c.decryptVault(vault, "wrong").then(
+        function () { throw new Error("wrong password should reject"); },
+        function (e) { assert.strictEqual(e.message, "wrong-password"); }
+      );
+    });
+  });
+});
+
+test("crypto: the bundle has no eval and no remote code", function () {
+  const bundle = readFile("vendor/noble.js");
+  assert.ok(bundle.length > 50000, "bundle must be the real thing");
+  assert.ok(/eval\(|new Function/.test(bundle) === false, "bundle must not use eval");
+  ["fetch(", "XMLHttpRequest", "WebSocket", "sendBeacon", "import("].forEach(function (call) {
+    assert.ok(bundle.indexOf(call) === -1, "bundle must not make network calls: " + call);
+  });
 });
 
 run();

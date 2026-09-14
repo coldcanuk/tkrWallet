@@ -256,8 +256,10 @@
       </button>
     </template>
 
-    <!-- No inline script: MV3 blocks it, so boot lives in ui.js. The data layer
-         loads first; the shell never fetches — wallet.js is the only caller. -->
+    <!-- No inline script: MV3 blocks it, so boot lives in ui.js. Load order:
+         audited crypto bundle -> our crypto wrapper -> data layer -> shell. -->
+    <script src="./vendor/noble.js"></script>
+    <script src="./crypto.js"></script>
     <script src="./wallet.js"></script>
     <script src="./ui.js"></script>
   </body>
