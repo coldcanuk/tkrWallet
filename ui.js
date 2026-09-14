@@ -539,7 +539,10 @@
     s.loadVault()
       .then(function (vault) {
         if (!vault) {
+          // No wallet on this device. Move to import and say why — a silent
+          // bounce reads as a broken button.
           showGateForm("import");
+          showGateError("gate-import-error", "No wallet on this device yet. Import a recovery phrase to create one.");
           throw new Error("no vault");
         }
         return c.decryptVault(vault, password);

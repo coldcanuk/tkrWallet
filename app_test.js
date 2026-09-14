@@ -587,6 +587,14 @@ test("import/unlock gate is present and wired", function () {
   assert.ok(ui.indexOf("600000") !== -1 || readFile("crypto.js").indexOf("600000") !== -1, "KDF iterations pinned");
 });
 
+test("unlocking with no vault on device explains itself, never bounces silently", function () {
+  const ui = readFile("ui.js");
+  assert.ok(
+    ui.indexOf("No wallet on this device yet") !== -1,
+    "a no-vault unlock must show a message, not silently switch forms"
+  );
+});
+
 test("shipped files still reference only the wallet origin", function () {
   // crypto.js + store.js are now in SHIPPED; confirm the scan covers them.
   assert.ok(SHIPPED.indexOf("crypto.js") !== -1 && SHIPPED.indexOf("store.js") !== -1);
