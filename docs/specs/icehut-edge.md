@@ -233,6 +233,39 @@ Long-chain ids are already agreed: **ETH 1, Base 8453, Robinhood 4663,
 Solana 900001** (tickerpicker's `ChainSolana = 900_001` matches tkrWallet's
 constant exactly).
 
+### 3.5 Token catalogue — required for real search
+
+**`GET /api/catalog?q=<text>&chain=<id>&limit=<n>`** (no auth; public data)
+
+```json
+{ "as_of": 0,
+  "tokens": [
+    { "chain_id": 8453, "address": "0x8335…2913", "symbol": "USDC",
+      "name": "USD Coin", "decimals": 6, "verified": true }
+  ] }
+```
+
+- `q` matches symbol, name, or address (case-insensitive, substring); empty `q`
+  returns the head of the list, not an error.
+- `limit` caps the response (default 20, max 100).
+- Omit unverified/spam tokens, or mark them `"verified": false` so the client can
+  rank them last.
+
+**Why this cannot come from the chain.** The pruned nodes can answer *"what is
+this token at this address"* (`eth_call` → `name`/`symbol`/`decimals` at latest
+state — fine on a pruned node). They cannot answer *"which tokens exist that
+match USDC"*: that is an **index** question. An index is either a curated
+per-chain token list (Uniswap/CoinGecko-style; cheap and correct for a wallet)
+or a scan of every `Transfer`/`PairCreated` log ever — which the pruned nodes
+cannot backfill and which is a much larger build.
+
+Recommended: serve a curated list, refreshed periodically, and let the edge
+proxy token metadata for anything the client already knows by address.
+
+**Optional companion:** `GET /api/token/:chain/:address` → symbol/name/decimals
+for an arbitrary address, so the client can label a token it learned about from
+a transaction instead of shipping a hardcoded table.
+
 ### 3.5 Discover — optional
 
 If we keep a Discover section (index cards, scoreboard, launches), it needs a

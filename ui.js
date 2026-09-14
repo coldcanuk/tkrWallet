@@ -168,8 +168,8 @@
     setText(el("account-label"), connected ? shortAddress(address) : label || "Not connected");
     setText(el("account-status"), connected ? "Connected " + String(address) : "Not connected");
     if (dot) {
-      dot.classList.toggle("bg-up-400", connected);
-      dot.classList.toggle("bg-cream-500", !connected);
+      dot.classList.remove("bg-up-400", "bg-cream-500", "bg-ember-400");
+      dot.classList.add(connected ? "bg-up-400" : "bg-cream-500");
     }
   }
 
@@ -184,9 +184,19 @@
   }
 
   function setWalletValue(value, currency, note) {
-    setText(el("wallet-value"), formatFiat(value, currency || state.currency));
+    var box = el("wallet-value");
+    var unknown = value === null || value === undefined || value === "" || isNaN(Number(value));
+    setText(box, formatFiat(value, currency || state.currency));
+    if (box) {
+      // A placeholder must never carry hero weight (data-empty styling).
+      if (unknown) {
+        box.setAttribute("data-empty", "");
+      } else {
+        box.removeAttribute("data-empty");
+      }
+    }
     if (note !== undefined) {
-      setText(el("wallet-value-note"), note);
+      setText(el("wallet-value-note"), note || "");
     }
   }
 
@@ -214,15 +224,34 @@
     }
     box.textContent = "";
     if (!holdings || !holdings.length) {
-      var empty = document.createElement("p");
-      empty.className = "px-4 py-6 text-center text-sm text-cream-500";
-      empty.textContent = "No tokens yet. Connect a wallet to list them.";
-      box.appendChild(empty);
+      var tplEmpty = el("tpl-token-empty");
+      if (tplEmpty) {
+        var node = tplEmpty.content.firstElementChild.cloneNode(true);
+        var cta = node.querySelector("[data-connect]");
+        if (cta) {
+          cta.addEventListener("click", connectWallet);
+        }
+        // The extension popup is its own security context: no other wallet can
+        // inject a provider into it, so say what actually works there.
+        if (isExtension()) {
+          setText(
+            node.querySelector("[data-empty-body]"),
+            "An extension popup cannot see your wallet \u2014 other extensions cannot inject into it. Open tkrwallet.scratchpost.ai in a browser tab to connect."
+          );
+          if (cta) {
+            cta.textContent = "How to connect";
+          }
+        }
+        box.appendChild(node);
+      }
       return [];
     }
     holdings.forEach(function (holding) {
       var row = tpl.content.firstElementChild.cloneNode(true);
       var badge = row.querySelector("[data-token-badge]");
+      row.addEventListener("click", function () {
+        setWalletStatus("Token details are not built yet.");
+      });
       setText(row.querySelector("[data-token-name]"), holding.symbol || "?");
       setText(row.querySelector("[data-token-chain]"), holding.chain_name || "");
       setText(
@@ -238,6 +267,57 @@
       box.appendChild(row);
     });
     return holdings;
+  }
+
+  /* ---- search ------------------------------------------------------------ */
+
+  /** Filter the built-in catalogue. Offline and synchronous — the catalogue is
+   * already in the client. A chain-wide search needs the edge catalogue. */
+  function searchResults(query) {
+    var box = el("search-results");
+    var tpl = el("tpl-search-row");
+    if (!box) {
+      return [];
+    }
+    box.textContent = "";
+    var q = String(query || "").trim();
+    var rows = q && root.tkrWalletData ? root.tkrWalletData.searchCatalog(q, 20) : [];
+
+    if (!rows.length) {
+      var hint = document.createElement("div");
+      hint.className = "px-4 py-6 text-center";
+      var line = document.createElement("p");
+      line.className = "text-sm text-cream-300";
+      line.textContent = q ? "No match in the built-in catalogue." : "Search the built-in catalogue";
+      var sub = document.createElement("p");
+      sub.className = "mt-1 text-xs text-cream-500";
+      sub.textContent = q
+        ? "Only the tokens this wallet ships with are searchable until the edge catalogue lands."
+        : "Ethereum, Base and Robinhood tokens this wallet knows about. Full chain-wide search needs the wallet edge.";
+      hint.appendChild(line);
+      hint.appendChild(sub);
+      box.appendChild(hint);
+      return [];
+    }
+
+    rows.forEach(function (tok) {
+      var row = tpl.content.firstElementChild.cloneNode(true);
+      var badge = row.querySelector("[data-token-badge]");
+      setText(row.querySelector("[data-token-name]"), tok.symbol);
+      setText(
+        row.querySelector("[data-token-chain]"),
+        tok.address ? tok.chain_name + " \u00b7 " + shortAddress(tok.address, 6, 4) : tok.chain_name + " \u00b7 native"
+      );
+      if (badge) {
+        badge.style.backgroundColor = tok.color || "#cfc8b8";
+        badge.textContent = String(tok.symbol).slice(0, 3);
+      }
+      row.addEventListener("click", function () {
+        setWalletStatus(tok.symbol + " on " + tok.chain_name + " selected. Token detail is not built yet.");
+      });
+      box.appendChild(row);
+    });
+    return rows;
   }
 
   /* ---- wallet wiring: shell talks to the data layer only ------------------ */
@@ -261,7 +341,7 @@
     var est = wallet.estimateValue(holdings, uiData.lastPrices, state.currency);
     if (est.state === "ok") {
       var note = est.priced < est.total ? est.priced + " of " + est.total + " holdings priced" : "";
-      setWalletValue(est.value, state.currency, note || undefined);
+      setWalletValue(est.value, state.currency, note);
     } else {
       setWalletValue(null, state.currency, "Prices unavailable until the wallet edge ships.");
     }
@@ -296,6 +376,11 @@
       return Promise.resolve(null);
     }
     setStatus("Requesting wallet connection\u2026");
+    var dot = el("account-dot");
+    if (dot) {
+      dot.classList.remove("bg-cream-500", "bg-up-400");
+      dot.classList.add("bg-ember-400");
+    }
     return wallet
       .connect()
       .then(function (account) {
@@ -314,11 +399,23 @@
         uiData.account = null;
         uiData.lastHoldings = null;
         uiData.lastPrices = null;
-        setAccount(null, "Install an injected wallet to connect.");
-        setStatus((err && err.message) || "Wallet connect failed.");
+        var raw = (err && err.message) || "";
+        var msg = /provider/i.test(raw)
+          ? "No wallet detected here. Install MetaMask or Brave, then reload \u2014 or open tkrWallet in a browser tab."
+          : raw || "Wallet connect failed.";
+        setAccount(null, isExtension() ? "Open in a browser tab" : "Not connected");
+        setStatus(msg);
         setWalletValue(null, state.currency, "Connect a wallet to see your balance.");
+        renderTokens(null);
         return null;
       });
+  }
+
+  /* Extension popups are their own security context: other wallets cannot
+   * inject a provider into them, so EIP-1193 connect is impossible there. The
+   * extension points at the hosted wallet instead of pretending. */
+  function isExtension() {
+    return String((root.location && root.location.protocol) || "").indexOf("chrome-extension") === 0;
   }
 
   var state = {
@@ -347,6 +444,13 @@
     if (accountBtn) {
       accountBtn.addEventListener("click", function () {
         connectWallet();
+      });
+    }
+
+    var searchInput = el("search-input");
+    if (searchInput) {
+      searchInput.addEventListener("input", function (event) {
+        searchResults(event.currentTarget.value);
       });
     }
 
@@ -388,6 +492,38 @@
     state.currency = readStoredCurrency();
     renderCurrency();
     showScreen(parseRoute(root.location && root.location.hash));
+    maybePreview();
+    if (!uiData.lastHoldings) {
+      renderTokens(null); // the one shared empty-state design
+      searchResults("");
+    }
+  }
+
+  /* Preview mode: opt-in via ?preview=1, clearly labelled, sample data only.
+   * Never triggered in normal use; production paths never read it. */
+  function maybePreview() {
+    var wallet = root.tkrWalletData;
+    var q = (root.location && root.location.search) || "";
+    if (!wallet || !/(^|[?&])preview=1([&#]|$)/.test(q)) {
+      return false;
+    }
+    uiData.lastHoldings = wallet.PREVIEW_HOLDINGS;
+    uiData.lastPrices = wallet.PREVIEW_PRICES;
+    var pill = el("preview-pill");
+    if (pill) {
+      pill.removeAttribute("hidden");
+    }
+    // The header must agree with the body: this is a preview, not a connection.
+    setText(el("account-label"), "Preview");
+    var dot = el("account-dot");
+    if (dot) {
+      dot.classList.remove("bg-cream-500", "bg-up-400");
+      dot.classList.add("bg-ember-400");
+    }
+    setText(el("account-status"), "Preview mode: sample data. Nothing is real.");
+    renderAll();
+    setWalletStatus("Preview mode: sample holdings shown for design review. Nothing is real.");
+    return true;
   }
 
   function registerServiceWorker() {
@@ -418,6 +554,8 @@
     setCurrency: setCurrency,
     renderTokens: renderTokens,
     connectWallet: connectWallet,
+    searchResults: searchResults,
+    maybePreview: maybePreview,
     renderAll: renderAll,
     uiData: uiData,
     bind: bind,

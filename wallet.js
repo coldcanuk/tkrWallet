@@ -48,10 +48,29 @@
     WETH: "#a8a29e",
     USDC: "#4d9de0",
     USDT: "#26a17b",
-    SOL: "#8a5cf6",
+    SOL: "#e8a33d",
   };
 
   var BALANCE_SELECTOR = "0x70a08231";
+
+  /* Preview mode (?preview=1): the operator's mockup numbers, clearly labelled
+   * in the UI. Never used unless the query flag is present; production paths
+   * never read these. */
+  var PREVIEW_HOLDINGS = [
+    row("SOL", 900001, 0.12345, null, 9),
+    row("ETH", 1, 0.12345, null, 18),
+    row("ETH", 8453, 0.34567, null, 18),
+    row("ETH", 4663, 0.45678, null, 18),
+  ];
+  var PREVIEW_PRICES = {
+    state: "ok",
+    prices: {
+      "900001:native": { usd: 145.2, cad: 199.65 },
+      "1:native": { usd: 3120.55, cad: 4291.2 },
+      "8453:native": { usd: 3120.55, cad: 4291.2 },
+      "4663:native": { usd: 0.42, cad: 0.58 },
+    },
+  };
 
   function padAddress(addr) {
     var hex = String(addr || "").toLowerCase().replace(/^0x/, "");
@@ -229,6 +248,40 @@
     return { state: "ok", value: value, priced: priced, total: total };
   }
 
+  /* Search the built-in catalogue for tokens, filtered by symbol or address —
+   * the same matching a server-side catalogue would do, applied to the list we
+   * already hold. Pure and offline: no network call.
+   *
+   * Chain-wide search (every Base/mainnet token, not just this curated set)
+   * needs the edge catalogue endpoint, because "which tokens exist" is an
+   * index question, not a chain-state question. See docs/specs/icehut-edge.md. */
+  function searchCatalog(query, limit) {
+    var q = String(query || "").trim().toLowerCase();
+    if (!q) {
+      return [];
+    }
+    var max = limit || 20;
+    var out = [];
+    Object.keys(TOKENS).forEach(function (chainKey) {
+      var chainId = Number(chainKey);
+      TOKENS[chainKey].forEach(function (tok) {
+        var bySymbol = tok.symbol.toLowerCase().indexOf(q) !== -1;
+        var byAddress = !!tok.address && tok.address.toLowerCase().indexOf(q) !== -1;
+        if (bySymbol || byAddress) {
+          out.push({
+            symbol: tok.symbol,
+            address: tok.address || null,
+            chain_id: chainId,
+            chain_name: chainName(chainId),
+            decimals: tok.decimals || 18,
+            color: colorFor(tok.symbol),
+          });
+        }
+      });
+    });
+    return out.slice(0, max);
+  }
+
   var api = {
     BASE_URL: BASE_URL,
     CHAINS: CHAINS,
@@ -242,6 +295,9 @@
     listHoldings: listHoldings,
     getPrices: getPrices,
     estimateValue: estimateValue,
+    searchCatalog: searchCatalog,
+    PREVIEW_HOLDINGS: PREVIEW_HOLDINGS,
+    PREVIEW_PRICES: PREVIEW_PRICES,
   };
 
   if (typeof module === "object" && module.exports) {

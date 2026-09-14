@@ -23,7 +23,7 @@
     <link rel="stylesheet" href="./app.css" />
   </head>
   <body>
-    <div id="app" class="flex h-full flex-col bg-ink-950 text-cream-100">
+    <div id="app" class="flex h-full flex-col text-cream-100">
       <a
         href="#main"
         class="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-ember-400 focus:px-3 focus:py-2 focus:text-ink-950"
@@ -31,17 +31,17 @@
       >
 
       <!-- Header -->
-      <header
-        class="sticky top-0 z-30 border-b border-ink-800 bg-ink-950/95 backdrop-blur"
-        style="padding-top: var(--safe-t)"
-      >
-        <div class="mx-auto flex max-w-md items-center gap-3 px-4 py-3">
-          <span class="text-lg font-semibold tracking-tight text-cream-50">tkrWallet</span>
+      <header class="safe-t z-30 border-b border-ink-800 bg-ink-950/95 backdrop-blur">
+        <div class="mx-auto flex max-w-md items-center gap-3 px-4 py-3 md:max-w-2xl">
+          <span class="flex items-center gap-2 text-lg font-semibold tracking-tight text-cream-50">
+            <img src="icons/icon.svg" class="size-6 rounded-lg" alt="" aria-hidden="true" />
+            tkrWallet
+          </span>
 
           <button
             type="button"
             id="account-btn"
-            class="ml-auto flex min-h-11 items-center gap-2 rounded-full bg-ink-900 ring-1 ring-inset ring-white/10 px-3 text-sm text-cream-300 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+            class="ml-auto flex min-h-11 items-center gap-2 rounded-full bg-ink-900 ring-1 ring-inset ring-white/10 px-3 text-sm text-cream-300 shadow-tile hover:ring-ember-400/40 active:scale-[0.97] active:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
             aria-describedby="account-status"
           >
             <span id="account-dot" class="size-2 shrink-0 rounded-full bg-cream-500" aria-hidden="true"></span>
@@ -51,7 +51,7 @@
           <button
             type="button"
             id="header-search"
-            class="flex size-11 items-center justify-center rounded-full bg-ink-900 ring-1 ring-inset ring-white/10 text-cream-300 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+            class="flex size-11 items-center justify-center rounded-full bg-ink-900 ring-1 ring-inset ring-white/10 text-cream-300 shadow-tile hover:ring-ember-400/40 active:scale-[0.97] active:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
             aria-label="Search"
           >
             <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true">
@@ -66,55 +66,70 @@
       </header>
 
       <!-- Screens -->
-      <main id="main" class="mx-auto w-full max-w-md flex-1 overflow-y-auto px-4 pb-28 pt-4">
+      <main id="main" class="mx-auto w-full max-w-md flex-1 overflow-y-auto px-4 pb-28 pt-4 md:max-w-2xl">
         <!-- Home -->
         <section data-screen="home" aria-labelledby="home-heading">
           <h1 id="home-heading" class="sr-only">Wallet home</h1>
 
-          <div class="rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 p-5">
+          <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
             <div class="flex items-center justify-between">
-              <span class="text-sm text-cream-500">Wallet value</span>
+              <span class="flex items-center gap-2 whitespace-nowrap text-sm text-cream-500">
+                Wallet value
+                <span
+                  id="preview-pill"
+                  hidden
+                  class="whitespace-nowrap rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-cream-300 ring-1 ring-inset ring-white/15"
+                  >PREVIEW</span
+                >
+              </span>
               <div role="group" aria-label="Display currency" class="flex rounded-full bg-ink-950 ring-1 ring-inset ring-white/10 p-0.5">
-                <button type="button" data-currency="usd" aria-pressed="true" class="min-h-8 rounded-full px-3 text-xs font-medium aria-pressed:bg-ember-400 aria-pressed:text-ink-950">USD</button>
-                <button type="button" data-currency="cad" aria-pressed="false" class="min-h-8 rounded-full px-3 text-xs font-medium aria-pressed:bg-ember-400 aria-pressed:text-ink-950">CAD</button>
+                <button type="button" data-currency="usd" aria-pressed="true" class="min-h-8 rounded-full px-3 text-xs font-medium text-cream-500 aria-pressed:bg-ember-400 aria-pressed:text-ink-950">USD</button>
+                <button type="button" data-currency="cad" aria-pressed="false" class="min-h-8 rounded-full px-3 text-xs font-medium text-cream-500 aria-pressed:bg-ember-400 aria-pressed:text-ink-950">CAD</button>
               </div>
             </div>
 
-            <p id="wallet-value" class="tnum mt-2 text-4xl font-semibold tracking-tight text-cream-50">&mdash;</p>
-            <p id="wallet-value-note" class="mt-1 text-xs text-cream-500">
+            <p id="wallet-value" class="tnum mt-3 text-[2.5rem] font-semibold leading-none tracking-tight text-cream-50">&mdash;</p>
+            <p id="wallet-value-note" class="mt-2 text-xs text-cream-500">
               Connect a wallet to see your balance.
             </p>
           </div>
 
           <div class="mt-4 grid grid-cols-4 gap-2">
-            <button type="button" data-action="send" class="flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 text-xs text-cream-300 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
-              <svg viewBox="0 0 24 24" fill="none" class="size-6 text-ember-400" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button type="button" data-action="send" class="flex min-h-24 flex-col items-center justify-center gap-1.5 rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 text-xs text-cream-300 shadow-tile hover:ring-ember-400/40 active:scale-[0.97] active:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
+              <span class="flex size-10 items-center justify-center rounded-full bg-ember-400/25" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" class="size-5 text-ember-400"><path d="M12 19V5m0 0-6 6m6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
               Send
             </button>
-            <button type="button" data-action="swap" class="flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 text-xs text-cream-300 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
-              <svg viewBox="0 0 24 24" fill="none" class="size-6 text-ember-400" aria-hidden="true"><path d="M4 8h13m0 0-3-3m3 3-3 3M20 16H7m0 0 3-3m-3 3 3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button type="button" data-action="swap" class="flex min-h-24 flex-col items-center justify-center gap-1.5 rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 text-xs text-cream-300 shadow-tile hover:ring-ember-400/40 active:scale-[0.97] active:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
+              <span class="flex size-10 items-center justify-center rounded-full bg-ember-400/25" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" class="size-5 text-ember-400"><path d="M4 8h13m0 0-3-3m3 3-3 3M20 16H7m0 0 3-3m-3 3 3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
               Swap
             </button>
-            <button type="button" data-action="receive" class="flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 text-xs text-cream-300 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
-              <svg viewBox="0 0 24 24" fill="none" class="size-6 text-ember-400" aria-hidden="true"><path d="M12 5v14m0 0 6-6m-6 6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button type="button" data-action="receive" class="flex min-h-24 flex-col items-center justify-center gap-1.5 rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 text-xs text-cream-300 shadow-tile hover:ring-ember-400/40 active:scale-[0.97] active:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
+              <span class="flex size-10 items-center justify-center rounded-full bg-ember-400/25" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" class="size-5 text-ember-400"><path d="M12 5v14m0 0 6-6m-6 6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
               Receive
             </button>
-            <button type="button" data-action="buy" class="flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 text-xs text-cream-300 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
-              <svg viewBox="0 0 24 24" fill="none" class="size-6 text-ember-400" aria-hidden="true"><path d="M12 5v14m0-14a4 4 0 0 0-4 4m4-4a4 4 0 0 1 4 4M6 12h12M6 12a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button type="button" data-action="buy" class="flex min-h-24 flex-col items-center justify-center gap-1.5 rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 text-xs text-cream-300 shadow-tile hover:ring-ember-400/40 active:scale-[0.97] active:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
+              <span class="flex size-10 items-center justify-center rounded-full bg-ember-400/25" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" class="size-5 text-ember-400"><rect x="3" y="5" width="18" height="14" rx="3" stroke="currentColor" stroke-width="2"/><path d="M12 9v6M9 12h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              </span>
               Buy
             </button>
           </div>
 
-          <h2 class="mb-2 mt-6 px-1 text-sm font-medium text-cream-500">Tokens</h2>
+          <h2 class="mb-2 mt-6 text-sm font-medium text-cream-500">Tokens</h2>
           <div id="token-list" class="overflow-hidden rounded-card bg-ink-900 ring-1 ring-inset ring-white/10">
-            <p class="px-4 py-6 text-center text-sm text-cream-500">Connect a wallet to list tokens.</p>
           </div>
         </section>
 
         <!-- Swap: honest placeholder. No fake quote, no pretend button. -->
         <section data-screen="swap" hidden aria-labelledby="swap-heading">
           <h1 id="swap-heading" class="sr-only">Swap</h1>
-          <div class="rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 p-5">
+          <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
             <span class="inline-block rounded-full border border-warn-400/40 bg-warn-400/10 px-2.5 py-1 text-xs font-medium text-warn-400">
               Under construction
             </span>
@@ -133,7 +148,7 @@
         <!-- Activity -->
         <section data-screen="activity" hidden aria-labelledby="activity-heading">
           <h1 id="activity-heading" class="sr-only">Activity</h1>
-          <div class="rounded-card bg-ink-900 ring-1 ring-inset ring-white/10 p-5">
+          <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
             <p class="text-sm text-cream-300">No activity yet.</p>
             <p class="mt-2 text-xs text-cream-500">
               History is stored on this device only. The chain nodes are pruned,
@@ -154,43 +169,80 @@
             autocomplete="off"
             class="min-h-11 w-full rounded-full bg-ink-900 ring-1 ring-inset ring-white/10 px-4 text-sm text-cream-100 placeholder:text-cream-500 focus:ring-2 focus:ring-ember-400 focus:outline-none"
           />
-          <div id="search-results" class="mt-3 overflow-hidden rounded-card bg-ink-900 ring-1 ring-inset ring-white/10">
-            <p class="px-4 py-6 text-center text-sm text-cream-500">Type to search the token catalog.</p>
-          </div>
+          <div id="search-results" class="mt-3 overflow-hidden rounded-card bg-ink-900 shadow-card ring-1 ring-inset ring-white/10"></div>
         </section>
       </main>
 
       <!-- Bottom navigation -->
       <nav
         aria-label="Sections"
-        class="fixed inset-x-0 bottom-0 z-30 border-t border-ink-800 bg-ink-950/95 backdrop-blur"
-        style="padding-bottom: var(--safe-b)"
+        class="safe-b fixed inset-x-0 bottom-0 z-30 border-t border-ink-800 bg-ink-950/95 backdrop-blur"
       >
-        <div class="mx-auto flex max-w-md">
-          <a href="#/home" data-nav="home" aria-current="page"class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-current:text-ember-400">
+        <div class="mx-auto flex max-w-md md:max-w-2xl">
+          <a href="#/home" data-nav="home" aria-current="page"class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-[current=page]:text-ember-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
             <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+            <span class="nav-dot mt-1 size-1 rounded-full" aria-hidden="true"></span>
             Home
           </a>
-          <a href="#/swap" data-nav="swap" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-current:text-ember-400">
+          <a href="#/swap" data-nav="swap" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-[current=page]:text-ember-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
             <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true"><path d="M4 8h13m0 0-3-3m3 3-3 3M20 16H7m0 0 3-3m-3 3 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="nav-dot mt-1 size-1 rounded-full" aria-hidden="true"></span>
             Swap
           </a>
-          <a href="#/activity" data-nav="activity" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-current:text-ember-400">
+          <a href="#/activity" data-nav="activity" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-[current=page]:text-ember-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
             <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true"><path d="M12 7v5l3 2M4 12a8 8 0 1 0 8-8 8 8 0 0 0-8 8Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="nav-dot mt-1 size-1 rounded-full" aria-hidden="true"></span>
             Activity
           </a>
-          <a href="#/search" data-nav="search" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-current:text-ember-400">
+          <a href="#/search" data-nav="search" class="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-cream-500 aria-[current=page]:text-ember-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
             <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span class="nav-dot mt-1 size-1 rounded-full" aria-hidden="true"></span>
             Search
           </a>
         </div>
       </nav>
     </div>
 
+    <!-- Search result row. Same textContent-only filling rule as the token row. -->
+    <template id="tpl-search-row">
+      <button
+        type="button"
+        class="flex w-full items-center gap-3 border-b border-ink-700 px-4 py-3 text-left last:border-b-0 hover:bg-white/[0.03] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ember-400"
+      >
+        <span class="flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-ink-950" data-token-badge aria-hidden="true"></span>
+        <span class="min-w-0 flex-1">
+          <span class="block truncate text-sm text-cream-100" data-token-name></span>
+          <span class="block truncate text-xs text-cream-500" data-token-chain></span>
+        </span>
+        <svg viewBox="0 0 24 24" fill="none" class="size-4 shrink-0 text-cream-500" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </template>
+
+    <!-- Empty-state template. One design, used at boot and by renderTokens(),
+         so the two can never diverge. -->
+    <template id="tpl-token-empty">
+      <div class="px-4 py-8 text-center">
+        <span class="mx-auto flex size-10 items-center justify-center rounded-full bg-ink-850 ring-1 ring-inset ring-white/10" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" class="size-5 text-cream-500"><path d="M3 8h18l-2 11H5L3 8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M7 8V6a5 5 0 0 1 10 0v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </span>
+        <p class="mt-3 text-sm font-medium text-cream-100">No tokens yet</p>
+        <p data-empty-body class="mx-auto mt-2 max-w-[260px] text-xs leading-relaxed text-cream-500">
+          Connect a wallet to list your holdings. Balances are read from your own
+          provider &mdash; nothing leaves this device.
+        </p>
+        <button type="button" data-connect class="mt-4 min-h-11 rounded-full bg-ember-400 px-5 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">
+          Connect wallet
+        </button>
+      </div>
+    </template>
+
     <!-- Token row template. Cloned by ui.js and filled via textContent, so no
          dynamic value ever reaches innerHTML. -->
     <template id="tpl-token-row">
-      <div class="flex items-center gap-3 border-b border-ink-800 px-4 py-3 last:border-b-0">
+      <button
+        type="button"
+        class="flex w-full items-center gap-3 border-b border-ink-700 px-4 py-3 text-left last:border-b-0 hover:bg-white/[0.03] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ember-400"
+      >
         <span class="flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-ink-950" data-token-badge aria-hidden="true"></span>
         <span class="min-w-0 flex-1">
           <span class="block truncate text-sm text-cream-100" data-token-name></span>
@@ -200,7 +252,8 @@
           <span class="tnum block text-sm text-cream-100" data-token-amount></span>
           <span class="tnum block text-xs text-cream-500" data-token-fiat></span>
         </span>
-      </div>
+        <svg viewBox="0 0 24 24" fill="none" class="size-4 shrink-0 text-cream-500" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
     </template>
 
     <!-- No inline script: MV3 blocks it, so boot lives in ui.js. The data layer

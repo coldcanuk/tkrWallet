@@ -125,6 +125,31 @@ test("navigation uses real links, not an invalid tab pattern", function () {
   assert.ok(html.indexOf('role="tab"') === -1, "role=tab without tabpanels is invalid ARIA");
   assert.ok(html.indexOf('href="#/home"') !== -1, "missing home link");
   assert.ok(html.indexOf('id="wallet-status"') !== -1, "missing second live region for balance updates");
+  // The active state must actually match: aria-current is set to "page", so the
+  // selector has to be aria-[current=page]:, not aria-current: (which only
+  // matches aria-current="true" — a bug the vision review caught).
+  assert.ok(html.indexOf("aria-[current=page]:text-ember-400") !== -1, "active tab styling never matches");
+});
+
+test("safe-area padding uses classes, never inline styles", function () {
+  // Our own CSP (style-src 'self') blocks style="" attributes — a real bug the
+  // console caught. The paddings must live in app.css classes.
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('class="safe-t') !== -1, "header must use .safe-t");
+  assert.ok(html.indexOf('class="safe-b') !== -1, "nav must use .safe-b");
+  assert.ok(!/style="[^"]*safe-area/.test(html), "no inline safe-area styles");
+  const css = readFile("app.css");
+  assert.ok(css.indexOf(".safe-t") !== -1 && css.indexOf(".safe-b") !== -1, "classes must exist in app.css");
+});
+
+test("no developer instructions leak into the user-facing shell", function () {
+  const html = readFile("index.html");
+  assert.ok(html.indexOf("?preview=1") === -1, "preview instructions belong in README, not the UI");
+});
+
+test("brand ramp is warm — no Phantom violet in the token palette", function () {
+  const wallet = require("./wallet.js");
+  assert.ok(wallet.TOKEN_COLORS.SOL !== "#8a5cf6", "SOL badge must stay on the warm ramp");
 });
 
 test("iOS safe areas and dark theme", function () {
@@ -442,6 +467,42 @@ test("estimateValue() reports ok/partial/unknown honestly", function () {
   assert.strictEqual(noPrices.state, "unknown");
   const noCad = wallet.estimateValue(holdings, prices, "cad");
   assert.strictEqual(noCad.state, "ok", "cad values exist in the fixture");
+});
+
+test("preview mode ships the mockup numbers and is opt-in only", function () {
+  const wallet = require("./wallet.js");
+  assert.strictEqual(wallet.PREVIEW_HOLDINGS.length, 4);
+  const symbols = wallet.PREVIEW_HOLDINGS.map((h) => h.symbol + "@" + h.chain_id);
+  assert.deepStrictEqual(symbols, ["SOL@900001", "ETH@1", "ETH@8453", "ETH@4663"]);
+  assert.strictEqual(wallet.PREVIEW_HOLDINGS[0].amount, 0.12345);
+  assert.strictEqual(wallet.PREVIEW_HOLDINGS[3].amount, 0.45678);
+  assert.strictEqual(wallet.PREVIEW_PRICES.state, "ok");
+  const ui = readFile("ui.js");
+  assert.ok(ui.indexOf("maybePreview") !== -1, "ui.js must gate preview mode");
+  assert.ok(ui.indexOf("preview=1") !== -1, "preview must require the query flag");
+});
+
+test("searchCatalog filters by symbol and address, offline", function () {
+  const wallet = require("./wallet.js");
+  assert.deepStrictEqual(wallet.searchCatalog(""), [], "an empty query returns nothing");
+  const usdc = wallet.searchCatalog("usdc");
+  assert.ok(usdc.length >= 2, "USDC exists on more than one chain");
+  assert.ok(usdc.every((t) => t.symbol === "USDC"), "only USDC matches");
+  const byAddr = wallet.searchCatalog("0x833589fcd6edb6e08f4c7c32d4f71b54bda02913");
+  assert.strictEqual(byAddr.length, 1, "address search finds exactly one token");
+  assert.strictEqual(byAddr[0].chain_id, 8453, "and it is the Base entry");
+  assert.strictEqual(byAddr[0].chain_name, "Base");
+  assert.deepStrictEqual(wallet.searchCatalog("no-such-token"), []);
+  assert.ok(wallet.searchCatalog("eth").length >= 1);
+});
+
+test("search is wired to the input and documented as catalogue-scoped", function () {
+  const ui = readFile("ui.js");
+  assert.ok(ui.indexOf("searchResults") !== -1, "ui.js must implement search");
+  assert.ok(ui.indexOf('el("search-input")') !== -1, "search input must be bound");
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('id="tpl-search-row"') !== -1, "missing search row template");
+  assert.ok(html.indexOf("Type to search the token catalog") === -1, "the placeholder lie must be gone");
 });
 
 run();
