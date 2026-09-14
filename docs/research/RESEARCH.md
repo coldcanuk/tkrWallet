@@ -1,7 +1,7 @@
 # RESEARCH.md — tkrWallet hardening & M3
 
 Synthesis gate for Phase 1 of the RDAP build. Sources: the two audit documents,
-the icehut spec, the Tailwind Plus policy, and targeted verification of the
+the edge spec, the Tailwind Plus policy, and targeted verification of the
 remaining unknowns.
 
 ## 1. Consolidation of the audits
@@ -53,7 +53,7 @@ remaining unknowns.
    `eth_chainId`, `eth_getBalance`, `eth_call`. Errors reject. Every failure
    yields `{ state: "unknown" }`, never a zero amount.
 5. **Solana (D10, unresolved).** Phantom has no balance RPC and the v1 public-RPC
-   call is forbidden. Solana stays **catalogued-not-queried** until the icehut
+   call is forbidden. Solana stays **catalogued-not-queried** until the edge
    edge provides reads (spec §3.3).
 6. **Prices.** `GET /api/wallet/prices` against the single origin; absent assets
    are omitted, not zeroed; until the edge ships the value block shows `—`.

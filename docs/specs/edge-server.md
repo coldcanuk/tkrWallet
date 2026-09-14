@@ -1,6 +1,6 @@
-# icehut edge specification — `tkrwallet.scratchpost.ai`
+# Edge server specification — `tkrwallet.scratchpost.ai`
 
-**Audience:** whoever tailors the icehut edge.
+**Audience:** whoever tailors the edge.
 **Status:** requirements from the wallet side. Nothing here is implemented yet.
 **Owner of record:** Charles Pitre.
 
@@ -12,9 +12,9 @@ built for something else.
 
 ## 0. The one rule, and how we enforce it
 
-> **The wallet talks to icehut and to nothing else. Ever.**
+> **The wallet talks to the edge and to nothing else. Ever.**
 
-Not eva. Not the brain. Not tickerpicker. Not a vendor. Not a public RPC.
+Not the chain host. Not the brain. Not tickerpicker. Not a vendor. Not a public RPC.
 
 That rule is worth more than a policy note, because it can be **enforced by the
 browser** rather than trusted:
@@ -22,11 +22,11 @@ browser** rather than trusted:
 1. **No RPC passthrough.** The edge exposes no generic JSON-RPC surface, so
    there is no endpoint through which any node could be reached.
 2. **`connect-src 'self'` in the CSP.** The browser then refuses any request
-   from the wallet to another origin. A future contributor cannot add an eva
+   from the wallet to another origin. A future contributor cannot add an the chain host
    call by accident — it fails in dev, not in production.
 3. **`host_permissions` in the extension** lists exactly `tkrwallet.scratchpost.ai`.
 
-So "never talks to eva" becomes a property of the shipped artifact instead of a
+So "never talks to the chain host" becomes a property of the shipped artifact instead of a
 promise in a README. That is the main reason I would keep this hostname
 same-origin with its API (§2).
 
@@ -48,7 +48,7 @@ terminates TLS.
 
 **Recommendation: proxied, with Authenticated Origin Pulls.** Cloudflare
 terminates client TLS, adds WAF/bot management and DDoS absorption, and reaches
-icehut over mTLS so icehut can *prove* a request came from Cloudflare. icehut
+the edge over mTLS so the edge can *prove* a request came from Cloudflare. the edge
 serves a Cloudflare Origin Certificate. This matters for §7.
 
 **One amendment to make in the sibling repo — an amendment, not a correction.**
@@ -280,12 +280,12 @@ Deliberately short, because each omission is a security win:
 
 - **No generic JSON-RPC passthrough.** Not for eth, not for base, not for
   Solana beyond §3.3. This is what makes §0 enforceable.
-- **No WebSocket** in v1. `eth_subscribe` on eva is unusable from a browser
+- **No WebSocket** in v1. `eth_subscribe` on the chain host is unusable from a browser
   anyway — the endpoints are plain `ws://` on a LAN bind, and an HTTPS page and
   a `chrome-extension://` page are both secure contexts that refuse insecure
   WebSockets. If live updates are wanted later: `wss://tkrwallet.scratchpost.ai/ws`
   on 443, proxied, never `ws://` to a node.
-- **No SSE** in v1. `/events` is inert in production anyway — `caesar/api`
+- **No SSE** in v1. `/events` is inert in production anyway — `the backend host/api`
   `main.ts` never passes `uiReader`, so the bridge returns immediately and only
   pings and heartbeats are emitted.
 - **No vendor anything.** No quote shopping at the edge.
@@ -349,7 +349,7 @@ to loosen it, that should be a deliberate, reviewed act.
 
 ## 7. Client-IP handling — please do not repeat this bug
 
-There is a known defect in `blockchain-infrastructure/caesar/rpc-gateway`:
+There is a known defect in `blockchain-infrastructure/the backend host/rpc-gateway`:
 `peerIp()` trusts element `[0]` of a client-supplied `X-Forwarded-For`, while
 the nginx template propagates the client's value via
 `$proxy_add_x_forwarded_for`. A forged header flipped a write-path decision
@@ -397,7 +397,7 @@ users, which is the argument for the per-session limits above.
 ## 10. Decisions I need from you
 
 1. **Proxied or DNS-only** for `tkrwallet.scratchpost.ai`?
-2. **Who terminates TLS** — Cloudflare with an Origin Certificate, or icehut
+2. **Who terminates TLS** — Cloudflare with an Origin Certificate, or the edge
    with Let's Encrypt? (If proxied, Authenticated Origin Pulls is what makes
    `CF-Connecting-IP` trustworthy.)
 3. **Solana:** do we build §3.3, or drop the Solana row entirely? What we must
@@ -405,7 +405,7 @@ users, which is the argument for the per-session limits above.
 4. **CAD source** — what supplies the FX rate? Nothing in the backend has an FX
    concept today.
 5. **Extension:** Web Store ID, or a pinned `key` for unpacked loads?
-6. **Swap:** confirm that routing will live behind icehut, so §3.4 is the right
+6. **Swap:** confirm that routing will live behind the edge, so §3.4 is the right
    contract. Today there is no router anywhere in this stack.
 
 ---
@@ -421,5 +421,5 @@ If you want the short version, the wallet needs exactly five things:
 5. CORS + `OPTIONS` for the extension only (§5).
 
 Everything else is optional or later. Notably it does **not** need an RPC
-passthrough — which is precisely what makes the "never talks to eva" rule
+passthrough — which is precisely what makes the "never talks to the chain host" rule
 enforceable rather than aspirational.

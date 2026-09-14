@@ -10,15 +10,15 @@ it never holds keys, never auto-executes, and never shops vendors.
 Browser (mobile-first PWA + MV3 extension)
         │  https://tkrwallet.scratchpost.ai — same origin for app and API
         ▼
-     icehut        the edge. TLS, static hosting, /api/*, rate limits.
+   Edge Server     the edge. TLS, static hosting, /api/*, rate limits.
                    Holds backend credentials server-side. No RPC passthrough.
         │
         ▼
-   Scratchpost     blockchain-infrastructure: brain, pruned ETH/Base nodes,
+   Scratchpost     the backend: brain, pruned ETH/Base nodes,
                    rpc-gateway (signed raw bytes only). LAN/VPN — never public.
 ```
 
-**The wallet talks to icehut and to nothing else. Ever.** Not eva, not the
+**The wallet talks to the edge and to nothing else. Ever.** Not the chain host, not the
 brain, not a public RPC. This is enforced, not promised:
 
 - `connect-src 'self'` in the page CSP and `extension_pages` CSP in
@@ -80,14 +80,14 @@ Open `index.html` (or any static host). Install when the browser offers it.
 
 ## Edge contract
 
-The edge is specified in `docs/specs/icehut-edge.md` — built to fit, not
+The edge is specified in `docs/specs/edge-server.md` — built to fit, not
 reverse-engineered. A hardened nginx vhost template ships in
 `deploy/nginx/tkrwallet-edge.conf.template`.
 
 ## What it is not
 
-No Lightning node. No hosted hot wallet. No aggregator clients. No
-tickerpicker secrets. No keys, no signing server-side, no vendor calls.
+No Lightning node. No hosted hot wallet. No aggregator clients. No backend
+secrets. No keys, no signing server-side, no vendor calls.
 
 ## Docs
 

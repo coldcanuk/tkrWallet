@@ -2,7 +2,7 @@
 
 **Revision 3.** Status: active — M1 and M2 done, see §7.0.
 **Owner:** Charles Pitre.
-**Edge contract:** [`docs/specs/icehut-edge.md`](../specs/icehut-edge.md).
+**Edge contract:** [`docs/specs/edge-server.md`](../specs/edge-server.md).
 **Supersedes:** `docs/plans/wallet-ui-overhaul.md` (the tkrShell-based plan).
 **Research basis:** `tkrWallet@c4e5153`; `blockchain-infrastructure@0207ff8`
 (Scratchpost); `tickerpicker@origin/main ab8942c` (v1, being divorced).
@@ -25,7 +25,7 @@ Bot agent."*
 **There is no external approval step.** What survives from that research is the
 engineering, which is real and is the valuable part:
 
-- `caesar/api` is GET-only, has no CORS preflight, no credential a browser can
+- `the backend host/api` is GET-only, has no CORS preflight, no credential a browser can
   hold, and no public route. **Facts about code.**
 - The B2B face binds a LAN address; the nodes are pruned. **Facts.**
 - There is no swap router anywhere in Scratchpost. **A fact.**
@@ -42,21 +42,21 @@ described as "blocked" are now simply **decisions Charles makes** — §9.
 |---|---|---|
 | Backend | `tickerpicker` / `tkrshell` — aggregator-era | **Scratchpost** (`blockchain-infrastructure`) |
 | Shell | tkrShell, an allow-list proxy to an aggregator | **retired** |
-| Edge | `tkrpik.com/v1/*` (tkrshell) | **icehut**, the physical edge server |
+| Edge | `tkrpik.com/v1/*` (tkrshell) | **the edge**, the physical edge server |
 | Wallet origin | `coldcanuk.github.io/tkrWallet` | **`tkrwallet.scratchpost.ai`** (Charles owns the domain; Cloudflare is the registrar) |
-| What the wallet may contact | `tkrpik.com`, `tkrswap.com`, **and `api.mainnet-beta.solana.com`** | **icehut and nothing else — never eva** |
+| What the wallet may contact | `tkrpik.com`, `tkrswap.com`, **and `api.mainnet-beta.solana.com`** | **the edge and nothing else — never the chain host** |
 | Routing | six vendor quote clients in `tickerpicker` | **does not exist yet** (§6.1) |
 | Chain truth | third-party RPC + vendor APIs | own pruned Reth (ETH) + Base + op-node |
 
 ### 0.1 The boundary is enforced, not promised
 
-"The wallet never talks to eva" is not a policy note in this plan. Three shipped
+"The wallet never talks to the chain host" is not a policy note in this plan. Three shipped
 artefacts make it a property of the program:
 
 1. **No RPC passthrough exists** at the edge, so there is no endpoint through
-   which any node could be reached (`docs/specs/icehut-edge.md` §4).
+   which any node could be reached (`docs/specs/edge-server.md` §4).
 2. **`connect-src 'self'`** in the CSP means the browser refuses any request from
-   the wallet to another origin. A future contributor cannot add an eva call by
+   the wallet to another origin. A future contributor cannot add an the chain host call by
    accident — it fails in development.
 3. **`host_permissions`** in the extension lists exactly `tkrwallet.scratchpost.ai`.
 
@@ -84,7 +84,7 @@ From `docs/theticker/SCRATCHPOST.md` and `docs/ARCHITECTURE.md`:
 Blockchain / third-party world
             │
             ▼
-         BACKEND            caesar: ingest → SQLite (WAL, SoT) → Redis streams → workers
+         BACKEND            the backend host: ingest → SQLite (WAL, SoT) → Redis streams → workers
             │
       one contract          REST + SSE
             │
@@ -92,17 +92,17 @@ Blockchain / third-party world
          ICEPIKE            customer UA
 ```
 
-- **`eva` (`192.168.1.79`)** — chain plane. Reth (Ethereum mainnet, **pruned**) +
-  Lighthouse; Base execution (**pruned**) + op-node. ETH `:8545`/`:8546` WS,
-  Base `:9545`/`:9546` WS. (`docs/ARCHITECTURE.md:37-38`)
-- **`caesar`** — brain. SQLite SoT (`brain.sqlite`, WAL), Redis streams
-  `6380–6383`, workers, backend API on loopback `:8791`.
-- **B2B edge** — `ticker-b2b-radar.conf.template` listens `192.168.1.254:8790`
-  → `127.0.0.1:8791`, serving `GET /v1/radar`, `GET /api/v2/*`, `GET /events`
+- **`the chain host` (`the chain host`)** — chain plane. Reth (Ethereum mainnet, **pruned**) +
+  Lighthouse; Base execution (**pruned**) + op-node. ETH ``/`` WS,
+  Base ``/`` WS. (`docs/ARCHITECTURE.md:37-38`)
+- **`the backend host`** — brain. SQLite SoT (`brain.sqlite`, WAL), Redis streams
+  `stream ports–6383`, workers, backend API on loopback ``.
+- **B2B edge** — `ticker-b2b-radar.conf.template` listens `the backend host`
+  → `loopback`, serving `GET /v1/radar`, `GET /api/v2/*`, `GET /events`
   (SSE). Header: **"LAN/VPN only; no CF"**. Non-GET → 405 at nginx.
-- **IcePike UA edge** — `icepike-desk-ua.conf.template`, `192.168.1.254:443`,
-  TLS, `server_name icepike.onerelay.app`, proxies `/`, `/events`,
-  `/api/nouveau*` → `127.0.0.1:8788`.
+- **IcePike UA edge** — `icepike-desk-ua.conf.template`, `the backend host:443`,
+  TLS, `server_name the legacy UA`, proxies `/`, `/events`,
+  `/api/nouveau*` → `loopback`.
 - **`scratchPost.ai` is meta-only.** `SCRATCHPOST.md:4` — not a hostname, not a
   TLS name, not an API base. **Do not build against it.**
 - **There is no Scratchpost portal.** IcePike is UA #1. tkrWallet would be UA #2 —
@@ -110,7 +110,7 @@ Blockchain / third-party world
 
 ### 1.1 The API surface, precisely
 
-`caesar/api` (`:8791`) is a **read-only, per-organisation B2B feed**.
+`the backend host/api` (``) is a **read-only, per-organisation B2B feed**.
 
 - **Verbs:** ~25 `GET` routes — `/api/v2/{protocol,health,me,customers,
   launches,entities,security,markets,candles,pulse,atlas,signals,token}`,
@@ -123,11 +123,11 @@ Blockchain / third-party world
   any non-GET — **including `OPTIONS`**.
 - **CORS reality:** `access-control-allow-origin: *` is the **only** CORS header.
   `Allow-Methods`, `Allow-Headers`, `Allow-Credentials`, `Max-Age`, and `Vary`
-  are all absent. `caesar/nginx/*` sets **no CORS header at all**.
+  are all absent. `the backend host/nginx/*` sets **no CORS header at all**.
 - **No public route exists.** The only public template
   (`tickerpicker.conf.template`, `:80`, `tkrpik.com`/`tkrswap.com`) points at
-  `tkrshell:8088` — **not** at `caesar/api`. Every template that reaches
-  `:8791` binds a LAN address.
+  `tkrshell` — **not** at `the backend host/api`. Every template that reaches
+  `` binds a LAN address.
 - **Tiering** works and is enforced at serialization (hidden fields are deleted,
   not renamed). **Metering** writes `usage_delivery`.
 - **Quotas are documented but not enforced.** No `429` logic exists;
@@ -158,7 +158,7 @@ template here provides, and that this backend does not provide anywhere.
 Chrome implements **Private Network Access**: a public-origin page fetching a
 private-network address is blocked, and the preflight must be answered with
 `Access-Control-Allow-Private-Network` ([Connect CORS notes](https://connectrpc.com/docs/cors/)).
-`:8790` is `192.168.1.254`. The wallet can never talk to it directly.
+`` is `the backend host`. The wallet can never talk to it directly.
 
 ### 2.2 A browser cannot hold a Scratchpost API key
 
@@ -175,7 +175,7 @@ template is **correct** and must be preserved.
 ### 2.3 The authenticated call cannot even complete
 
 `x-api-key`/`Authorization` are **non-simple** headers → the browser preflights
-with `OPTIONS` → `caesar/api` returns **405** with no `Allow-Methods`/
+with `OPTIONS` → `the backend host/api` returns **405** with no `Allow-Methods`/
 `Allow-Headers` → the real request is never sent. Verified call matrix from
 `https://coldcanuk.github.io`:
 
@@ -190,7 +190,7 @@ with `OPTIONS` → `caesar/api` returns **405** with no `Allow-Methods`/
 hit the Esplora API: *"no CORS headers and no OPTIONS route, so browser-based
 wallets cannot use it"* ([reference](https://github.com/gosuda/bitcoin-rs/issues/670)).
 
-**The test suite structurally cannot catch this.** `caesar/api/prove.ts` uses
+**The test suite structurally cannot catch this.** `the backend host/api/prove.ts` uses
 Node's `fetch`, and **Node does not enforce CORS**; the suite never issues an
 OPTIONS request. Any real verification must come from a browser or an explicit
 CORS assertion.
@@ -214,19 +214,19 @@ the recommended session mechanism because it keeps tokens out of JavaScript.
         │  same origin — no CORS, no preflight, no third-party cookie
         │  CSP connect-src 'self' — the browser blocks anything else
         ▼
-   ══ icehut ══  the physical edge. TLS, HSTS, static assets, /api/*,
+   ══ the edge ══  the physical edge. TLS, HSTS, static assets, /api/*,
    Cloudflare    rate limits, wallet auth, prices, allow-list.
    in front      Holds any backend credential SERVER-SIDE.
         │  LAN/loopback — the wallet never sees this side
         ▼
-   Scratchpost brain        caesar/api :8791   reads
-   (damshell replaces       rpc-gateway :8799 signed raw bytes only
-    the tkrshell role)      B2B nginx :8790   unchanged, LAN/VPN
+   Scratchpost brain        the backend host/api    reads
+   (damshell replaces       rpc-gateway  signed raw bytes only
+    the tkrshell role)      B2B nginx    unchanged, LAN/VPN
 ```
 
-**The wallet's only counterparty is icehut.** Everything past that line —
-fan-out to the brain, the pruned nodes, the B2B face — is icehut's business.
-`docs/specs/icehut-edge.md` is the contract.
+**The wallet's only counterparty is the edge.** Everything past that line —
+fan-out to the brain, the pruned nodes, the B2B face — is the edge's business.
+`docs/specs/edge-server.md` is the contract.
 
 This keeps your spine, keeps the brain off the public internet, and is the
 arrangement browser wallets actually use. Mature architectures run the BFF
@@ -287,7 +287,7 @@ Four things are required and nginx cannot do any of them:
    webhook_url, cidr}`), not per-wallet.
 3. **Per-wallet rate limiting.** nginx `limit_req` is per-IP; carrier NAT breaks
    per-IP on mobile. There is **no rate limiting anywhere in this stack today** —
-   not in `caesar/api`, not in any nginx template.
+   not in `the backend host/api`, not in any nginx template.
 4. **Expose a wallet verb set the brain does not have.** Prices, broadcast, and
    status are not `/api/v2/*`.
 
@@ -318,12 +318,12 @@ If that discipline holds, it is a facade. If it slips, it is tkrShell again.
 
 | Capability the wallet needs | Status | Where |
 |---|---|---|
-| Chain truth (ETH + Base, own nodes) | **EXISTS** | eva Reth `:8545` / `:9545` |
-| Token safety bands (pre-sign gate) | **EXISTS**, Redis-consumer only, mainnet-hardcoded | `caesar/security-worker` |
-| Raw-tx broadcast | **EXISTS**, two defects (§6.2) | `caesar/rpc-gateway` `:8799` |
-| Tier filtering + metering | **EXISTS** | `caesar/api`, `usage_delivery` |
-| Intelligence REST | **EXISTS** | `caesar/api` `/api/v2/*` |
-| Public route to any of it | **MISSING** — no public vhost reaches `:8791` | `caesar/nginx/*` |
+| Chain truth (ETH + Base, own nodes) | **EXISTS** | the chain host Reth `` / `` |
+| Token safety bands (pre-sign gate) | **EXISTS**, Redis-consumer only, mainnet-hardcoded | `the backend host/security-worker` |
+| Raw-tx broadcast | **EXISTS**, two defects (§6.2) | `the backend host/rpc-gateway` `` |
+| Tier filtering + metering | **EXISTS** | `the backend host/api`, `usage_delivery` |
+| Intelligence REST | **EXISTS** | `the backend host/api` `/api/v2/*` |
+| Public route to any of it | **MISSING** — no public vhost reaches `` | `the backend host/nginx/*` |
 | CORS + preflight for authed calls | **MISSING** | backend returns 405 to OPTIONS |
 | Wallet-signature login | **MISSING** | no nonce/challenge/session route |
 | Per-wallet identity | **MISSING** | `customers` is per-org; `cidr` is inert |
@@ -339,7 +339,7 @@ If that discipline holds, it is a facade. If it slips, it is tkrShell again.
 ### 4.1 Two production drift findings to plan around
 
 1. **`/events` SSE does not actually deliver data in production.**
-   `caesar/api/src/main.ts:18-22` calls `startApiServer({db, host, port})`
+   `the backend host/api/src/main.ts:18-22` calls `startApiServer({db, host, port})`
    without passing `uiReader`, so the bridge gets `reader = null` and returns
    early — **only the initial ping and 15 s heartbeats are emitted.**
    `docs/B2B-nginx-hop.md:3-10` advertises a unified SSE stream; that is false in
@@ -359,11 +359,11 @@ If that discipline holds, it is a facade. If it slips, it is tkrShell again.
 "Pruned" is asserted in **five places, all prose or diagrams** —
 `docs/ARCHITECTURE.md:37-38`, `docs/theticker/ARCHITECTURE.md:90-91`,
 `docs/graphs/theticker-canonical.mmd:8,13`, `docs/RETENTION.md:41`
-("Keep **pruned node datadirs only**"), `eva/README.md:22`.
+("Keep **pruned node datadirs only**"), `the chain host/README.md:22`.
 
 **The node flags are not in this repository.** The compose file that defines the
-nodes lives on eva at `/opt/ethereum_production/docker-compose.yml`
-(`eva/README.md:9`), and that path does not exist on this host. **Reth's own
+nodes lives on the chain host at `/opt/ethereum_production/docker-compose.yml`
+(`the chain host/README.md:9`), and that path does not exist on this host. **Reth's own
 default with no profile set is archive.** So while pruning is clearly the intent,
 the *preset* is unverified — and the two built-in presets differ by ~150× on the
 number that matters to a wallet:
@@ -401,8 +401,8 @@ at a historical block should need that block's account state.
 
 ### 5.3 The wallet cannot subscribe to the nodes
 
-The emitters already use `eth_subscribe` over `ws://192.168.1.79:8546` and
-`ws://192.168.1.79:9546`. **The wallet cannot**, for two independent reasons:
+The emitters already use `eth_subscribe` over `ws://the chain host` and
+`ws://the chain host`. **The wallet cannot**, for two independent reasons:
 
 1. **Mixed content.** A PWA served over HTTPS, and a `chrome-extension://` page
    (also a secure context), are both **blocked from opening an insecure `ws://`**
@@ -427,7 +427,7 @@ not something the wallet can work around client-side.
 
 ### 5.5 Two open chain-plane questions
 
-- **Base may be down.** Docs cite Base `:9545` as "RPC empty, snapshot
+- **Base may be down.** Docs cite Base `` as "RPC empty, snapshot
   re-downloading" (`P11-FINAL-REPORT.md:35,48`). The mockup has a BASE row, so
   confirm before planning around it.
 - **The XFF pattern is in every nginx template**, so any future IP-based control
@@ -453,7 +453,7 @@ of the divorce**, not because of a feature flag.
 
 | Option | Shape | Tradeoff |
 |---|---|---|
-| **A. On-chain routing on your own nodes** | Uniswap V2/V3 pool-state reads at `latest` against eva; quote locally; build the tx; `security-worker` band as pre-sign gate | Matches "our own system", no vendor keys. Largest build. Pruned nodes are fine for head-state pool reads. V2 is tractable; V3 concentrated liquidity is a serious project. |
+| **A. On-chain routing on your own nodes** | Uniswap V2/V3 pool-state reads at `latest` against the chain host; quote locally; build the tx; `security-worker` band as pre-sign gate | Matches "our own system", no vendor keys. Largest build. Pruned nodes are fine for head-state pool reads. V2 is tractable; V3 concentrated liquidity is a serious project. |
 | **B. Port the v1 vendor clients** | Move `tickerpicker/internal/quote/*` behind the facade | Fastest to working swaps, six-vendor coverage and cross-chain for free. Re-introduces the aggregator model you are leaving, and vendor keys into Scratchpost. |
 | **C. Hybrid** | On-chain V2/V3 for ETH/Base; vendors for long-tail and cross-chain | Pragmatic, most moving parts. |
 
@@ -484,7 +484,7 @@ construction" is the honest state for some time.
    **zero Base coverage** and the suite cannot detect any of this.
 
 Also absent: auth, rate limits, CORS, body cap, idempotency. The bridge belongs
-in the facade, with `:8799` staying loopback-only.
+in the facade, with `` staying loopback-only.
 
 ### 6.3 Trust model — what the operator can and cannot do
 
@@ -519,10 +519,10 @@ anchor.** The wallet should never imply that routing through it is required.
 |---|---|---|
 | ✅ | M1 build skeleton | **Done** — `a4e59ec` |
 | ✅ | M2 design system and app shell | **Done** — `d53c67b`, CSS determinism fix `ac7d857` |
-| ✅ | icehut edge **spec** | **Done** — [`docs/specs/icehut-edge.md`](../specs/icehut-edge.md) |
+| ✅ | the edge **spec** | **Done** — [`docs/specs/edge-server.md`](../specs/edge-server.md) |
 | ▶ | M3 home, data layer, Beaver Nickels removal | Next |
-| ○ | M4/M5 icehut edge + facade | Blocked on the spec's six answers |
-| ○ | M0 chain probe | Backend concern; needs a route to eva |
+| ○ | M4/M5 the edge + facade | Blocked on the spec's six answers |
+| ○ | M0 chain probe | Backend concern; needs a route to the chain host |
 | ○ | M6–M11 | Not started |
 
 Work happens in the worktree `.worktrees/scratchpost-wallet` on
@@ -536,12 +536,12 @@ not visually. First task in M3 is to load it and look at it.
 
 ### M0 — Chain-plane probe **(O/S)** — *backend concern, NOT a wallet blocker*
 
-**This does not gate the wallet.** The wallet never talks to eva (§0.1), and EVM
+**This does not gate the wallet.** The wallet never talks to the chain host (§0.1), and EVM
 balances come from the user's own injected provider. The probe matters to
-whatever icehut fans out to for prices and swap — a backend concern, not a
+whatever the edge fans out to for prices and swap — a backend concern, not a
 client one. Re-scoped accordingly.
 
-It still needs a network path to eva, which this host does not have. Can be run
+It still needs a network path to the chain host, which this host does not have. Can be run
 by Charles, or by me if given a route.
 
 One session against the node **directly** (not through the gateway, whose chain
@@ -555,7 +555,7 @@ eth_getTransactionReceipt(<old tx>)         → distinguishes --full from --mini
 eth_getLogs(N-20000, N)                     → pins the prune horizon
 ```
 
-Repeat against Base `:9545` to confirm it is up at all (§5.5).
+Repeat against Base `` to confirm it is up at all (§5.5).
 
 **Exit:** the prune preset, the measured retention horizon, and Base liveness are
 known facts instead of doc assertions. This shapes what the backend can promise
@@ -595,21 +595,21 @@ into M2 when the tests are next touched.
   RPC failure never renders as a zero balance.
 - **EVM balances come from the injected provider** — MetaMask and friends expose
   `eth_getBalance` / `eth_call` / `eth_chainId`. This is the user's own
-  infrastructure, not ours, and it is why the wallet never contacts eva.
+  infrastructure, not ours, and it is why the wallet never contacts the chain host.
 - **Solana is the exception:** Phantom exposes no balance RPC, so v1 called a
-  public Solana RPC (`app.js:10`). That leaves the trust path. Either icehut
+  public Solana RPC (`app.js:10`). That leaves the trust path. Either the edge
   serves it (spec §3.3) or the Solana row goes — decision D10.
 - Delete the hardcoded `SOLANA_RPC` constant and the `solanaRpc` transport from
   `app.js`; the wallet must ship with **no third-party origin in it at all**.
 - Explicit supported-chain catalog; uncatalogued chains degrade to native-only.
 - **Beaver Nickels removed** from client, tests, docs, both manifests. Client-only
   removal; the server concept is untouched.
-- **Exit:** no `beaver` string, and no non-icehut origin, anywhere in the
+- **Exit:** no `beaver` string, and no non-the edge origin, anywhere in the
   tkrWallet tree. Both are now testable invariants.
 
-### M4 — icehut edge at `tkrwallet.scratchpost.ai` **(S/O)**
+### M4 — the edge at `tkrwallet.scratchpost.ai` **(S/O)**
 
-Contract: [`docs/specs/icehut-edge.md`](../specs/icehut-edge.md). That document
+Contract: [`docs/specs/edge-server.md`](../specs/edge-server.md). That document
 is the deliverable for this milestone — the edge gets built to fit it.
 
 - DNS + TLS for `tkrwallet.scratchpost.ai` (Cloudflare registrar; proxied with
@@ -619,11 +619,11 @@ is the deliverable for this milestone — the edge gets built to fit it.
   including **`connect-src 'self'`** — the line that makes §0.1 enforced.
 - Client-IP handling that does **not** trust a client-supplied `X-Forwarded-For`
   (spec §7 — this is the `rpc-gateway` bug; do not repeat it at the edge).
-- Keep the GitHub repo public; deploy the served copy to icehut.
+- Keep the GitHub repo public; deploy the served copy to the edge.
 - **Exit:** the wallet loads from its own origin, `document.origin` equals the
   API origin, and a request to any other origin is refused by the browser.
 
-### M5 — Wallet facade on icehut **(S)**
+### M5 — Wallet facade on the edge **(S)**
 
 The edge must do more than proxy: it mints wallet identity and holds any backend
 credential **server-side**. nginx alone cannot verify a signature or rate-limit
@@ -667,7 +667,7 @@ per wallet.
 
 ### M9 — Broadcast hardening **(S)**
 - Fix the XFF trust bug; add a working out-of-band chain selector; add auth,
-  rate limits, body cap, idempotency. Keep `:8799` loopback-only.
+  rate limits, body cap, idempotency. Keep `` loopback-only.
 - **Exit:** a testnet raw tx broadcasts to the *intended* chain from an
   authenticated caller, and a forged XFF does not change the decision.
 
@@ -697,8 +697,8 @@ per wallet.
 | **No swap router exists** | Headline feature has no engine | §6.1 decision on the critical path; ship the tab honestly under construction |
 | Publishing `/api/v2/*` | Entire launch/market feed free to anonymous callers | Publish only a facade with a closed verb allow-list, never the B2B face |
 | Edge-injected API key | Every anonymous caller becomes an authenticated customer; Super Pro key = total entitlement bypass | Never inject the key at nginx; hold it in the facade |
-| `:8799` XFF bypass | Write allowlist forgeable once exposed | M9, before any exposure; note the same pattern is in every nginx template |
-| `:8799` chain selector broken | Base swaps broadcast to Ethereum | M9, before any real swap |
+| `` XFF bypass | Write allowlist forgeable once exposed | M9, before any exposure; note the same pattern is in every nginx template |
+| `` chain selector broken | Base swaps broadcast to Ethereum | M9, before any real swap |
 | Cross-origin auth | Authenticated wallet calls cannot work | M4 same-origin + M5 session |
 | **PWA/extension capability asymmetry** | The extension bypasses CORS via `host_permissions`, so a PWA-only CORS bug is invisible in extension testing | Always test both; assert CORS server-side in prove |
 | **prove suite cannot catch CORS** | Node `fetch` ignores CORS; tests never send OPTIONS | Add an explicit OPTIONS/CORS assertion (M1) |
@@ -708,7 +708,7 @@ per wallet.
 | Quotas unenforced, no billing | Cannot gate a paid tier | Treat tier gating as unbuilt; do not ship paid copy until it exists |
 | Pruned nodes | No historical state; receipts/logs only back ~1.4 d (ETH) / ~5.6 h (Base) | Latest-state only; local-first Activity; never hardcode the window |
 | **Prune profile unverified** | Reth's default with no profile is *archive*; `--minimal` would cut receipts to **64 blocks** | M0 probe pins the preset and the horizon before anything depends on it |
-| **Base may be down** | Docs cite `:9545` as "RPC empty, snapshot re-downloading"; the mockup has a BASE row | Confirm in M0; degrade the row honestly if dark |
+| **Base may be down** | Docs cite `` as "RPC empty, snapshot re-downloading"; the mockup has a BASE row | Confirm in M0; degrade the row honestly if dark |
 | **`ws://` unusable by the browser** | Mixed content blocks insecure WebSockets from an HTTPS PWA and from `chrome-extension://` | Poll over HTTPS, or proxy `wss://` through the facade |
 | **Operator front-running** | The node sees signed bytes before public p2p — a privileged MEV position | Tight min-out on swaps; let users point at their own RPC or a protected relay |
 | `damshell` scope creep | Rebuilds the v1 aggregator | §3.1 prohibition written into the repo before code |
@@ -731,9 +731,9 @@ part. Only D5 and D6 genuinely need your input, because I cannot know them.
 | **D3** | `damshell` | **Build it — as a wallet facade, not a shell**, with the §3.1 no-aggregation prohibition committed before the code. nginx alone cannot mint identity, hold the key, or rate-limit per wallet. |
 | **D4** | Swap engine | **Option A as the direction** (on-chain on your own nodes, Uniswap V2 first, `security-worker` band as the pre-sign gate). B is available as a stopgap. Reversible; recorded in `docs/swap-routing.md` in M8. |
 | **D5** | Wallet hostname | **RESOLVED: `https://tkrwallet.scratchpost.ai`** — the only `scratchpost.ai` hostname the wallet will ever use. Cloudflare is the registrar. Note `SCRATCHPOST.md:4`'s "meta name only, do not use as a hostname" rule is a **deliberate guardrail** protecting a separate project, not an error: amend it with exactly one named exception and keep the guard up. Wording in the spec §1. |
-| **D6** | Chain-plane probe access | **Re-scoped, no longer a wallet blocker.** The wallet never contacts eva; EVM balances come from the user's injected provider. A route to eva is still needed for the *backend* (prices/swap), not for the client. |
-| **D9** | **icehut edge contract** | **Written:** [`docs/specs/icehut-edge.md`](../specs/icehut-edge.md). Six open questions for Charles are listed there (§10). |
-| **D10** | Solana reads | **Needs a decision.** Phantom exposes no balance RPC, so v1 called a public Solana RPC directly — unacceptable under the §0.1 rule. Either icehut serves Solana token reads (spec §3.3) or the Solana row is dropped. |
+| **D6** | Chain-plane probe access | **Re-scoped, no longer a wallet blocker.** The wallet never contacts the chain host; EVM balances come from the user's injected provider. A route to the chain host is still needed for the *backend* (prices/swap), not for the client. |
+| **D9** | **the edge contract** | **Written:** [`docs/specs/edge-server.md`](../specs/edge-server.md). Six open questions for Charles are listed there (§10). |
+| **D10** | Solana reads | **Needs a decision.** Phantom exposes no balance RPC, so v1 called a public Solana RPC directly — unacceptable under the §0.1 rule. Either the edge serves Solana token reads (spec §3.3) or the Solana row is dropped. |
 | **D11** | Tailwind Plus kits | **Use them; do not vendor them.** Both kits are licensed commercial products and this repo is GPLv3 + public. Building the wallet with their components is explicitly permitted; committing a copy of a kit is repackaging and is not. Kits are gitignored, referenced from disk. Policy: [`docs/specs/tailwind-plus-usage.md`](../specs/tailwind-plus-usage.md). |
 | **D12** | Catalyst's React runtime | **Recommendation: do not adopt.** Catalyst is React + Headless UI + `motion` + `clsx`. Take its dark-mode craft, not its runtime — this is a signing client, where "the shipped thing is the reviewable thing" is a security property, and MV3's `unsafe-eval` ban would need auditing against `motion` first. Reversible if you want it: esbuild + a dependency audit, no milestone changes. |
 | **D7** | Theme | **Warm-dark**, already implemented in `tools/src/app.css`: `ink` surfaces, `cream` text, `ember` amber accent. Deliberately not Phantom violet — the pattern is what we emulate, not the palette. Change is a one-file edit. |
@@ -746,7 +746,7 @@ or official upstream documentation, with each claim labelled in the underlying
 reports as verified / inferred / unknown.
 
 **One genuine unknown remains and it is deliberately not guessed:** the node
-prune profile. The flags live on eva, not in the repo — Reth's default with no
+prune profile. The flags live on the chain host, not in the repo — Reth's default with no
 profile is *archive*, while `--minimal` would leave only 64 blocks of receipts.
 **M0 resolves it with five read-only calls.** Everything downstream is designed so
 the answer changes the *diagnostics and the Activity window*, not the
@@ -760,7 +760,7 @@ architecture.
 - **rev 2** — this document.
   - Pivoted the whole plan from tkrShell to Scratchpost.
   - Added the chain-plane findings: prune profile is *unverified* (flags are on
-    eva), per-method RPC survival matrix, `eth_getTransactionReceipt` and
+    the chain host), per-method RPC survival matrix, `eth_getTransactionReceipt` and
     `eth_getLogs` are receipts-segment limited, and `ws://` is unusable from a
     browser.
   - Corrected the `rpc-gateway` chain-selector defect upward: Base is unreachable
@@ -784,11 +784,11 @@ architecture.
     Cloudflare is the registrar. The sibling repo's "meta name only" rule is a
     deliberate guardrail protecting a separate project; it gets one named
     exception, not removal.
-  - **Hard boundary stated and made enforceable:** the wallet talks to icehut and
-    nothing else, ever. Not eva, not the brain, not a public RPC. Enforced by
+  - **Hard boundary stated and made enforceable:** the wallet talks to the edge and
+    nothing else, ever. Not the chain host, not the brain, not a public RPC. Enforced by
     three shipped artefacts — no RPC passthrough, `connect-src 'self'`, and the
     extension's `host_permissions` — rather than by policy.
-  - **New deliverable:** `docs/specs/icehut-edge.md`, the contract the edge is
+  - **New deliverable:** `docs/specs/edge-server.md`, the contract the edge is
     built to fit, including the six decisions the edge needs from Charles.
   - **Corrected a live v1 defect:** `app.js:10` hardcodes
     `https://api.mainnet-beta.solana.com` and calls it directly. That third-party
