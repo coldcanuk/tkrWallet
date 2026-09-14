@@ -88,7 +88,7 @@ Unlock (local PBKDF2+AES-GCM) → EVM address in RAM
 | XSS | CSP + no `innerHTML`. If XSS ever exists, in-memory phrase/keys are in scope — same as every browser wallet. |
 | Extension public key in `manifest.json` | Stable ID; **not** a private key. |
 
-`docs/security/wallet-custody.md` still claims the production edge is undeployed. That sentence is **false** as of this audit; do not cite it without a rewrite.
+`docs/security/wallet-custody.md` on this branch names the live hostname and points here. Do not cite older copies that said the production edge was undeployed.
 
 ---
 
