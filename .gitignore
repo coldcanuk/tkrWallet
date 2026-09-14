@@ -1,26 +1,39 @@
-.worktrees
+# ── Linked git worktrees (this repo uses `git worktree add .worktrees/<name>`) ──
+.worktrees/
 
-# Build tooling only. Must never appear next to manifest.json: the extension is
+# ── Dependencies ────────────────────────────────────────────────────────────
+# Build tooling only. Never appears next to manifest.json: the extension is
 # loaded unpacked from the repo root, so node_modules would be packaged with it.
-tools/node_modules
+node_modules/
 tools/.npm-cache
 
-# Tailwind Plus reference kits (licence: https://tailwindcss.com/plus/license).
+# ── Secrets (never commit; pass-managed) ────────────────────────────────────
+.env
+.env.*
+!.env.example
+# CRX signing key (private half). The public key lives in manifest.json.
+key.pem
+.extension-id
+
+# ── Licensed Tailwind Plus reference kits (https://tailwindcss.com/plus/license)
 #
-# These are purchased commercial products. tkrWallet is GPLv3 and public, so the
-# kits must stay OUT of the repo:
-#
-#   Using Tailwind Plus components to build an end product is permitted, even an
-#   open-source one. Repackaging and redistributing the component library itself
-#   is not — and a checked-in copy of the whole kit is exactly that. See
-#   docs/specs/tailwind-plus-usage.md.
-#
-# Keep them on disk as local reference material; never commit them.
+# Purchased commercial products. tkrWallet is GPLv3 + public, so the kits must
+# stay OUT of the repo: using their components to build this wallet is
+# permitted, but committing a copy of the kit is repackaging. Keep them on disk
+# as local reference material. See docs/specs/tailwind-plus-usage.md.
 application-ui-v4/
 catalyst-ui-kit/
 
-
-# CRX signing key (private). Never commit; the public half lives in manifest.json.
-key.pem
-.extension-id
+# ── Local tooling ───────────────────────────────────────────────────────────
+# Headless-Chromium screenshots and probe scripts (Playwright).
 .ui-shots/
+
+# ── Editor / OS noise ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+*.log
+npm-debug.log*
