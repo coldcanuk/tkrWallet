@@ -32,7 +32,7 @@ Source: `docs/reviews/wallet-technical-review.md` (W1–W10) and
 
 ## Router findings (R-1…R-12)
 
-These live in `blockchain-infrastructure/caesar/nginx/`, which is **out of scope
+These live in `blockchain-infrastructure/the backend host/nginx/`, which is **out of scope
 for this repo**. Status: **ARTIFACT DELIVERED, NOT APPLIED**.
 
 | # | Finding | Artifact |
@@ -57,5 +57,5 @@ the four LAN-face allow-lists (audit §5, S-4 of that document), plus the
 ## Never-closable by code
 
 - The shell has never been rendered in a browser: every UI claim is structural.
-- Host state (installed templates, firewall, `:8799` liveness) is unverifiable
+- Host state (installed templates, firewall, `` liveness) is unverifiable
   from this machine — a one-time live probe list is in the audit §7.

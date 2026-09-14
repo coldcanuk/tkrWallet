@@ -2,7 +2,7 @@
 
 **Scope:** the wallet client at `feat/scratchpost-wallet` @ `24c9a87`, and the
 nginx router templates at `blockchain-infrastructure@0207ff8`
-(`caesar/nginx/`, `eva/nginx/`).
+(`the backend host/nginx/`, `the chain host/nginx/`).
 **Requested checks:**
 1. The wallet never speaks to the internal network.
 2. All comms are stopped at the edge.
@@ -37,13 +37,13 @@ real gaps, several of which matter the moment anything is exposed.
 ### 2.1 Verified clean
 
 ```
-grep -rE '192\.168\.|127\.0\.0\.1|10\.[0-9]|localhost|:87[0-9][0-9]|:854[0-9]|:954[0-9]|\.local|onerelay'
+grep -rE '192\.168\.|10\.[0-9]|127\.0\.0\.1|localhost|:NNNN|\.local'
      index.html ui.js app.js sw.js manifest.json manifest.webmanifest
 → no matches
 ```
 
-No eva RPC (`:8545`/`:9545`), no brain (`:8791`), no BFF (`:8790`), no
-`rpc-gateway` (`:8799`), no `.local`, no `onerelay` hostname, no LAN prefix.
+No the chain host RPC (``/``), no brain (``), no BFF (``), no
+`rpc-gateway`, no `.local` hostname, no LAN prefix.
 
 **This holds even in the dead code.** `app.js` — which the shell never loads —
 contains three public origins and zero internal ones.
@@ -68,7 +68,7 @@ caveat is not about the internal network at all: three *public* third-party
 origins remain live in `manifest.json` `host_permissions` (§3, S-1), which is a
 capability grant the wallet does not need and should not carry.
 
-### 2.4 What "never speaks to eva" still lacks
+### 2.4 What "never speaks to the chain host" still lacks
 
 The claim in the plan is that this is enforced by browser policy, not just by
 code review. **Three of the four enforcement mechanisms do not exist yet:**
@@ -80,7 +80,7 @@ code review. **Three of the four enforcement mechanisms do not exist yet:**
 | `connect-src 'self'` CSP | ❌ **absent from both `index.html` and `manifest.json`** |
 | Single-origin `host_permissions` | ❌ **still three origins** |
 
-Until the third and fourth land, "the wallet never talks to eva" rests entirely on
+Until the third and fourth land, "the wallet never talks to the chain host" rests entirely on
 nobody editing the code. That is a real property, but it is a code-review property
 — not the enforced one the plan claims. Both fixes are small (§5, S-1 and S-2).
 
@@ -89,14 +89,14 @@ nobody editing the code. That is a real property, but it is a code-review proper
 ## 3. Check 2 — comms stopped at the edge
 
 **There is no edge yet.** `tkrwallet.scratchpost.ai` is specified in
-`docs/specs/icehut-edge.md` and does not exist. So the honest answer is:
+`docs/specs/edge-server.md` and does not exist. So the honest answer is:
 **containment is designed, not enforced.**
 
 What the design provides once built, and why it is the right shape:
 
-1. **One public face.** Only icehut is reachable from the internet. Every other
-   face in the router binds a LAN address (`192.168.1.254`) or loopback
-   (`127.0.0.1`).
+1. **One public face.** Only the edge is reachable from the internet. Every other
+   face in the router binds a LAN address (`the backend host`) or loopback
+   (`loopback`).
 2. **No RPC passthrough**, so there is no endpoint through which a node could be
    reached even if the client were compromised.
 3. **`connect-src 'self'`**, so the browser refuses any other origin.
@@ -119,8 +119,8 @@ this audit and belongs in `app_test.js` now (§5, S-3).
   and the `solver` stay `expose`-only; `rpc-gateway` binds loopback. The router
   is genuinely doing its job as the only door.
 - **The two ingest faces are exemplary.**
-  `icepike-nouveau-ingest.conf.template` and `eva-brain-ingest.conf.template`
-  both have an explicit `allow 192.168.1.79; deny all;`, `limit_except POST`,
+  `icepike-nouveau-ingest.conf.template` and `the chain host-brain-ingest.conf.template`
+  both have an explicit `allow the chain host; deny all;`, `limit_except POST`,
   and a default-deny `location /` returning 404 JSON. This is the pattern the
   other faces should copy.
 - **Default-deny on the JSON faces.** `ticker-b2b-radar`, the SSE face, and the
@@ -226,7 +226,7 @@ else. If `CF-Connecting-IP` must be preserved for compatibility, overwrite it:
 Every template uses `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`,
 which produces `<client-supplied>, <real-peer>`.
 
-`caesar/rpc-gateway/src/server.ts:55-59` reads element **[0]**:
+`the backend host/rpc-gateway/src/server.ts:55-59` reads element **[0]**:
 
 ```ts
 const fwd = req.headers["x-forwarded-for"];
@@ -234,7 +234,7 @@ if (typeof fwd === "string" && fwd.length > 0) return fwd.split(",")[0].trim();
 ```
 
 A local reproduction flipped the write-path decision from **403 to 200** by
-sending `X-Forwarded-For: 192.168.1.50`. In other words: the router's XFF
+sending a forged `X-Forwarded-For`. In other words: the router's XFF
 handling and the gateway's XFF trust combine into a bypass of the CIDR allow-list
 that `CUSTOMER-RPC.md` presents as a security control. The nginx side even sets
 `X-Real-IP $remote_addr` correctly and the gateway ignores it.
@@ -268,26 +268,25 @@ to a grep):
 
 | Face | In-template IP allow-list |
 |---|---|
-| `eva-brain-ingest.conf.template` (`:8792`) | ✅ `allow 192.168.1.79`, `allow 127.0.0.1` |
-| `icepike-nouveau-ingest.conf.template` (`:8787`) | ✅ `allow 192.168.1.79` |
+| `the chain host-brain-ingest.conf.template` (``) | ✅ `allow the chain host`, `allow loopback` |
+| `icepike-nouveau-ingest.conf.template` (``) | ✅ `allow the chain host` |
 | `icepike-desk-ua.conf.template` (`:443`) | ❌ none |
-| `icepike-nouveau-sse.conf.template` (`:8786`) | ❌ none |
-| `ticker-b2b-radar.conf.template` (`:8790`) | ❌ none |
-| `ticker-rpc-exec.conf.template` (`:8799`) | ❌ none |
+| `icepike-nouveau-sse.conf.template` (``) | ❌ none |
+| `ticker-b2b-radar.conf.template` (``) | ❌ none |
+| `ticker-rpc-exec.conf.template` (``) | ❌ none |
 
 The four without one are protected by their own headers' claims — *"FW (UniFi) is
 the real allowlist"*, *"LAN allowlist is Host FW"*, *"LAN/AdGuard only"* — and by
 binding a LAN address rather than `0.0.0.0`. So they are not internet-routable.
 The gap is **within** the LAN and VPN: any peer that can route to
-`192.168.1.254` reaches `:8790` and `:8799`, and that control lives in a firewall
+`the backend host` reaches `` and ``, and that control lives in a firewall
 rule on a different host, not in git, not reviewed in a PR, and with no
 defence in depth behind it.
 
 The two ingest faces show the correct pattern. Copy it:
 
 ```nginx
-allow 192.168.1.0/24;
-allow 192.168.100.0/24;
+allow <internal-network>;
 deny all;
 ```
 
@@ -310,7 +309,7 @@ own `add_header` — use `include` in every block, or the headers silently vanis
 
 `client_max_body_size 64k` appears only in `tickerpicker.conf.template` (32k on
 `/api/intent`). `ticker-rpc-exec.conf.template` has **none**, and
-`caesar/rpc-gateway/src/server.ts:87-88` buffers the request body unbounded while
+`the backend host/rpc-gateway/src/server.ts:87-88` buffers the request body unbounded while
 `grep` finds no body cap in that service either. A POST of arbitrary size is
 read into memory.
 
@@ -378,7 +377,7 @@ something). Every IP-based control in the wallet spec — per-IP rate limits,
 Live capability grant in `manifest.json`, including
 `https://api.mainnet-beta.solana.com/*`. `app.js` (dead code) uses them, but the
 permission is what any future script inherits. A public RPC is exactly the
-third-party dependency the icehut design exists to remove.
+third-party dependency the edge design exists to remove.
 
 **Fix.** `"host_permissions": ["https://tkrwallet.scratchpost.ai/*"]`, delete
 `app.js`, assert the exact list in tests.
@@ -395,7 +394,7 @@ extension needs the wallet origin named explicitly**, because in an extension
 
 The suite asserts there are no vendor strings and no XSS sinks. It does not
 assert that the tree contains **no origin other than the wallet's**. That is the
-assertion that turns "never talks to eva" into a merge gate — and it is five
+assertion that turns "never talks to the chain host" into a merge gate — and it is five
 lines.
 
 ```js
@@ -430,7 +429,7 @@ value touching presentation. Map colours locally from the symbol instead.
 
 ## 6. What the wallet vhost must include
 
-Beyond `docs/specs/icehut-edge.md`, so it does not inherit R-1–R-12:
+Beyond `docs/specs/edge-server.md`, so it does not inherit R-1–R-12:
 
 ```nginx
 # http context
@@ -465,10 +464,10 @@ server {
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; worker-src 'self'" always;
 
     # Static + same-origin API. No RPC passthrough, ever.
-    location = /api/wallet/nonce   { limit_req zone=wallet_auth burst=5 nodelay; proxy_pass http://127.0.0.1:<facade>; }
-    location = /api/wallet/session { limit_req zone=wallet_auth burst=5 nodelay; proxy_pass http://127.0.0.1:<facade>; }
-    location /api/                 { limit_req zone=wallet_api  burst=20 nodelay; proxy_pass http://127.0.0.1:<facade>; }
-    location /                     { proxy_pass http://127.0.0.1:<facade>; }
+    location = /api/wallet/nonce   { limit_req zone=wallet_auth burst=5 nodelay; proxy_pass http://loopback:<facade>; }
+    location = /api/wallet/session { limit_req zone=wallet_auth burst=5 nodelay; proxy_pass http://loopback:<facade>; }
+    location /api/                 { limit_req zone=wallet_api  burst=20 nodelay; proxy_pass http://loopback:<facade>; }
+    location /                     { proxy_pass http://loopback:<facade>; }
 
     location / { return 404; }       # if the facade is not same-host; never proxy internal faces
 }
@@ -478,7 +477,7 @@ Two rules that matter more than the rest:
 
 - **`add_header` does not inherit into a `location` that defines its own.** Use
   `include` or repeat them, or the CSP silently disappears on the API paths.
-- **`connect-src 'self'` is the control that makes "never talks to eva" a browser
+- **`connect-src 'self'` is the control that makes "never talks to the chain host" a browser
   guarantee.** If it is ever loosened, that guarantee is gone.
 
 ---
@@ -487,7 +486,7 @@ Two rules that matter more than the rest:
 
 Stated plainly so the gaps are not mistaken for passes:
 
-1. **Host state.** Whether any template is installed, whether `:8799` is live,
+1. **Host state.** Whether any template is installed, whether `` is live,
    firewall rules, and the nginx binary's version are all unverifiable from this
    machine. Every "LIVE" claim in the sibling docs is a doc assertion.
 2. **Cloudflare configuration.** The tunnel ingress, whether Authenticated Origin

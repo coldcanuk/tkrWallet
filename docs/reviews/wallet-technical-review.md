@@ -34,12 +34,12 @@ right and expensive to retrofit.
 The single most important property asked for, and it holds:
 
 ```
-grep -rE '192\.168\.|127\.0\.0\.1|10\.[0-9]|localhost|:87[0-9][0-9]|:854[0-9]|:954[0-9]|\.local|onerelay' \
+grep -rE '192\.168\.|10\.[0-9]|127\.0\.0\.1|localhost|:NNNN|\.local' \
   index.html ui.js app.js sw.js manifest.json manifest.webmanifest
 → no matches
 ```
 
-No eva address, no brain port, no `.local`, no `onerelay`. The wallet cannot
+No chain-host address, no brain port, no `.local`. The wallet cannot
 address the internal network because no internal address appears anywhere in it.
 That is a stronger guarantee than a network policy, because it survives a
 misconfigured firewall.
@@ -139,7 +139,7 @@ all three:
 none of this executes. But `host_permissions` is a *live* capability grant: any
 future script in the extension — including one added by a compromised
 dependency — may call those origins without further review. And a public Solana
-RPC in the trust path of a self-custody wallet is exactly what the icehut spec
+RPC in the trust path of a self-custody wallet is exactly what the edge spec
 exists to remove.
 
 **Fix (M3, already scoped).** Delete `app.js`, `renderBeaver` and the v1 fetch
@@ -154,7 +154,7 @@ assert manifest host_permissions === ["https://tkrwallet.scratchpost.ai/*"]
 ### W2 — There is no Content-Security-Policy anywhere yet — **High**
 
 The plan and the spec both lean on `connect-src 'self'` as the mechanism that
-*makes* "the wallet never talks to eva" enforceable rather than aspirational.
+*makes* "the wallet never talks to the chain host" enforceable rather than aspirational.
 **That enforcement does not exist yet.** There is no CSP meta tag in
 `index.html`, no CSP in `manifest.json`, and no header because the edge is not
 built.
@@ -347,4 +347,4 @@ a finished product.
 UI claim is structural (tests, class resolution, valid CSS) rather than visual.
 The edge does not exist, so no claim about the runtime enforcement of same-origin,
 CORS or CSP can be tested; they are design intent. Host state (nginx installed or
-not, firewall rules, whether `:8799` is live) is not verifiable from this machine.
+not, firewall rules, whether `` is live) is not verifiable from this machine.

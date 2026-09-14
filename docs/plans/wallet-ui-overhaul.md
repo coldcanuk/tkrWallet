@@ -80,7 +80,7 @@ tree, preserving the repository's existing security invariants.
 ### 2.1 The swap engine already exists and is already shaped for this wallet
 
 tkrShell at `origin/main` is an allow-list reverse proxy
-(nginx → tkrShell `:8088` → tickerpicker `:8080`) that already exposes the swap
+(nginx → tkrShell `` → tickerpicker ``) that already exposes the swap
 surface (`internal/tkrshell/allow.go:53-66`):
 
 ```
@@ -195,11 +195,11 @@ From `blockchain-infrastructure` — the broadcast + token-safety half:
 
 | Finding | Impact |
 |---|---|
-| `caesar/rpc-gateway` (`:8799`) is the broadcast path: one write method `eth_sendRawTransaction`, 16 read methods, hard reject-list, default-deny. Correct model: client signs, backend never holds keys. | Reusable. |
+| `the backend host/rpc-gateway` (``) is the broadcast path: one write method `eth_sendRawTransaction`, 16 read methods, hard reject-list, default-deny. Correct model: client signs, backend never holds keys. | Reusable. |
 | **Chain selection is broken for writes.** `upstreamFor()` reads `params[0].chainId`, but `eth_sendRawTransaction` takes `params[0] = "0x…"`. Empirically a real raw tx **always routes to Ethereum**, so a Base swap would be broadcast to Ethereum. | **Blocker.** Needs an out-of-band selector. |
 | **`X-Forwarded-For` bypasses the write allowlist.** `peerIp()` trusts element `[0]`; the nginx template propagates the client's value. Demonstrated 403 → 200. | Fix before any exposure. Latent today (loopback-only). |
-| rpc-gateway has **no auth, rate limits, CORS, or body cap**. `caesar/api` is **GET-only** (405 for POST) with no OPTIONS handler. | The bridge goes in tkrShell; `:8799` stays loopback. |
-| `AGENTS.md:42` forbids a public surface for RPC; `SECURITY.md:55` requires Desch review + Charles auth for a new public hostname. | **Do not publish `:8799`.** Reach it over loopback from tkrShell. |
+| rpc-gateway has **no auth, rate limits, CORS, or body cap**. `the backend host/api` is **GET-only** (405 for POST) with no OPTIONS handler. | The bridge goes in tkrShell; `` stays loopback. |
+| `AGENTS.md:42` forbids a public surface for RPC; `SECURITY.md:55` requires Desch review + Charles auth for a new public hostname. | **Do not publish ``.** Reach it over loopback from tkrShell. |
 | `security-worker` is a Redis-stream consumer, not HTTP. It **cannot quote** (hardcoded `amountOutMin = 0n`, mainnet-hardcoded router/WETH) but **can** return `SAFE/WATCH/DANGER/FATAL`. | Useful as a pre-sign safety gate, not a router. Needs extraction into a callable module. |
 | No payment/billing logic exists in the backend at all. | tkrWallet's *"Paid tkrSwap is required…"* copy (`app.js:389`) has no backend counterpart. |
 | Doc drift: `security-worker/README.md` advertises live Blockscout/Uniswap enrichment, but `main.ts` never injects `HttpEnrichment` → always `MockEnrichment`. | Do not rely on enrichment. |
@@ -364,9 +364,9 @@ existing `FamHosted` handling, with `OPTIONS` added to those method sets in
 `/v1/quote` and `/v1/swap*`. This is the only clean fix — `ACAO: *` plus
 `SameSite=Lax` cannot authenticate a third-party origin, and third-party cookies
 will keep degrading. The `x-api-key`/Bearer + SHA-256 pattern in
-`blockchain-infrastructure` `caesar/api` is a usable model.
+`blockchain-infrastructure` `the backend host/api` is a usable model.
 
-**M6.4 — Harden the broadcast bridge.** Keep `:8799` loopback-only; reach it
+**M6.4 — Harden the broadcast bridge.** Keep `` loopback-only; reach it
 from tkrShell. First fix: the **`X-Forwarded-For` trust bug**, the **broken
 chain selector for `eth_sendRawTransaction`**, and add a **body cap, rate limit,
 and idempotency**. Without these, a Base swap is broadcast to Ethereum and the

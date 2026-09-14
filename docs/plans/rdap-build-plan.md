@@ -4,7 +4,7 @@
 Spiral × small-win milestones with strict Definitions of Done, per operator
 instruction.
 **Inputs:** conversation history · `docs/reviews/wallet-technical-review.md` ·
-`docs/security/security-audit.md` · `docs/specs/icehut-edge.md` ·
+`docs/security/security-audit.md` · `docs/specs/edge-server.md` ·
 `docs/specs/tailwind-plus-usage.md`.
 **Worktree:** `.worktrees/scratchpost-wallet` on `feat/scratchpost-wallet`
 (existing — see §4 lifecycle note). `main` stays untouched at `c4e5153`.
@@ -21,7 +21,7 @@ EVM data layer, and is verified, documented, pushed, and PR'd.
 
 ### 1.2 Non-goals (deliberate exclusions)
 
-- No backend or edge implementation (icehut, facade, prices, swap engine) — the
+- No backend or edge implementation (the edge, facade, prices, swap engine) — the
   spec exists; the servers are separate work.
 - No commits to `blockchain-infrastructure` or `tickerpicker`. The router fixes
   (R-1…R-12) are delivered as an artifact here, not applied there.
@@ -316,7 +316,7 @@ PUB=$(openssl rsa -in key.pem -pubout -outform DER 2>/dev/null | openssl base64 
 EXTID=$(openssl rsa -in key.pem -pubout -outform DER 2>/dev/null | openssl dgst -sha256 -binary | head -c32 | tr 0-9a-f a-p)
 ```
 Inject `"key": "<PUB>"` into `manifest.json`; record the ID in
-`docs/specs/icehut-edge.md` §5 and CHANGELOG; **gitignore `key.pem`** (private
+`docs/specs/edge-server.md` §5 and CHANGELOG; **gitignore `key.pem`** (private
 CRX key must never be committed); print the ID for the record.
 **Verify:** `openssl rsa -in key.pem -pubout -outform DER 2>/dev/null | openssl dgst -sha256 -binary | head -c32 | tr 0-9a-f a-p` matches the recorded ID.
 
@@ -382,7 +382,7 @@ Task 2 — `#wallet-status` announcements on connect/error (W9).
 
 Task 1 — final `manifest.json` review: key, icons, host_permissions,
 `content_security_policy`, description, version bump `0.4.0`.
-Task 2 — README rewrite: Scratchpost/icehut topology, `tkrwallet.scratchpost.ai`,
+Task 2 — README rewrite: Scratchpost/the edge topology, `tkrwallet.scratchpost.ai`,
 run-as-PWA, load-unpacked, licence notes, `npm run check`.
 
 ### M3.9 — Edge deploy artifact (S-13)
