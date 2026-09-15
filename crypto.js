@@ -427,6 +427,16 @@
     return hex(raw);
   }
 
+  function signAndBroadcastPayload(mnemonic, index, tx) {
+    var w = importMnemonic(mnemonic, index);
+    var seed = noble.mnemonicToSeedSync(w.mnemonic);
+    var evm = deriveEvm(seed, w.index);
+    var rawHex = signTransaction(evm.privateKey, tx);
+    wipeBytes(evm.privateKey);
+    wipeBytes(seed);
+    return { address: w.evmAddress, raw: "0x" + rawHex, chainId: Number(tx.chainId) };
+  }
+
   /* Recover the signer's EIP-55 address from a 65-byte personal_sign hex. */
   function recoverSigner(sigHex, message) {
     var sig = hexToBytes(sigHex);
@@ -534,6 +544,7 @@
     signMessage: signMessage,
     signPersonal: signPersonal,
     signTransaction: signTransaction,
+    signAndBroadcastPayload: signAndBroadcastPayload,
     recoverSigner: recoverSigner,
     recoverTxSigner: recoverTxSigner,
     rlpInt: rlpInt,

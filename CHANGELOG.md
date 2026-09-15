@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0 — sign pending IcePike request and broadcast raw
+
+After Connect, the wallet polls `/api/wallet/pending-signs`. Confirm signs
+the unsigned tx locally and POSTs raw bytes to `/api/wallet/broadcast`.
+The origin forwards to rpc-gateway. Keys stay on the device.
+
 ## 0.9.0 — connect (challenge–response)
 
 The unlocked wallet can prove it owns the address without sending a key.
