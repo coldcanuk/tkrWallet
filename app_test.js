@@ -174,7 +174,7 @@ test("reload keeps the viewing session; lock and expiry do not; keys never land 
   assert.ok(/function clearViewSession\(/.test(ui), "lock must drop the viewing session");
   assert.ok(/function restoreViewSession\(/.test(ui), "boot must try to restore before prompting");
 
-  const reveal = ui.match(/function revealAccount\(phrase\) \{[\s\S]*?\n  \}/);
+  const reveal = ui.match(/function revealAccount\(phrase(?:, index)?\) \{[\s\S]*?\n  \}/);
   assert.ok(reveal && reveal[0].indexOf("saveViewSession()") !== -1, "unlock/import must save the viewing session");
 
   const lock = ui.match(/function lockNow\(reason\) \{[\s\S]*?\n  \}/);
@@ -454,7 +454,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v4"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v5"') !== -1, "cache version must bump so the new worker activates");
 });
 
 test("service worker bypasses the HTTP cache and sweeps legacy caches", function () {
@@ -817,6 +817,67 @@ test("crypto: generateWallet returns a valid 12-word wallet, idempotent", functi
   assert.strictEqual(c.importMnemonic(w.mnemonic).evmAddress, w.evmAddress);
 });
 
+test("crypto: HD address index i derives m/44'/60'/0'/0/{i} in the same seed", function () {
+  const c = require("./crypto.js");
+  const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  const w0 = c.importMnemonic(phrase, 0);
+  const w1 = c.importMnemonic(phrase, 1);
+  assert.strictEqual(w0.evmAddress, "0x9858EfFD232B4033E47d90003D41EC34EcaEda94");
+  assert.strictEqual(w0.path, "m/44'/60'/0'/0/0");
+  assert.strictEqual(w0.index, 0);
+  assert.strictEqual(w1.evmAddress, "0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0");
+  assert.strictEqual(w1.path, "m/44'/60'/0'/0/1");
+  assert.strictEqual(w1.index, 1);
+  assert.notStrictEqual(w0.evmAddress, w1.evmAddress);
+  assert.throws(function () { c.importMnemonic(phrase, -1); }, /invalid-index/);
+  assert.throws(function () { c.importMnemonic(phrase, 1.5); }, /invalid-index/);
+});
+
+test("crypto: accountsFromMnemonic lists public addresses only", function () {
+  const c = require("./crypto.js");
+  const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  const acc = c.accountsFromMnemonic(phrase, 3);
+  assert.strictEqual(acc.length, 3);
+  assert.strictEqual(acc[0].evmAddress, "0x9858EfFD232B4033E47d90003D41EC34EcaEda94");
+  assert.strictEqual(acc[1].evmAddress, "0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0");
+  assert.strictEqual(acc[2].i, 2);
+  assert.strictEqual(acc[2].path, "m/44'/60'/0'/0/2");
+  const blob = JSON.stringify(acc);
+  assert.ok(blob.indexOf(phrase) === -1, "account list must not include the recovery phrase");
+  assert.ok(blob.indexOf("privateKey") === -1, "account list must not include a private key");
+  assert.strictEqual(c.nextAccountIndex(acc), 3);
+  assert.strictEqual(c.nextAccountIndex(null), 0);
+  assert.strictEqual(c.nextAccountIndex([]), 0);
+});
+
+test("crypto: wipeBytes zeros key material in place", function () {
+  const c = require("./crypto.js");
+  const buf = new Uint8Array([1, 2, 3, 4]);
+  c.wipeBytes(buf);
+  assert.deepStrictEqual(Array.from(buf), [0, 0, 0, 0]);
+});
+
+test("crypto: revealEvmSecret is hex and does not keep the phrase", function () {
+  const c = require("./crypto.js");
+  const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  const secret = c.revealEvmSecret(phrase, 0);
+  assert.strictEqual(secret.evmAddress, "0x9858EfFD232B4033E47d90003D41EC34EcaEda94");
+  assert.ok(/^0x[0-9a-f]{64}$/.test(secret.privateKeyHex), "EVM priv shown once as 0x-hex");
+  assert.strictEqual("mnemonic" in secret, false, "the one-time reveal is the key, not the phrase again");
+});
+
+test("crypto: vault accounts metadata is public and never the mnemonic", function () {
+  const c = require("./crypto.js");
+  const phrase = "legal winner thank year wave sausage worth useful legal winner thank yellow";
+  return c.encryptVault(phrase, "correct horse battery staple").then(function (vault) {
+    vault.accounts = c.accountsFromMnemonic(phrase, 2);
+    const blob = JSON.stringify(vault);
+    assert.ok(blob.indexOf(phrase) === -1, "plaintext must not be in the vault even with accounts");
+    assert.ok(blob.indexOf("privateKey") === -1);
+    assert.strictEqual(vault.accounts[1].evmAddress, c.importMnemonic(phrase, 1).evmAddress);
+  });
+});
+
 test("crypto: vault round-trips and rejects a wrong password", function () {
   const c = require("./crypto.js");
   const phrase = "legal winner thank year wave sausage worth useful legal winner thank yellow";
@@ -855,6 +916,51 @@ test("import/unlock gate is present and wired", function () {
   assert.ok(ui.indexOf("600000") !== -1 || readFile("crypto.js").indexOf("600000") !== -1, "KDF iterations pinned");
 });
 
+test("create gate: generate, typed confirm, wipe; empty state offers Create", function () {
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('id="gate-create"') !== -1, "missing create form");
+  assert.ok(html.indexOf('id="create-mnemonic"') !== -1, "must show the recovery phrase once");
+  assert.ok(html.indexOf('id="create-priv"') !== -1, "Phantom-parity: EVM priv shown once");
+  assert.ok(html.indexOf('id="create-confirm"') !== -1, "typed confirm input");
+  assert.ok(html.indexOf("data-create") !== -1, "empty state must offer Create wallet");
+  assert.ok(html.indexOf('data-add-account') !== -1, "settings must offer add-account for HD index i");
+  const ui = require("./ui.js");
+  assert.strictEqual(typeof ui.typedCreateConfirm, "function");
+  assert.strictEqual(ui.CREATE_CONFIRM, "I saved my recovery phrase");
+  assert.ok(ui.typedCreateConfirm("I saved my recovery phrase"));
+  assert.ok(ui.typedCreateConfirm("  I saved my recovery phrase  "));
+  assert.ok(!ui.typedCreateConfirm("ok"));
+  assert.ok(!ui.typedCreateConfirm(""));
+  assert.ok(!ui.typedCreateConfirm("i saved my recovery phrase"), "confirm is exact, not case-folded");
+  const src = readFile("ui.js");
+  ["onCreateStart", "onCreateConfirm", "wipeSecrets", "generateWallet", "onAddAccount"].forEach(function (fn) {
+    assert.ok(src.indexOf(fn) !== -1, "ui.js must wire " + fn);
+  });
+  const wipe = src.match(/function wipeSecrets\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(wipe, "wipeSecrets must exist");
+  ["create-mnemonic", "create-priv", "create-confirm", "create-password"].forEach(function (id) {
+    assert.ok(wipe[0].indexOf(id) !== -1, "wipeSecrets must clear " + id);
+  });
+  const close = src.match(/function closeGate\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(close && close[0].indexOf("wipeSecrets()") !== -1, "closing the gate must wipe create buffers");
+});
+
+test("plaintext mnemonic is never written to IndexedDB or sessionStorage", function () {
+  const storeSave = readFile("store.js").match(/function saveVault\(vault\) \{[\s\S]*?\n  \}/);
+  assert.ok(storeSave, "saveVault must exist");
+  assert.ok(storeSave[0].indexOf("store.put(vault") !== -1, "IndexedDB holds the vault blob only");
+  assert.ok(storeSave[0].indexOf("mnemonic") === -1, "saveVault must not mention the recovery phrase");
+  const save = readFile("ui.js").match(/function saveViewSession\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(save[0].indexOf("mnemonic") === -1, "viewing session must never mention the recovery phrase");
+  assert.ok(save[0].indexOf("privateKey") === -1, "viewing session must never mention a private key");
+  const persist = readFile("ui.js").match(/function onCreateConfirm\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(persist, "onCreateConfirm must exist");
+  assert.ok(persist[0].indexOf("encryptVault") !== -1, "create persists ciphertext");
+  assert.ok(persist[0].indexOf("saveVault") !== -1, "create writes the vault blob");
+  assert.ok(persist[0].indexOf("wipeSecrets") !== -1, "create wipes after persist");
+  assert.ok(persist[0].indexOf("sessionStorage") === -1, "create must not write secrets to sessionStorage");
+});
+
 test("unlocking with no vault on device explains itself, never bounces silently", function () {
   const ui = readFile("ui.js");
   assert.ok(
@@ -869,7 +975,7 @@ test("gate errors hide via the hidden attribute, never the hidden class", functi
   // toggle would do nothing and every unlock/import error would stay invisible
   // (the root cause of the silent unlock bounce).
   const html = readFile("index.html");
-  ["gate-error", "gate-import-error"].forEach(function (id) {
+  ["gate-error", "gate-import-error", "gate-create-error"].forEach(function (id) {
     const m = html.match(new RegExp('<p id="' + id + '"[^>]*>'));
     assert.ok(m, "missing " + id);
     const tag = m[0];
@@ -901,7 +1007,7 @@ test("an unlocked wallet never shows the boot-time 'No wallet yet' card", functi
   );
   assert.ok(empty[0].indexOf("Balances incomplete") !== -1, "a partial read must disclose the gap");
   assert.ok(empty[0].indexOf("No wallet yet") !== -1, "only the no-wallet case offers import");
-  const reveal = ui.match(/function revealAccount\(phrase\) \{[\s\S]*?\n  \}/);
+  const reveal = ui.match(/function revealAccount\(phrase(?:, index)?\) \{[\s\S]*?\n  \}/);
   assert.ok(reveal && reveal[0].indexOf("renderTokens(null)") !== -1, "revealAccount must repaint the token list");
 });
 
@@ -976,7 +1082,7 @@ test("unlock fetches real balances from the edge and locks on expiry", function 
     /getBalances\(session\.address, \[1, 8453\]/.test(ui),
     "unlock must fetch Mainnet + Base balances"
   );
-  const reveal = ui.match(/function revealAccount\(phrase\) \{[\s\S]*?\n  \}/);
+  const reveal = ui.match(/function revealAccount\(phrase(?:, index)?\) \{[\s\S]*?\n  \}/);
   assert.ok(reveal && reveal[0].indexOf("refreshBalances()") !== -1, "revealAccount must start the balance fetch");
   assert.ok(reveal && reveal[0].indexOf("scheduleLock()") !== -1, "revealAccount must arm the auto-lock timer");
   // A locked wallet must clear key material, holdings, and the read report.

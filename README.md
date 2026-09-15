@@ -39,12 +39,16 @@ and remediations): [`docs/reviews/2026-09-14-technical-review.md`](docs/reviews/
 
 - Mobile-first shell: wallet value (USD/CAD), Send/Swap/Receive/Buy row, token
   list, four-tab navigation (Home/Swap/Activity/Search) plus a Settings screen.
-- **Self-custody import / unlock**: import a 12/24-word BIP-39 recovery phrase
-  or unlock an existing local wallet with a password. The phrase is encrypted
+- **Self-custody create / import / unlock**: create a new 12-word BIP-39
+  wallet (phrase + Ethereum private key shown once, typed confirm
+  `I saved my recovery phrase`, then wipe), import an existing phrase, or
+  unlock the local vault with a password. The phrase is encrypted
   (PBKDF2-SHA256 at 600k iterations → AES-GCM) and stored only on this device.
-  Derives the Ethereum (`m/44'/60'/0'/0/0`) and Solana (`m/44'/501'/0'/0'`)
-  addresses, and signs EIP-191 messages and legacy EIP-155 transactions locally
-  with audited `@noble`/`@scure` primitives — never a server.
+  Derives Ethereum accounts at `m/44'/60'/0'/0/{i}` in the same vault and a
+  Solana address at `m/44'/501'/0'/0'`, and signs EIP-191 messages and legacy
+  EIP-155 transactions locally with audited `@noble`/`@scure` primitives —
+  never a server. Extra accounts are derived in Settings (password required);
+  only public addresses sit next to the ciphertext.
 - **Auto-lock**: the wallet locks itself after inactivity — 5 minutes by
   default, configurable in Settings (1/5/15/30/60 min). It cannot be turned
   off and the longest session is 1 hour. "Lock now" is one tap away. A

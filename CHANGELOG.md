@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.8.0 — create account, typed confirm, HD index i
+
+Create a wallet on the device, not only import one. The recovery phrase and
+the Ethereum private key are shown **once**, the operator types
+`I saved my recovery phrase`, then only AES-GCM ciphertext is persisted.
+Closing the gate wipes the backup buffers. Extra accounts in the same vault
+are `m/44'/60'/0'/0/{i}` — public addresses only next to the ciphertext.
+
+- **Create flow.** Empty state offers Create wallet. Password → generate
+  12 words + one-time EVM private key → typed confirm → `encryptVault` →
+  IndexedDB. The phrase never lands in `sessionStorage`.
+- **HD accounts.** `importMnemonic(phrase, i)` derives
+  `m/44'/60'/0'/0/{i}`. Settings → Add account asks for the password,
+  decrypts, derives the next index, and stores `{i, path, evmAddress}` on
+  the vault blob (not the key).
+- **Wipe.** `wipeSecrets()` clears create/import/unlock fields and the
+  on-screen mnemonic/priv; `wipeBytes()` zeros `Uint8Array` key material.
+- **Service worker cache `tkrwallet-v5`** so the new gate ships.
+
+94 tests, 0 failures.
+
 ## 0.7.1 — live edge + viewing session
 
 The production origin was still serving a Sep 13 snapshot that treated a

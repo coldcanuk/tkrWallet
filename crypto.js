@@ -22,9 +22,9 @@
     throw new Error("crypto bundle missing: vendor/noble.js");
   }
 
-  var BIP44_EVM = "m/44'/60'/0'/0/0";
   var BIP44_SOL = "m/44'/501'/0'/0'";
   var KDF_ITERATIONS = 600000;
+  var MAX_ACCOUNTS = 20;
 
   var te = typeof TextEncoder === "function" ? new TextEncoder() : null;
   var td = typeof TextDecoder === "function" ? new TextDecoder() : null;
@@ -105,13 +105,36 @@
 
   /* ---- derivation -------------------------------------------------------- */
 
-  function deriveEvm(seed) {
-    var node = noble.HDKey.fromMasterSeed(seed).derive(BIP44_EVM);
+  function wipeBytes(buf) {
+    if (buf && typeof buf.fill === "function") {
+      buf.fill(0);
+    }
+    return buf;
+  }
+
+  function normalizeIndex(index) {
+    if (index == null || index === "") {
+      return 0;
+    }
+    var n = Number(index);
+    if (!Number.isInteger(n) || n < 0 || n > 0x7fffffff) {
+      throw new Error("invalid-index");
+    }
+    return n;
+  }
+
+  function evmPath(index) {
+    return "m/44'/60'/0'/0/" + normalizeIndex(index);
+  }
+
+  function deriveEvm(seed, index) {
+    var path = evmPath(index);
+    var node = noble.HDKey.fromMasterSeed(seed).derive(path);
     var priv = node.privateKey; // 32 bytes
     var pub = noble.secp256k1.getPublicKey(priv, false); // 65 bytes, 0x04-prefixed
     var addr = noble.keccak_256(pub.slice(1)).slice(-20); // last 20 bytes
     return {
-      path: BIP44_EVM,
+      path: path,
       privateKey: priv,
       address: toEip55(addr),
     };
@@ -130,16 +153,19 @@
 
   /* ---- public API: import / generate ------------------------------------ */
 
-  function importMnemonic(mnemonic) {
+  function importMnemonic(mnemonic, index) {
     var phrase = String(mnemonic || "").trim().toLowerCase();
     if (!noble.validateMnemonic(phrase, noble.wordlist)) {
       throw new Error("invalid-mnemonic");
     }
+    var i = normalizeIndex(index);
     var seed = noble.mnemonicToSeedSync(phrase);
-    var evm = deriveEvm(seed);
+    var evm = deriveEvm(seed, i);
     var sol = deriveSolana(seed);
     return {
       mnemonic: phrase,
+      index: i,
+      path: evm.path,
       evmAddress: evm.address,
       solAddress: sol.address,
     };
@@ -147,7 +173,58 @@
 
   function generateWallet(strength) {
     var phrase = noble.generateMnemonic(noble.wordlist, strength || 128);
-    return importMnemonic(phrase);
+    return importMnemonic(phrase, 0);
+  }
+
+  function accountsFromMnemonic(mnemonic, count) {
+    var phrase = String(mnemonic || "").trim().toLowerCase();
+    if (!noble.validateMnemonic(phrase, noble.wordlist)) {
+      throw new Error("invalid-mnemonic");
+    }
+    var n = count == null ? 1 : Number(count);
+    if (!Number.isInteger(n) || n < 1 || n > MAX_ACCOUNTS) {
+      throw new Error("invalid-count");
+    }
+    var seed = noble.mnemonicToSeedSync(phrase);
+    var out = [];
+    for (var i = 0; i < n; i++) {
+      var evm = deriveEvm(seed, i);
+      out.push({ i: i, path: evm.path, evmAddress: evm.address });
+      wipeBytes(evm.privateKey);
+    }
+    wipeBytes(seed);
+    return out;
+  }
+
+  function nextAccountIndex(accounts) {
+    if (!accounts || !accounts.length) {
+      return 0;
+    }
+    var max = -1;
+    for (var i = 0; i < accounts.length; i++) {
+      var n = Number(accounts[i] && accounts[i].i);
+      if (Number.isInteger(n) && n > max) {
+        max = n;
+      }
+    }
+    return max + 1;
+  }
+
+  /* One-time Phantom-parity reveal of the EVM private key. Caller must wipe
+   * the hex from the DOM after the user confirms they saved the phrase. */
+  function revealEvmSecret(mnemonic, index) {
+    var w = importMnemonic(mnemonic, index);
+    var seed = noble.mnemonicToSeedSync(w.mnemonic);
+    var evm = deriveEvm(seed, w.index);
+    var hexKey = "0x" + hex(evm.privateKey);
+    wipeBytes(evm.privateKey);
+    wipeBytes(seed);
+    return {
+      index: w.index,
+      path: evm.path,
+      evmAddress: evm.address,
+      privateKeyHex: hexKey,
+    };
   }
 
   /* ---- local vault: PBKDF2-SHA256 -> AES-GCM (WebCrypto) ---------------- */
@@ -433,6 +510,11 @@
     KDF_ITERATIONS: KDF_ITERATIONS,
     importMnemonic: importMnemonic,
     generateWallet: generateWallet,
+    accountsFromMnemonic: accountsFromMnemonic,
+    nextAccountIndex: nextAccountIndex,
+    revealEvmSecret: revealEvmSecret,
+    wipeBytes: wipeBytes,
+    evmPath: evmPath,
     encryptVault: encryptVault,
     decryptVault: decryptVault,
     toEip55: toEip55,
