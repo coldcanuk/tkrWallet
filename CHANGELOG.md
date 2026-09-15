@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.1 — 2026-09-15
+
+### Changed
+- MV3 action popup shell: **432×600** (was content-shrunk / plan baseline 360×560). Width +20% from 360; height at Chromium popup max so Connect/Sign/home are not clipped short. PWA/tab layout unchanged (`100vh`).
+
 ## 0.10.0 — sign pending IcePike request and broadcast raw
 
 After Connect, the wallet polls `/api/wallet/pending-signs`. Confirm signs
