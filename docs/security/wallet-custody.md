@@ -10,11 +10,12 @@ deliberate, not accidental.
 ```
 recovery phrase (BIP-39, 12/24 words)
    └─ PBKDF2-HMAC-SHA512 → seed   (WebCrypto)
-        ├─ m/44'/60'/0'/0/0 → secp256k1 → keccak → EVM address  [@noble/@scure]
+        ├─ m/44'/60'/0'/0/{i} → secp256k1 → keccak → EVM address  [@noble/@scure]
         └─ m/44'/501'/0'/0' → ed25519 → base58 → Solana address
 
 at rest (IndexedDB):
    vault = AES-GCM( PBKDF2-SHA256(password, salt, 600000), mnemonic )
+           + public accounts: [{ i, path, evmAddress }]  (never keys)
 ```
 
 ## Invariants (asserted where testable)
@@ -35,8 +36,11 @@ at rest (IndexedDB):
    `@noble/*` bundle; the whole import→derive→address→sign pipeline is locked by
    the canonical BIP-39 vector (`abandon … about` →
    `0x9858EfFD232B4033E47d90003D41EC34EcaEda94`).
-7. **No plaintext in the DOM.** Inputs are cleared on close; key material never
-   reaches an attribute or a template; the page has no markup-string sink.
+7. **No plaintext in the DOM after confirm.** Create shows the phrase and EVM
+   priv once, then `wipeSecrets()` clears those nodes and the password fields.
+   Closing the gate always wipes. Key material never reaches an attribute or a
+   template; the page has no markup-string sink. `sessionStorage` holds only
+   the public address.
 8. **The unlocked session is bounded.** Auto-lock fires after inactivity — 5
    minutes by default, 1/5/15/30/60 minutes in Settings, never off, 1 hour max.
    Locking clears the in-memory address and every holding; activity re-arms the
@@ -60,7 +64,9 @@ at rest (IndexedDB):
 
 - The wallet has no injected-provider path: there is no `window.ethereum`, no
   EIP-1193 connect, and no MetaMask/Uniswap/Brave integration. The only way in
-  is importing a recovery phrase or unlocking the local vault with a password.
+  is creating a wallet on this device, importing a recovery phrase, or unlocking
+  the local vault with a password. Create requires typing
+  `I saved my recovery phrase` before ciphertext is written.
 - An unlocked wallet's balances come from the wallet edge
   (`GET /api/wallet/balances`, `GET /api/wallet/prices`, `GET /api/wallet/token` —
   see `docs/specs/edge-server.md`). Production is `https://tkrwallet.scratchpost.ai`

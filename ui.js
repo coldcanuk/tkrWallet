@@ -24,6 +24,7 @@
   var AUTOLOCK_OPTIONS = [1, 5, 15, 30, 60];
   var AUTOLOCK_DEFAULT = 5;
   var AUTOLOCK_MAX = 60;
+  var CREATE_CONFIRM = "I saved my recovery phrase";
 
   /* ---- pure helpers (unit-testable without a DOM) ---------------------- */
 
@@ -116,6 +117,11 @@
       return null;
     }
     return { address: address, lastActivity: lastActivity, autolockMinutes: minutes };
+  }
+
+  /** Typed backup confirm: exact sentence, trimmed. Not a checkbox. */
+  function typedCreateConfirm(typed) {
+    return String(typed || "").trim() === CREATE_CONFIRM;
   }
 
   /** "0x2222...2222" — short enough for a 360px header. */
@@ -373,10 +379,13 @@
     }
     return {
       title: "No wallet yet",
-      body: "Import a wallet with a password or a recovery phrase. Your keys stay encrypted on this device \u2014 nothing leaves it.",
+      body: "Create a new wallet or import a recovery phrase. Your keys stay encrypted on this device \u2014 nothing leaves it.",
       cta: "Import wallet",
       action: function () {
-        openGate();
+        openGate("import");
+      },
+      create: function () {
+        openGate("create");
       },
     };
   }
@@ -415,6 +424,7 @@
         var node = tplEmpty.content.firstElementChild.cloneNode(true);
         var state_ = emptyStateFor();
         var cta = node.querySelector("[data-import]");
+        var createBtn = node.querySelector("[data-create]");
         setText(node.querySelector("[data-empty-title]"), state_.title);
         setText(node.querySelector("[data-empty-body]"), state_.body);
         if (cta) {
@@ -422,6 +432,16 @@
           cta.addEventListener("click", function () {
             state_.action();
           });
+        }
+        if (createBtn) {
+          if (state_.create) {
+            createBtn.removeAttribute("hidden");
+            createBtn.addEventListener("click", function () {
+              state_.create();
+            });
+          } else {
+            createBtn.setAttribute("hidden", "");
+          }
         }
         box.appendChild(node);
       }
@@ -885,7 +905,8 @@
 
   /* ---- wallet gate: unlock with password, or import a recovery phrase ----- */
 
-  var session = { vault: null, address: null, locked: false };
+  var session = { vault: null, address: null, locked: false, index: 0 };
+  var pendingCreate = null;
 
   function saveViewSession() {
     if (!session.address) {
@@ -944,17 +965,32 @@
   function showGateForm(mode) {
     var unlock = el("gate-unlock");
     var importForm = el("gate-import");
+    var createForm = el("gate-create");
     var toggle = el("gate-toggle");
-    var importing = mode === "import";
     if (unlock) {
-      unlock.hidden = importing;
+      unlock.hidden = mode !== "unlock";
     }
     if (importForm) {
-      importForm.hidden = !importing;
+      importForm.hidden = mode !== "import";
     }
-    setText(el("gate-title"), importing ? "Import wallet" : "Unlock wallet");
+    if (createForm) {
+      createForm.hidden = mode !== "create";
+    }
+    var titles = { unlock: "Unlock wallet", import: "Import wallet", create: "Create wallet" };
+    setText(el("gate-title"), titles[mode] || "Unlock wallet");
     if (toggle) {
-      toggle.textContent = importing ? "Unlock with password instead" : "Use a recovery phrase instead";
+      if (mode === "create") {
+        toggle.textContent = "Use a recovery phrase instead";
+      } else if (mode === "import") {
+        toggle.textContent = "Create or unlock instead";
+      } else {
+        toggle.textContent = "Use a recovery phrase instead";
+      }
+    }
+    if (mode !== "create") {
+      setText(el("create-mnemonic"), "");
+      setText(el("create-priv"), "");
+      pendingCreate = null;
     }
   }
 
@@ -979,23 +1015,52 @@
     gate.removeAttribute("hidden");
     showGateError("gate-error", null);
     showGateError("gate-import-error", null);
-    if (mode === "unlock" || mode === "import") {
+    if (mode === "unlock" || mode === "import" || mode === "create") {
       showGateForm(mode);
       return;
     }
-    // Auto-detect: unlock if a vault exists, else import.
+    // Auto-detect: unlock if a vault exists, else create.
     var s = store();
     if (!s) {
-      showGateForm("import");
+      showGateForm("create");
       return;
     }
     s.loadVault()
       .then(function (vault) {
-        showGateForm(vault ? "unlock" : "import");
+        showGateForm(vault ? "unlock" : "create");
       })
       .catch(function () {
-        showGateForm("import");
+        showGateForm("create");
       });
+  }
+
+  function wipeSecrets() {
+    var ids = [
+      "gate-password",
+      "gate-new-password",
+      "gate-mnemonic",
+      "create-password",
+      "create-password-confirm",
+      "create-confirm",
+      "add-account-password",
+    ];
+    for (var i = 0; i < ids.length; i++) {
+      var node = el(ids[i]);
+      if (node && "value" in node) {
+        node.value = "";
+      }
+    }
+    setText(el("create-mnemonic"), "");
+    setText(el("create-priv"), "");
+    pendingCreate = null;
+    var step1 = el("create-step-password");
+    var step2 = el("create-step-backup");
+    if (step1) {
+      step1.removeAttribute("hidden");
+    }
+    if (step2) {
+      step2.setAttribute("hidden", "");
+    }
   }
 
   function closeGate() {
@@ -1003,26 +1068,16 @@
     if (gate) {
       gate.setAttribute("hidden", "");
     }
-    var pw = el("gate-password");
-    var np = el("gate-new-password");
-    var mn = el("gate-mnemonic");
-    if (pw) {
-      pw.value = "";
-    }
-    if (np) {
-      np.value = "";
-    }
-    if (mn) {
-      mn.value = "";
-    }
+    wipeSecrets();
   }
 
   /* Derive + reveal the account. The plaintext phrase exists only for the
    * duration of this function; it is never stored outside the vault. */
-  function revealAccount(phrase) {
+  function revealAccount(phrase, index) {
     var c = crypto();
-    var w = c.importMnemonic(phrase);
+    var w = c.importMnemonic(phrase, index);
     session.address = w.evmAddress;
+    session.index = w.index;
     session.locked = false;
     uiData.lastBalances = null; // never show a previous wallet's read
     uiData.lastChecked = null;
@@ -1118,6 +1173,7 @@
       state.lockTimer = null;
     }
     session.address = null;
+    session.index = 0;
     session.vault = null;
     session.locked = session.locked || wasUnlocked;
     clearViewSession();
@@ -1157,11 +1213,20 @@
           showGateError("gate-import-error", "No wallet on this device yet. Import a recovery phrase to create one.");
           throw new Error("no vault");
         }
-        return c.decryptVault(vault, password);
+        return c.decryptVault(vault, password).then(function (phrase) {
+          return { vault: vault, phrase: phrase };
+        });
       })
-      .then(function (phrase) {
+      .then(function (unlocked) {
         session.vault = null;
-        revealAccount(phrase);
+        var idx = 0;
+        if (unlocked.vault && unlocked.vault.accounts && unlocked.vault.accounts.length) {
+          idx = c.nextAccountIndex(unlocked.vault.accounts) - 1;
+          if (idx < 0) {
+            idx = 0;
+          }
+        }
+        revealAccount(unlocked.phrase, idx);
         closeGate();
       })
       .catch(function (err) {
@@ -1195,14 +1260,147 @@
     }
     c.encryptVault(phrase, password)
       .then(function (vault) {
+        vault.accounts = c.accountsFromMnemonic(phrase, 1);
         return s.saveVault(vault);
       })
       .then(function () {
-        revealAccount(phrase);
+        revealAccount(phrase, 0);
         closeGate();
       })
       .catch(function () {
         showGateError("gate-import-error", "Could not store the wallet on this device.");
+      });
+  }
+
+  function onCreateStart() {
+    var password = ((el("create-password") || {}).value || "");
+    var confirmPw = ((el("create-password-confirm") || {}).value || "");
+    if (password.length < 8) {
+      showGateError("gate-create-error", "Use at least 8 characters.");
+      return;
+    }
+    if (password !== confirmPw) {
+      showGateError("gate-create-error", "Passwords do not match.");
+      return;
+    }
+    var c = crypto();
+    var s = store();
+    if (!c || !s) {
+      showGateError("gate-create-error", "Wallet storage unavailable in this browser.");
+      return;
+    }
+    var w;
+    var secret;
+    try {
+      w = c.generateWallet();
+      secret = c.revealEvmSecret(w.mnemonic, 0);
+    } catch (e) {
+      showGateError("gate-create-error", "Could not generate a wallet.");
+      return;
+    }
+    pendingCreate = { mnemonic: w.mnemonic, password: password };
+    setText(el("create-mnemonic"), w.mnemonic);
+    setText(el("create-priv"), secret.privateKeyHex);
+    var step1 = el("create-step-password");
+    var step2 = el("create-step-backup");
+    if (step1) {
+      step1.setAttribute("hidden", "");
+    }
+    if (step2) {
+      step2.removeAttribute("hidden");
+    }
+    showGateError("gate-create-error", null);
+  }
+
+  function onCreateConfirm() {
+    var typed = ((el("create-confirm") || {}).value || "");
+    if (!typedCreateConfirm(typed)) {
+      showGateError("gate-create-error", "Type exactly: " + CREATE_CONFIRM);
+      return;
+    }
+    if (!pendingCreate || !pendingCreate.mnemonic) {
+      showGateError("gate-create-error", "Generate a wallet first.");
+      return;
+    }
+    var c = crypto();
+    var s = store();
+    if (!c || !s) {
+      showGateError("gate-create-error", "Wallet storage unavailable in this browser.");
+      return;
+    }
+    var phrase = pendingCreate.mnemonic;
+    var password = pendingCreate.password;
+    s.loadVault()
+      .then(function (existing) {
+        if (existing) {
+          showGateError("gate-create-error", "A wallet already exists on this device. Unlock it, or add an account in Settings.");
+          throw new Error("vault-exists");
+        }
+        return c.encryptVault(phrase, password);
+      })
+      .then(function (vault) {
+        vault.accounts = c.accountsFromMnemonic(phrase, 1);
+        return s.saveVault(vault);
+      })
+      .then(function () {
+        revealAccount(phrase, 0);
+        wipeSecrets();
+        closeGate();
+      })
+      .catch(function (err) {
+        if (err && err.message === "vault-exists") {
+          return;
+        }
+        showGateError("gate-create-error", "Could not store the wallet on this device.");
+      });
+  }
+
+  function onAddAccount() {
+    var password = ((el("add-account-password") || {}).value || "");
+    if (!password) {
+      showGateError("add-account-error", "Enter your password.");
+      return;
+    }
+    var c = crypto();
+    var s = store();
+    if (!c || !s) {
+      showGateError("add-account-error", "Wallet storage unavailable in this browser.");
+      return;
+    }
+    s.loadVault()
+      .then(function (vault) {
+        if (!vault) {
+          throw new Error("no vault");
+        }
+        return c.decryptVault(vault, password).then(function (phrase) {
+          var next = c.nextAccountIndex(vault.accounts);
+          var accounts =
+            vault.accounts && vault.accounts.length
+              ? vault.accounts.slice()
+              : c.accountsFromMnemonic(phrase, Math.max(next, 1));
+          if (next < accounts.length) {
+            next = c.nextAccountIndex(accounts);
+          }
+          var w = c.importMnemonic(phrase, next);
+          accounts.push({ i: w.index, path: w.path, evmAddress: w.evmAddress });
+          vault.accounts = accounts;
+          return s.saveVault(vault).then(function () {
+            revealAccount(phrase, w.index);
+            var pw = el("add-account-password");
+            if (pw) {
+              pw.value = "";
+            }
+            showGateError("add-account-error", null);
+            setWalletStatus("Account " + w.index + " \u00b7 " + w.path);
+          });
+        });
+      })
+      .catch(function (err) {
+        if (err && err.message === "wrong-password") {
+          showGateError("add-account-error", "Wrong password.");
+        } else {
+          showGateError("add-account-error", "Could not add an account.");
+        }
       });
   }
 
@@ -1252,11 +1450,41 @@
         onImport();
       });
     }
+    var createForm = el("gate-create");
+    if (createForm) {
+      createForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var backup = el("create-step-backup");
+        if (backup && !backup.hidden) {
+          onCreateConfirm();
+        } else {
+          onCreateStart();
+        }
+      });
+    }
     var toggle = el("gate-toggle");
     if (toggle) {
       toggle.addEventListener("click", function () {
-        var importing = importForm && !importForm.hidden;
-        showGateForm(importing ? "unlock" : "import");
+        if (createForm && !createForm.hidden) {
+          showGateForm("import");
+          return;
+        }
+        if (importForm && !importForm.hidden) {
+          var s = store();
+          if (!s) {
+            showGateForm("create");
+            return;
+          }
+          s.loadVault()
+            .then(function (vault) {
+              showGateForm(vault ? "unlock" : "create");
+            })
+            .catch(function () {
+              showGateForm("create");
+            });
+          return;
+        }
+        showGateForm("import");
       });
     }
 
@@ -1289,6 +1517,33 @@
     for (var a = 0; a < autolockBtns.length; a++) {
       autolockBtns[a].addEventListener("click", function (event) {
         setAutolock(event.currentTarget.getAttribute("data-autolock"));
+      });
+    }
+
+    var addAccountBtn = document.querySelector("[data-add-account]");
+    if (addAccountBtn) {
+      addAccountBtn.addEventListener("click", function () {
+        var form = el("add-account-form");
+        if (!form) {
+          return;
+        }
+        if (form.hasAttribute("hidden")) {
+          form.removeAttribute("hidden");
+          showGateError("add-account-error", null);
+          var pw = el("add-account-password");
+          if (pw) {
+            pw.focus();
+          }
+        } else {
+          form.setAttribute("hidden", "");
+        }
+      });
+    }
+    var addAccountForm = el("add-account-form");
+    if (addAccountForm) {
+      addAccountForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        onAddAccount();
       });
     }
 
@@ -1493,6 +1748,8 @@
     parseCurrency: parseCurrency,
     parseAutolockMinutes: parseAutolockMinutes,
     parseViewSession: parseViewSession,
+    typedCreateConfirm: typedCreateConfirm,
+    CREATE_CONFIRM: CREATE_CONFIRM,
     AUTOLOCK_OPTIONS: AUTOLOCK_OPTIONS,
     AUTOLOCK_DEFAULT: AUTOLOCK_DEFAULT,
     shortAddress: shortAddress,
