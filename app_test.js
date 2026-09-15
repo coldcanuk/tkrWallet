@@ -454,7 +454,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v6"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v7"') !== -1, "cache version must bump so the new worker activates");
 });
 
 test("service worker bypasses the HTTP cache and sweeps legacy caches", function () {
@@ -956,11 +956,16 @@ test("connect/sign: unlocked RAM holds the phrase; viewing session and IndexedDB
   assert.ok(save[0].indexOf("phrase") === -1, "viewing session must not mention the phrase");
   const html = readFile("index.html");
   assert.ok(html.indexOf("data-connect") !== -1, "settings must offer Connect");
+  assert.ok(html.indexOf("data-confirm-sign") !== -1, "settings must offer Sign pending request");
+  assert.ok(ui.indexOf("onConfirmSign") !== -1, "ui.js must wire onConfirmSign");
+  assert.ok(ui.indexOf("signAndBroadcastPayload") !== -1);
   assert.ok(ui.indexOf("onConnect") !== -1, "ui.js must wire onConnect");
   assert.ok(ui.indexOf("signPersonal") !== -1, "connect signs locally");
   const wallet = readFile("wallet.js");
   assert.ok(wallet.indexOf("/api/wallet/nonce") !== -1, "wallet.js requests a nonce from the same origin");
   assert.ok(wallet.indexOf("/api/wallet/session") !== -1, "wallet.js posts the signature to the same origin");
+  assert.ok(wallet.indexOf("/api/wallet/broadcast") !== -1, "wallet.js broadcasts raw to the same origin");
+  assert.ok(wallet.indexOf("/api/wallet/pending-signs") !== -1, "wallet.js polls IcePike-requested unsigned txs");
   assert.ok(wallet.indexOf("tkrwallet.scratchpost.ai") !== -1);
   assert.ok(wallet.indexOf("18899") === -1, "client never dials the origin loopback");
 });
@@ -1156,6 +1161,23 @@ test("unlock fetches real balances from the edge and locks on expiry", function 
 test("shipped files still reference only the wallet origin", function () {
   // crypto.js + store.js are now in SHIPPED; confirm the scan covers them.
   assert.ok(SHIPPED.indexOf("crypto.js") !== -1 && SHIPPED.indexOf("store.js") !== -1);
+});
+
+test("crypto: signAndBroadcastPayload signs an unsigned tx and recovers the signer", function () {
+  const c = require("./crypto.js");
+  const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  const signed = c.signAndBroadcastPayload(phrase, 0, {
+    nonce: "1",
+    gasPrice: "1000000000",
+    gasLimit: "21000",
+    to: "0x0000000000000000000000000000000000000001",
+    value: "1",
+    data: "0x",
+    chainId: 1,
+  });
+  assert.ok(/^0x[0-9a-f]+$/.test(signed.raw));
+  assert.strictEqual(c.recoverTxSigner(signed.raw, 1), signed.address);
+  assert.strictEqual(signed.address, "0x9858EfFD232B4033E47d90003D41EC34EcaEda94");
 });
 
 test("crypto: signPersonal signs a connect statement and recovers the HD address", function () {

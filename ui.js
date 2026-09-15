@@ -1406,6 +1406,59 @@
       });
   }
 
+  function refreshPendingSigns() {
+    var data = root.tkrWalletData;
+    if (!data || typeof data.listPendingSigns !== "function") {
+      return;
+    }
+    data.listPendingSigns().then(function (out) {
+      var n = (out && out.requests && out.requests.length) || 0;
+      var btn = document.querySelector("[data-confirm-sign]");
+      if (btn) {
+        if (n) {
+          btn.removeAttribute("hidden");
+        } else {
+          btn.setAttribute("hidden", "");
+        }
+      }
+      if (n) {
+        setWalletStatus(n + " pending sign request" + (n === 1 ? "" : "s") + " from IcePike.");
+      }
+    }).catch(function () {
+      /* non-fatal */
+    });
+  }
+
+  function onConfirmSign() {
+    var data = root.tkrWalletData;
+    var c = crypto();
+    if (!session.phrase || !data || !c || typeof data.broadcastRaw !== "function") {
+      setWalletStatus("Unlock and Connect first.");
+      openGate("unlock");
+      return;
+    }
+    data
+      .listPendingSigns()
+      .then(function (out) {
+        var req = ((out && out.requests) || [])[0];
+        if (!req || !req.tx) {
+          throw new Error("none");
+        }
+        var signed = c.signAndBroadcastPayload(session.phrase, session.index, req.tx);
+        return data.broadcastRaw({ raw: signed.raw, chain_id: signed.chainId, request_id: req.id });
+      })
+      .then(function (sent) {
+        if (!sent || sent.ok === false) {
+          throw new Error("broadcast");
+        }
+        setWalletStatus("Broadcast " + (sent.tx_hash || "") + ". Key stayed on this device.");
+        refreshPendingSigns();
+      })
+      .catch(function () {
+        setWalletStatus("Sign/broadcast failed. The key did not leave this device.");
+      });
+  }
+
   function onConnect() {
     var data = root.tkrWalletData;
     var c = crypto();
@@ -1437,6 +1490,7 @@
           throw new Error((sess && sess.error) || "session-failed");
         }
         setWalletStatus("Connected as " + (sess.address || session.address) + ". Keys stayed on this device.");
+        refreshPendingSigns();
       })
       .catch(function () {
         setWalletStatus("Connect failed. Nothing was broadcast.");
@@ -1589,6 +1643,12 @@
     if (connectBtn) {
       connectBtn.addEventListener("click", function () {
         onConnect();
+      });
+    }
+    var confirmSign = document.querySelector("[data-confirm-sign]");
+    if (confirmSign) {
+      confirmSign.addEventListener("click", function () {
+        onConfirmSign();
       });
     }
 

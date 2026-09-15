@@ -232,6 +232,45 @@
     });
   }
 
+  function listPendingSigns(fetchFn) {
+    fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
+    if (!fetchFn) {
+      return Promise.resolve({ ok: false, requests: [], error: "no-fetch" });
+    }
+    return fetchFn(apiUrl("/api/wallet/pending-signs"), {
+      method: "GET",
+      credentials: "include",
+      headers: { accept: "application/json" },
+    }).then(function (res) {
+      return res.json().then(function (body) {
+        if (!res.ok) {
+          return { ok: false, requests: [], error: (body && body.error) || "pending-failed" };
+        }
+        return { ok: true, requests: (body && body.requests) || [] };
+      });
+    });
+  }
+
+  function broadcastRaw(payload, fetchFn) {
+    fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
+    if (!fetchFn) {
+      return Promise.resolve({ ok: false, error: "no-fetch" });
+    }
+    return fetchFn(apiUrl("/api/wallet/broadcast"), {
+      method: "POST",
+      credentials: "include",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    }).then(function (res) {
+      return res.json().then(function (body) {
+        if (!res.ok) {
+          return { ok: false, error: (body && body.error) || "broadcast-failed" };
+        }
+        return body;
+      });
+    });
+  }
+
   function openSession(payload, fetchFn) {
     fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
     if (!fetchFn) {
@@ -451,6 +490,8 @@
     getBalances: getBalances,
     requestNonce: requestNonce,
     openSession: openSession,
+    listPendingSigns: listPendingSigns,
+    broadcastRaw: broadcastRaw,
     getTokenMeta: getTokenMeta,
     estimateValue: estimateValue,
     searchCatalog: searchCatalog,
