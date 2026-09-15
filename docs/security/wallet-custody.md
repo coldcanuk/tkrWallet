@@ -26,8 +26,10 @@ at rest (IndexedDB):
 2. **Only ciphertext persists.** `store.js` writes the encrypted vault blob and
    nothing else; the plaintext phrase is never written to storage (the vault
    round-trip test asserts the phrase does not appear in the serialized vault).
-3. **The private key exists in memory only.** It is derived on unlock/import and
-   used transiently; there is no long-lived in-memory keyring.
+3. **The private key exists in memory only.** It is derived for a sign and
+   zeroed. While unlocked, the recovery phrase is held in RAM so Connect can
+   sign a server nonce; lock / expiry / tab-close wipe it. It is never written
+   to IndexedDB or `sessionStorage`.
 4. **Wrong password ⇒ nothing.** AES-GCM authentication fails closed; no address
    is derivable without the password (tested).
 5. **The KDF is not weak.** 600,000 PBKDF2-SHA256 iterations, per OWASP 2023

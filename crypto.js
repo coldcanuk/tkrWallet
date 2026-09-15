@@ -394,6 +394,18 @@
     return hex(out);
   }
 
+  /* Sign an edge connect statement with HD index i. Private key is derived,
+   * used, and zeroed. Signature is 0x-prefixed 65-byte personal_sign hex. */
+  function signPersonal(mnemonic, index, message) {
+    var w = importMnemonic(mnemonic, index);
+    var seed = noble.mnemonicToSeedSync(w.mnemonic);
+    var evm = deriveEvm(seed, w.index);
+    var sig = signMessage(evm.privateKey, message);
+    wipeBytes(evm.privateKey);
+    wipeBytes(seed);
+    return { address: w.evmAddress, signature: "0x" + sig, index: w.index };
+  }
+
   /* Legacy EIP-155 transaction signing. tx: { nonce, gasPrice, gasLimit, to,
    * value, data, chainId } (numbers/bigint as strings, to/data as 0x-hex).
    * Returns the raw signed transaction as 0x-hex. */
@@ -520,6 +532,7 @@
     toEip55: toEip55,
     base58Encode: base58Encode,
     signMessage: signMessage,
+    signPersonal: signPersonal,
     signTransaction: signTransaction,
     recoverSigner: recoverSigner,
     recoverTxSigner: recoverTxSigner,

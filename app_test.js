@@ -454,7 +454,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v5"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v6"') !== -1, "cache version must bump so the new worker activates");
 });
 
 test("service worker bypasses the HTTP cache and sweeps legacy caches", function () {
@@ -945,6 +945,62 @@ test("create gate: generate, typed confirm, wipe; empty state offers Create", fu
   assert.ok(close && close[0].indexOf("wipeSecrets()") !== -1, "closing the gate must wipe create buffers");
 });
 
+test("connect/sign: unlocked RAM holds the phrase; viewing session and IndexedDB do not", function () {
+  const ui = readFile("ui.js");
+  const reveal = ui.match(/function revealAccount\(phrase(?:, index)?\) \{[\s\S]*?\n  \}/);
+  assert.ok(reveal, "revealAccount must exist");
+  assert.ok(reveal[0].indexOf("session.phrase") !== -1, "unlock keeps the phrase in RAM for signing");
+  const lock = ui.match(/function lockNow\(reason\) \{[\s\S]*?\n  \}/);
+  assert.ok(lock[0].indexOf("session.phrase = null") !== -1, "lock wipes the in-memory phrase");
+  const save = ui.match(/function saveViewSession\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(save[0].indexOf("phrase") === -1, "viewing session must not mention the phrase");
+  const html = readFile("index.html");
+  assert.ok(html.indexOf("data-connect") !== -1, "settings must offer Connect");
+  assert.ok(ui.indexOf("onConnect") !== -1, "ui.js must wire onConnect");
+  assert.ok(ui.indexOf("signPersonal") !== -1, "connect signs locally");
+  const wallet = readFile("wallet.js");
+  assert.ok(wallet.indexOf("/api/wallet/nonce") !== -1, "wallet.js requests a nonce from the same origin");
+  assert.ok(wallet.indexOf("/api/wallet/session") !== -1, "wallet.js posts the signature to the same origin");
+  assert.ok(wallet.indexOf("tkrwallet.scratchpost.ai") !== -1);
+  assert.ok(wallet.indexOf("18899") === -1, "client never dials the origin loopback");
+});
+
+test("dev-edge nonce is single-use and session recovers the signer", function () {
+  const edge = require("./tools/dev-edge.js");
+  const c = require("./crypto.js");
+  const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  return Promise.resolve(edge.nonceHandler({ method: "POST" }))
+    .then(function (issued) {
+      assert.strictEqual(issued.code, 200);
+      const body = JSON.parse(issued.body);
+      assert.ok(body.nonce && body.statement.indexOf(body.nonce) !== -1);
+      const signed = c.signPersonal(phrase, 0, body.statement);
+      const sess = edge.sessionHandler({
+        method: "POST",
+        body: JSON.stringify({
+          address: signed.address,
+          chain_id: 1,
+          nonce: body.nonce,
+          signature: signed.signature,
+        }),
+      });
+      assert.strictEqual(sess.code, 200);
+      const out = JSON.parse(sess.body);
+      assert.strictEqual(out.address.toLowerCase(), signed.address.toLowerCase());
+      assert.ok(String(sess.setCookie || "").indexOf("tkrw_session=") !== -1);
+      const replay = edge.sessionHandler({
+        method: "POST",
+        body: JSON.stringify({
+          address: signed.address,
+          chain_id: 1,
+          nonce: body.nonce,
+          signature: signed.signature,
+        }),
+      });
+      assert.strictEqual(replay.code, 410);
+    });
+});
+
 test("plaintext mnemonic is never written to IndexedDB or sessionStorage", function () {
   const storeSave = readFile("store.js").match(/function saveVault\(vault\) \{[\s\S]*?\n  \}/);
   assert.ok(storeSave, "saveVault must exist");
@@ -1100,6 +1156,19 @@ test("unlock fetches real balances from the edge and locks on expiry", function 
 test("shipped files still reference only the wallet origin", function () {
   // crypto.js + store.js are now in SHIPPED; confirm the scan covers them.
   assert.ok(SHIPPED.indexOf("crypto.js") !== -1 && SHIPPED.indexOf("store.js") !== -1);
+});
+
+test("crypto: signPersonal signs a connect statement and recovers the HD address", function () {
+  const c = require("./crypto.js");
+  const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  const statement = "Sign in to tkrWallet.\nNonce: aabbcc";
+  const signed = c.signPersonal(phrase, 0, statement);
+  assert.strictEqual(signed.address, "0x9858EfFD232B4033E47d90003D41EC34EcaEda94");
+  assert.ok(/^0x[0-9a-f]{130}$/.test(signed.signature));
+  assert.strictEqual(c.recoverSigner(signed.signature.slice(2), statement), signed.address);
+  const i1 = c.signPersonal(phrase, 1, statement);
+  assert.strictEqual(i1.address, "0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0");
+  assert.notStrictEqual(i1.signature, signed.signature);
 });
 
 test("crypto: personal_sign round-trips to the derived address", function () {

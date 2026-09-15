@@ -48,7 +48,9 @@ and remediations): [`docs/reviews/2026-09-14-technical-review.md`](docs/reviews/
   Solana address at `m/44'/501'/0'/0'`, and signs EIP-191 messages and legacy
   EIP-155 transactions locally with audited `@noble`/`@scure` primitives —
   never a server. Extra accounts are derived in Settings (password required);
-  only public addresses sit next to the ciphertext.
+  only public addresses sit next to the ciphertext. **Connect** (Settings)
+  proves the address with an EIP-191 challenge–response on the wallet origin;
+  the key never leaves the device and nothing is broadcast.
 - **Auto-lock**: the wallet locks itself after inactivity — 5 minutes by
   default, configurable in Settings (1/5/15/30/60 min). It cannot be turned
   off and the longest session is 1 hour. "Lock now" is one tap away. A
