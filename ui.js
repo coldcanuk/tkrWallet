@@ -1894,6 +1894,20 @@
   } else {
     root.tkrWalletUI = api;
     if (typeof document !== "undefined") {
+      /* MV3 action popup: fixed shell size (see tools/src/app.css). PWA/tab stays 100vh. */
+      try {
+        if (
+          root.location &&
+          root.location.protocol === "chrome-extension:" &&
+          root.chrome &&
+          root.chrome.runtime &&
+          root.chrome.runtime.id
+        ) {
+          document.documentElement.classList.add("extension-popup");
+        }
+      } catch (e) {
+        /* preview / non-extension hosts ignore */
+      }
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", function () {
           bind();
