@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.0 — connect (challenge–response)
+
+The unlocked wallet can prove it owns the address without sending a key.
+Settings → Connect to Scratchpost: same-origin `POST /api/wallet/nonce`,
+local `personal_sign`, `POST /api/wallet/session`. The recovery phrase
+stays in RAM only while unlocked; lock wipes it. Nothing is broadcast.
+
+- **EIP-191 connect.** `signPersonal(mnemonic, i, statement)` derives,
+  signs, zeros the private key.
+- **Dev edge** issues a single-use nonce and recovers the signer. Replay
+  is `410`.
+- **Service worker cache `tkrwallet-v6`.**
+
+97 tests, 0 failures.
+
 ## 0.8.0 — create account, typed confirm, HD index i
 
 Create a wallet on the device, not only import one. The recovery phrase and

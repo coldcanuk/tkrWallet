@@ -905,7 +905,7 @@
 
   /* ---- wallet gate: unlock with password, or import a recovery phrase ----- */
 
-  var session = { vault: null, address: null, locked: false, index: 0 };
+  var session = { vault: null, address: null, locked: false, index: 0, phrase: null };
   var pendingCreate = null;
 
   function saveViewSession() {
@@ -1071,13 +1071,14 @@
     wipeSecrets();
   }
 
-  /* Derive + reveal the account. The plaintext phrase exists only for the
-   * duration of this function; it is never stored outside the vault. */
+  /* Derive + reveal the account. The phrase stays in RAM until lock so
+   * connect can sign; it is never written to IndexedDB or sessionStorage. */
   function revealAccount(phrase, index) {
     var c = crypto();
     var w = c.importMnemonic(phrase, index);
     session.address = w.evmAddress;
     session.index = w.index;
+    session.phrase = w.mnemonic;
     session.locked = false;
     uiData.lastBalances = null; // never show a previous wallet's read
     uiData.lastChecked = null;
@@ -1174,6 +1175,7 @@
     }
     session.address = null;
     session.index = 0;
+    session.phrase = null;
     session.vault = null;
     session.locked = session.locked || wasUnlocked;
     clearViewSession();
@@ -1404,6 +1406,43 @@
       });
   }
 
+  function onConnect() {
+    var data = root.tkrWalletData;
+    var c = crypto();
+    if (!session.phrase || !session.address) {
+      setWalletStatus("Unlock with your password to connect. The recovery phrase is not in this tab.");
+      openGate("unlock");
+      return;
+    }
+    if (!data || !c || typeof data.requestNonce !== "function") {
+      setWalletStatus("Connect is unavailable in this browser.");
+      return;
+    }
+    data
+      .requestNonce()
+      .then(function (issued) {
+        if (!issued || !issued.statement || !issued.nonce) {
+          throw new Error("no-nonce");
+        }
+        var signed = c.signPersonal(session.phrase, session.index, issued.statement);
+        return data.openSession({
+          address: signed.address,
+          chain_id: 1,
+          nonce: issued.nonce,
+          signature: signed.signature,
+        });
+      })
+      .then(function (sess) {
+        if (!sess || sess.ok === false) {
+          throw new Error((sess && sess.error) || "session-failed");
+        }
+        setWalletStatus("Connected as " + (sess.address || session.address) + ". Keys stayed on this device.");
+      })
+      .catch(function () {
+        setWalletStatus("Connect failed. Nothing was broadcast.");
+      });
+  }
+
   var state = {
     screen: DEFAULT_SCREEN,
     currency: "usd",
@@ -1544,6 +1583,12 @@
       addAccountForm.addEventListener("submit", function (event) {
         event.preventDefault();
         onAddAccount();
+      });
+    }
+    var connectBtn = document.querySelector("[data-connect]");
+    if (connectBtn) {
+      connectBtn.addEventListener("click", function () {
+        onConnect();
       });
     }
 

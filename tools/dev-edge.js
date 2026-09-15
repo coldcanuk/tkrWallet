@@ -554,7 +554,71 @@ function staticFile(url) {
   };
 }
 
-function route(url, fetchFn) {
+const NONCE_TTL_MS = 5 * 60 * 1000;
+const nonces = new Map();
+const nodeCrypto = require("crypto");
+const tkrCrypto = require("../crypto.js");
+
+function nonceHandler(req) {
+  const method = (req && req.method) || "POST";
+  if (method !== "POST") {
+    return httpError(405, "method_not_allowed", "POST /api/wallet/nonce");
+  }
+  const nonce = nodeCrypto.randomBytes(32).toString("hex");
+  const issued = Date.now();
+  const expires = issued + NONCE_TTL_MS;
+  const statement = "Sign in to tkrWallet.\nNonce: " + nonce;
+  nonces.set(nonce, { statement: statement, issued_at: issued, expires_at: expires });
+  return json(200, {
+    nonce: nonce,
+    statement: statement,
+    issued_at: Math.floor(issued / 1000),
+    expires_at: Math.floor(expires / 1000),
+  });
+}
+
+function sessionHandler(req) {
+  const method = (req && req.method) || "POST";
+  if (method !== "POST") {
+    return httpError(405, "method_not_allowed", "POST /api/wallet/session");
+  }
+  let body = {};
+  try {
+    body = JSON.parse((req && req.body) || "{}");
+  } catch (e) {
+    return httpError(400, "invalid json", "body must be JSON");
+  }
+  const nonce = String(body.nonce || "");
+  const rec = nonces.get(nonce);
+  if (!rec || rec.expires_at < Date.now()) {
+    nonces.delete(nonce);
+    return httpError(410, "nonce_expired", "nonce unknown, expired, or already used");
+  }
+  nonces.delete(nonce);
+  const sig = String(body.signature || "").replace(/^0x/i, "");
+  let recovered;
+  try {
+    recovered = tkrCrypto.recoverSigner(sig, rec.statement);
+  } catch (e) {
+    return httpError(401, "invalid signature", "signature did not recover");
+  }
+  const address = String(body.address || "");
+  if (!ADDRESS_RE.test(address) || recovered.toLowerCase() !== address.toLowerCase()) {
+    return httpError(401, "invalid signature", "recovered signer does not match address");
+  }
+  const out = json(200, { address: recovered, tier: "super-pro" });
+  out.setCookie = "tkrw_session=dev; HttpOnly; SameSite=Strict; Path=/; Max-Age=3600";
+  return out;
+}
+
+function route(url, fetchFn, method, body) {
+  const verb = method || "GET";
+  if (url.pathname === "/api/wallet/nonce") {
+    return nonceHandler({ method: verb, body: body });
+  }
+  if (url.pathname === "/api/wallet/session") {
+    return sessionHandler({ method: verb, body: body });
+  }
   if (url.pathname === "/api/wallet/balances") {
     return balancesHandler(url, fetchFn);
   }
@@ -580,17 +644,28 @@ function cacheControl(pathname) {
 const server = http.createServer(function (req, res) {
   const url = new URL(req.url, "http://127.0.0.1:" + PORT);
   const send = function (r) {
-    res.writeHead(r.code, { "content-type": r.type, "cache-control": cacheControl(url.pathname) });
+    const headers = { "content-type": r.type, "cache-control": cacheControl(url.pathname) };
+    if (r.setCookie) {
+      headers["set-cookie"] = r.setCookie;
+    }
+    res.writeHead(r.code, headers);
     res.end(r.body);
   };
-  Promise.resolve()
-    .then(function () {
-      return route(url);
-    })
-    .then(send)
-    .catch(function (e) {
-      send(httpError(502, "upstream-failed", message(e)));
-    });
+  const chunks = [];
+  req.on("data", function (c) {
+    chunks.push(c);
+  });
+  req.on("end", function () {
+    const body = Buffer.concat(chunks).toString("utf8");
+    Promise.resolve()
+      .then(function () {
+        return route(url, undefined, req.method, body);
+      })
+      .then(send)
+      .catch(function (e) {
+        send(httpError(502, "upstream-failed", message(e)));
+      });
+  });
 });
 
 if (require.main === module) {
@@ -608,6 +683,8 @@ module.exports = {
   balancesHandler: balancesHandler,
   pricesHandler: pricesHandler,
   tokenHandler: tokenHandler,
+  nonceHandler: nonceHandler,
+  sessionHandler: sessionHandler,
   route: route,
   server: server,
   config: { RPC: RPC, PORT: PORT, MAX_CHAINS: MAX_CHAINS, MAX_ASSETS: MAX_ASSETS },

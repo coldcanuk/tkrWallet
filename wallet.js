@@ -213,6 +213,45 @@
    *
    * `extraTokens` are user-added "chain:address" strings, read in addition to
    * the built-in catalogue. */
+  function requestNonce(fetchFn) {
+    fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
+    if (!fetchFn) {
+      return Promise.resolve({ ok: false, error: "no-fetch" });
+    }
+    return fetchFn(apiUrl("/api/wallet/nonce"), {
+      method: "POST",
+      credentials: "include",
+      headers: { accept: "application/json" },
+    }).then(function (res) {
+      return res.json().then(function (body) {
+        if (!res.ok) {
+          return { ok: false, error: (body && body.error) || "nonce-failed" };
+        }
+        return body;
+      });
+    });
+  }
+
+  function openSession(payload, fetchFn) {
+    fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
+    if (!fetchFn) {
+      return Promise.resolve({ ok: false, error: "no-fetch" });
+    }
+    return fetchFn(apiUrl("/api/wallet/session"), {
+      method: "POST",
+      credentials: "include",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    }).then(function (res) {
+      return res.json().then(function (body) {
+        if (!res.ok) {
+          return { ok: false, error: (body && body.error) || "session-failed" };
+        }
+        return body;
+      });
+    });
+  }
+
   function getBalances(address, chainIds, fetchFn, extraTokens) {
     fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
     if (!fetchFn) {
@@ -223,7 +262,7 @@
     if (extraTokens && extraTokens.length) {
       q += "&tokens=" + encodeURIComponent(extraTokens.join(","));
     }
-    return fetchFn(apiUrl("/api/wallet/balances?" + q))
+    return fetchFn(apiUrl("/api/wallet/balances?" + q), { credentials: "include" })
       .then(function (res) {
         if (!res.ok) {
           throw new Error("HTTP " + res.status);
@@ -410,6 +449,8 @@
     assetKey: assetKey,
     getPrices: getPrices,
     getBalances: getBalances,
+    requestNonce: requestNonce,
+    openSession: openSession,
     getTokenMeta: getTokenMeta,
     estimateValue: estimateValue,
     searchCatalog: searchCatalog,
