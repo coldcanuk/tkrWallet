@@ -1497,6 +1497,29 @@
       });
   }
 
+  function onDisconnect() {
+    var data = root.tkrWalletData;
+    if (!data || typeof data.closeSession !== "function") {
+      setWalletStatus("Disconnect is unavailable in this browser.");
+      return;
+    }
+    data
+      .closeSession()
+      .then(function (out) {
+        if (!out || out.ok === false) {
+          throw new Error((out && out.error) || "logout-failed");
+        }
+        var confirmSign = document.querySelector("[data-confirm-sign]");
+        if (confirmSign) {
+          confirmSign.hidden = true;
+        }
+        setWalletStatus("Disconnected from Scratchpost. Local wallet is still unlocked.");
+      })
+      .catch(function () {
+        setWalletStatus("Disconnect failed. Edge session may still be open.");
+      });
+  }
+
   var state = {
     screen: DEFAULT_SCREEN,
     currency: "usd",
@@ -1663,6 +1686,10 @@
         }
         if (action === "lock") {
           lockNow("manual");
+          return;
+        }
+        if (action === "disconnect") {
+          onDisconnect();
           return;
         }
         // send / receive / buy are not built. Say so rather than dead-ending.

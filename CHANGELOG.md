@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.3 — 2026-09-15
+
+### Added
+- Settings → **Disconnect** clears the Scratchpost edge session (`POST /api/wallet/logout`). Distinct from Lock now: vault stays on device; keys stay in RAM until lock.
+
+
 ## 0.10.2 — 2026-09-15
 
 ### Changed
