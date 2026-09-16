@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.2 — 2026-09-15
+
+### Changed
+- MV3 action popup height **660** (+10% over 0.10.1’s 600). Width stays 432.
+
 ## 0.10.1 — 2026-09-15
 
 ### Changed
