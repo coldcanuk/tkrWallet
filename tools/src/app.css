@@ -81,9 +81,10 @@
     width: 432px;
     min-width: 432px;
     max-width: 432px;
-    height: 600px;
-    min-height: 600px;
-    max-height: 600px;
+    /* 600×1.1 — Chromium may clamp near 600; request 660 for Charles. */
+    height: 660px;
+    min-height: 660px;
+    max-height: 660px;
   }
 
   body {
