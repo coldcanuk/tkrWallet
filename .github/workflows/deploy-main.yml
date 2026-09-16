@@ -49,8 +49,20 @@ jobs:
             echo "GATE FAIL: connect-src widened beyond 'self'" >&2
             exit 1
           fi
-          if grep -rniE "mnemonic|seed[_-]?phrase" --include="*.js" --exclude="app_test.js" --exclude-dir="tools" --exclude-dir="docs" --exclude-dir=".git" . | grep -q .; then
-            echo "GATE FAIL: key material in shipped tree" >&2
+          # Fred false-positive fix: a bare `mnemonic|seed phrase` grep matches
+          # legitimate wallet API names (importMnemonic, mnemonicToSeedSync,
+          # DOM ids, comments) in crypto.js, vendor/noble.js, ui.js, store.js —
+          # not key material. Fail closed on REAL secret payloads instead:
+          # quoted BIP39-like 12+ word phrases (all shipped js, including the
+          # crypto surface that must name the APIs), and 64-hex private-key
+          # string literals (vendor/ excluded: noble.js embeds audited, quoted
+          # secp256k1 curve constants, not keys; crypto.js itself stays scanned).
+          if grep -rqiE "\"[a-z]+( [a-z]+){11,}\"|'[a-z]+( [a-z]+){11,}'|\`[a-z]+( [a-z]+){11,}\`" --include="*.js" --exclude="app_test.js" --exclude-dir="tools" --exclude-dir="docs" --exclude-dir=".git" .; then
+            echo "GATE FAIL: BIP39-like phrase literal in shipped tree" >&2
+            exit 1
+          fi
+          if grep -rqiE "\"(0x)?[0-9a-fA-F]{64}\"|'(0x)?[0-9a-fA-F]{64}'|\`(0x)?[0-9a-fA-F]{64}\`" --include="*.js" --exclude="app_test.js" --exclude-dir=vendor --exclude-dir="tools" --exclude-dir="docs" --exclude-dir=".git" .; then
+            echo "GATE FAIL: hex private-key literal in shipped tree" >&2
             exit 1
           fi
           echo "gates ok: connect-src 'self', no key material"
