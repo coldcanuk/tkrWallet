@@ -106,7 +106,7 @@
 
             <p id="wallet-value" class="tnum mt-3 text-[2.5rem] font-semibold leading-none tracking-tight text-cream-50">&mdash;</p>
             <p id="wallet-value-note" class="mt-2 text-xs text-cream-500">
-              Import or unlock your wallet to see your balance.
+              Unlock with your password, or import / recover with a recovery phrase.
             </p>
           </div>
 
@@ -412,22 +412,23 @@
       <div class="mx-auto flex min-h-full max-w-md flex-col justify-center px-4 py-8 md:max-w-2xl">
         <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
           <p class="text-center text-xs text-cream-500">Your keys stay on this device</p>
-          <h2 id="gate-title" class="mt-1 text-center text-lg font-semibold text-cream-50">Unlock wallet</h2>
+          <h2 id="gate-title" class="mt-1 text-center text-lg font-semibold text-cream-50">Unlock with password</h2>
+          <p id="gate-subtitle" class="mt-1 text-center text-xs leading-relaxed text-cream-500">Sign in to the wallet already on this device.</p>
 
           <form id="gate-unlock" class="mt-4">
             <label for="gate-password" class="block text-xs text-cream-500">Password</label>
             <input id="gate-password" type="password" autocomplete="current-password" class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none" />
             <p id="gate-error" class="mt-2 text-xs text-down-400" hidden></p>
-            <button type="submit" class="mt-4 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">Unlock</button>
+            <button type="submit" class="mt-4 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">Unlock with password</button>
           </form>
 
           <form id="gate-import" class="mt-4" hidden>
             <label for="gate-mnemonic" class="block text-xs text-cream-500">12 or 24-word recovery phrase</label>
             <textarea id="gate-mnemonic" rows="3" autocomplete="off" spellcheck="false" class="mt-1 w-full rounded-lg bg-ink-950 px-4 py-3 text-sm text-cream-100 ring-1 ring-inset ring-white/10 placeholder:text-cream-500 focus:ring-2 focus:ring-ember-400 focus:outline-none" placeholder="word word word …"></textarea>
-            <label for="gate-new-password" class="mt-3 block text-xs text-cream-500">New password</label>
+            <label for="gate-new-password" class="mt-3 block text-xs text-cream-500">New password for this device</label>
             <input id="gate-new-password" type="password" autocomplete="new-password" class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none" />
             <p id="gate-import-error" class="mt-2 text-xs text-down-400" hidden></p>
-            <button type="submit" class="mt-4 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">Import</button>
+            <button type="submit" class="mt-4 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">Import / Recover</button>
           </form>
 
           <form id="gate-create" class="mt-4" hidden>
@@ -441,8 +442,13 @@
             <div id="create-step-backup" hidden>
               <p class="text-xs text-cream-500">Write these 12 words down. They are shown once. Anyone with them owns the wallet.</p>
               <p id="create-mnemonic" class="mt-2 rounded-lg bg-ink-950 px-4 py-3 text-sm text-cream-100 ring-1 ring-inset ring-white/10"></p>
-              <p class="mt-3 text-xs text-cream-500">Ethereum private key (shown once)</p>
-              <p id="create-priv" class="tnum mt-1 rounded-lg bg-ink-950 px-4 py-3 text-xs text-cream-100 ring-1 ring-inset ring-white/10"></p>
+              <p class="mt-3 text-xs text-cream-500">Ethereum private key (shown once, truncated — copy for the full key)</p>
+              <div class="mt-1 flex items-center gap-2">
+                <p id="create-priv" class="tnum min-w-0 flex-1 truncate rounded-lg bg-ink-950 px-4 py-3 text-xs text-cream-100 ring-1 ring-inset ring-white/10"></p>
+                <button type="button" id="create-priv-copy" class="shrink-0 min-h-11 rounded-full bg-ink-950 px-4 text-xs font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
+                  Copy
+                </button>
+              </div>
               <label for="create-confirm" class="mt-3 block text-xs text-cream-500">Type: I saved my recovery phrase</label>
               <input id="create-confirm" type="text" autocomplete="off" spellcheck="false" class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none" />
               <button type="submit" class="mt-4 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">Save encrypted wallet</button>
@@ -450,9 +456,13 @@
             <p id="gate-create-error" class="mt-2 text-xs text-down-400" hidden></p>
           </form>
 
-          <p class="mt-4 text-center text-xs text-cream-500">
-            <button type="button" id="gate-toggle" class="text-ember-400 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ember-400">Use a recovery phrase instead</button>
-          </p>
+          <nav id="gate-nav" class="mt-4 flex flex-col gap-2 text-center text-xs" aria-label="Other sign-in options">
+            <button type="button" data-gate-nav="unlock" class="text-ember-400 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ember-400">Unlock with password</button>
+            <button type="button" data-gate-nav="import" class="text-ember-400 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ember-400">Import / recover with a recovery phrase</button>
+            <button type="button" data-gate-nav="create" class="text-ember-400 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ember-400">Create a new wallet</button>
+          </nav>
+          <!-- Kept for older tests/scripts; hidden — use gate-nav. -->
+          <button type="button" id="gate-toggle" hidden class="sr-only">Use a recovery phrase instead</button>
           <p class="mt-3 text-center text-[11px] leading-relaxed text-cream-500">
             Encrypted on this device with your password. Lose the password or
             phrase and the wallet is unrecoverable — by design.
@@ -470,14 +480,14 @@
         </span>
         <p data-empty-title class="mt-3 text-sm font-medium text-cream-100">No wallet yet</p>
         <p data-empty-body class="mx-auto mt-2 max-w-[260px] text-xs leading-relaxed text-cream-500">
-          Create a new wallet or import a recovery phrase. Your keys stay
-          encrypted on this device &mdash; nothing leaves it.
+          Unlock with a password, import / recover with a recovery phrase,
+          or create a new wallet. Keys stay encrypted on this device.
         </p>
         <button type="button" data-create class="mt-4 min-h-11 rounded-full bg-ember-400 px-5 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">
           Create wallet
         </button>
         <button type="button" data-import class="mt-3 min-h-11 rounded-full bg-ink-950 px-5 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">
-          Import wallet
+          Import / Recover
         </button>
       </div>
     </template>
