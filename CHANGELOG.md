@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.4 — 2026-09-15
+
+### Changed
+- Gate sign-in paths are explicit: **Unlock with password**, **Import / recover** (mnemonic), **Create a new wallet**.
+- Create-wallet Ethereum private key is **masked** (`abc....123`) with a **Copy** control; the full key is never painted into the DOM.
+
+
 ## 0.10.3 — 2026-09-15
 
 ### Added

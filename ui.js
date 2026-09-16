@@ -371,7 +371,7 @@
       return {
         title: "Wallet locked",
         body: "Unlock with your password to see your wallet. It locks itself after a period of inactivity.",
-        cta: "Unlock",
+        cta: "Unlock with password",
         action: function () {
           openGate("unlock");
         },
@@ -379,8 +379,8 @@
     }
     return {
       title: "No wallet yet",
-      body: "Create a new wallet or import a recovery phrase. Your keys stay encrypted on this device \u2014 nothing leaves it.",
-      cta: "Import wallet",
+      body: "Unlock with a password, import / recover with a recovery phrase, or create a new wallet. Keys stay encrypted on this device.",
+      cta: "Import / Recover",
       action: function () {
         openGate("import");
       },
@@ -962,11 +962,20 @@
     return root.tkrStore || null;
   }
 
+
+  /** Never paint a full EVM private key into the DOM. Mask for display; copy uses RAM. */
+  function maskPrivateKey(hex) {
+    var h = String(hex || "").replace(/^0x/i, "");
+    if (h.length < 8) {
+      return "••••";
+    }
+    return h.slice(0, 3) + "...." + h.slice(-3);
+  }
+
   function showGateForm(mode) {
     var unlock = el("gate-unlock");
     var importForm = el("gate-import");
     var createForm = el("gate-create");
-    var toggle = el("gate-toggle");
     if (unlock) {
       unlock.hidden = mode !== "unlock";
     }
@@ -976,16 +985,22 @@
     if (createForm) {
       createForm.hidden = mode !== "create";
     }
-    var titles = { unlock: "Unlock wallet", import: "Import wallet", create: "Create wallet" };
-    setText(el("gate-title"), titles[mode] || "Unlock wallet");
-    if (toggle) {
-      if (mode === "create") {
-        toggle.textContent = "Use a recovery phrase instead";
-      } else if (mode === "import") {
-        toggle.textContent = "Create or unlock instead";
-      } else {
-        toggle.textContent = "Use a recovery phrase instead";
-      }
+    var titles = {
+      unlock: "Unlock with password",
+      import: "Import / recover wallet",
+      create: "Create a new wallet",
+    };
+    var subtitles = {
+      unlock: "Sign in to the wallet already on this device.",
+      import: "Restore from a 12 or 24-word recovery phrase (sign-in from another device).",
+      create: "Make a new wallet on this device. You will write down the recovery phrase once.",
+    };
+    setText(el("gate-title"), titles[mode] || titles.unlock);
+    setText(el("gate-subtitle"), subtitles[mode] || subtitles.unlock);
+    var navBtns = document.querySelectorAll("[data-gate-nav]");
+    for (var n = 0; n < navBtns.length; n++) {
+      var nav = navBtns[n].getAttribute("data-gate-nav");
+      navBtns[n].hidden = nav === mode;
     }
     if (mode !== "create") {
       setText(el("create-mnemonic"), "");
@@ -1274,6 +1289,24 @@
       });
   }
 
+  function copyCreatePrivateKey() {
+    var full = pendingCreate && pendingCreate.privateKeyHex;
+    if (!full) {
+      setWalletStatus("Generate a wallet first, then copy the private key.");
+      return;
+    }
+    try {
+      if (root.navigator && root.navigator.clipboard && root.navigator.clipboard.writeText) {
+        root.navigator.clipboard.writeText(full);
+        setWalletStatus("Private key copied. It is not shown in full on screen.");
+        return;
+      }
+    } catch (e) {
+      /* fall through */
+    }
+    setWalletStatus("Copy is unavailable in this browser. Write down the recovery phrase instead.");
+  }
+
   function onCreateStart() {
     var password = ((el("create-password") || {}).value || "");
     var confirmPw = ((el("create-password-confirm") || {}).value || "");
@@ -1300,9 +1333,13 @@
       showGateError("gate-create-error", "Could not generate a wallet.");
       return;
     }
-    pendingCreate = { mnemonic: w.mnemonic, password: password };
+    pendingCreate = {
+      mnemonic: w.mnemonic,
+      password: password,
+      privateKeyHex: secret.privateKeyHex,
+    };
     setText(el("create-mnemonic"), w.mnemonic);
-    setText(el("create-priv"), secret.privateKeyHex);
+    setText(el("create-priv"), maskPrivateKey(secret.privateKeyHex));
     var step1 = el("create-step-password");
     var step2 = el("create-step-backup");
     if (step1) {
@@ -1578,28 +1615,24 @@
         }
       });
     }
+    var gateNav = document.querySelectorAll("[data-gate-nav]");
+    for (var gn = 0; gn < gateNav.length; gn++) {
+      gateNav[gn].addEventListener("click", function (event) {
+        var next = event.currentTarget.getAttribute("data-gate-nav");
+        if (next === "unlock" || next === "import" || next === "create") {
+          showGateForm(next);
+        }
+      });
+    }
+    var privCopy = el("create-priv-copy");
+    if (privCopy) {
+      privCopy.addEventListener("click", function () {
+        copyCreatePrivateKey();
+      });
+    }
     var toggle = el("gate-toggle");
     if (toggle) {
       toggle.addEventListener("click", function () {
-        if (createForm && !createForm.hidden) {
-          showGateForm("import");
-          return;
-        }
-        if (importForm && !importForm.hidden) {
-          var s = store();
-          if (!s) {
-            showGateForm("create");
-            return;
-          }
-          s.loadVault()
-            .then(function (vault) {
-              showGateForm(vault ? "unlock" : "create");
-            })
-            .catch(function () {
-              showGateForm("create");
-            });
-          return;
-        }
         showGateForm("import");
       });
     }
