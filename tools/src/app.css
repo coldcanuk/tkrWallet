@@ -85,6 +85,14 @@
     height: 660px;
     min-height: 660px;
     max-height: 660px;
+    /* Chromium may clamp the requested height below 660px. Keep that
+     * difference from turning html/body into a second scroll container. */
+    overflow: hidden;
+  }
+
+  html.extension-popup #app {
+    /* Use the clamped popup viewport; main and the gate own content scrolling. */
+    height: 100vh;
   }
 
   body {

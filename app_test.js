@@ -256,6 +256,24 @@ test("shell loads the committed CSS and boots from ui.js", function () {
   assert.ok(html.indexOf('src="./ui.js"') !== -1, "missing ui.js boot");
 });
 
+test("extension popup keeps scrolling inside the shell, never on the document", function () {
+  const css = readFile("tools/src/app.css");
+  assert.ok(
+    /html\.extension-popup,\s*html\.extension-popup body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
+    "extension html/body must not create an outer scrollbar"
+  );
+  assert.ok(
+    /html\.extension-popup #app\s*\{[^}]*height:\s*100vh;/s.test(css),
+    "the popup shell must fit Chromium's actual viewport"
+  );
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('id="main"') !== -1 && html.indexOf("overflow-y-auto") !== -1, "main keeps the inner scroller");
+  assert.ok(
+    /id="wallet-gate"[^>]*overflow-y-auto/.test(html),
+    "the gate keeps its intentional inner scroller"
+  );
+});
+
 test("navigation uses real links, not an invalid tab pattern", function () {
   const html = readFile("index.html");
   assert.ok(html.indexOf('role="tab"') === -1, "role=tab without tabpanels is invalid ARIA");
@@ -454,7 +472,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v7"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v8"') !== -1, "cache version must bump so the new worker activates");
 });
 
 test("service worker bypasses the HTTP cache and sweeps legacy caches", function () {
