@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.5 — 2026-09-16
+
+### Fixed
+- MV3 popup scrolling stays inside the wallet content and gate; the clamped
+  Chrome popup viewport no longer creates a second scrollbar on the document.
+
+
 ## 0.10.4 — 2026-09-15
 
 ### Changed
