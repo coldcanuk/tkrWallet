@@ -1,0 +1,66 @@
+name: deploy-main
+
+# Fred/Desch-approved Host deploy ONLY. No Cloudflare, no nginx, no bind.
+#
+# LOCKED runs-on: [self-hosted, Linux, X64, thePlatform]
+# Runner: thePlatform_tkrwallet online. Do not invent other labels.
+#
+# Triggers on push to main (+ manual dispatch). Intentionally NO pull_request
+# trigger, so PRs stay mergeable on ci.yml (ubuntu-latest) alone and this job
+# only ever runs on the Host runner with the Fred-cited paths below.
+#
+# HOLD — do NOT wire without Charles/Desch (NOT in this file by design):
+#   - ./bind.sh / Cloudflare DNS+tunnel
+#   - icehut nginx template apply
+#   - tkrwallet-cloudflared
+#   - eva targets
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64, thePlatform]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Non-secret build matching Desch gates (mirrors ci.yml, no secrets).
+      - name: Unit tests
+        run: node app_test.js
+
+      # Desch soft-PASS gates, enforced read-only before any deploy bytes move.
+      - name: Desch gates (connect-src, no key material)
+        run: |
+          grep -q "connect-src 'self'" deploy/nginx/tkrwallet-edge.conf.template
+          if grep -Eo "connect-src[^;\"]*" deploy/nginx/tkrwallet-edge.conf.template | grep -qv "connect-src 'self'"; then
+            echo "GATE FAIL: connect-src widened beyond 'self'" >&2
+            exit 1
+          fi
+          if grep -rniE "mnemonic|seed[_-]?phrase" --include="*.js" --exclude="app_test.js" --exclude-dir="tools" --exclude-dir="docs" --exclude-dir=".git" . | grep -q .; then
+            echo "GATE FAIL: key material in shipped tree" >&2
+            exit 1
+          fi
+          echo "gates ok: connect-src 'self', no key material"
+
+      # Fred Host deploy cite (LOCKED — wire ONLY this path, no secrets in YAML).
+      - name: Fred-approved Host deploy (ship + apply only)
+        run: |
+          cd /opt/repo/thePlatform/tkrWallet
+          git fetch origin main && git merge --ff-only origin/main
+          WALLET_SRC=/opt/repo/thePlatform/tkrWallet \
+            /opt/repo/thePlatform/blockchain-infrastructure/wallet-edge/ship-root.sh
+          ssh -o BatchMode=yes chuck@caesar.local \
+            'cd /opt/repo/thePlatform/blockchain-infrastructure/wallet-edge && WALLET_ROOT=/opt/repo/tkrwallet-pwa ./apply.sh'
