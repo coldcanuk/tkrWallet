@@ -291,6 +291,32 @@
     });
   }
 
+  /* Clear the Scratchpost edge session cookie (docs/specs/edge-server.md §3.1).
+   * Distinct from Lock: vault stays on device; only the HttpOnly session ends. */
+  function closeSession(fetchFn) {
+    fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
+    if (!fetchFn) {
+      return Promise.resolve({ ok: false, error: "no-fetch" });
+    }
+    return fetchFn(apiUrl("/api/wallet/logout"), {
+      method: "POST",
+      credentials: "include",
+      headers: { accept: "application/json" },
+    }).then(function (res) {
+      if (res.status === 204 || res.ok) {
+        return { ok: true };
+      }
+      return res
+        .json()
+        .then(function (body) {
+          return { ok: false, error: (body && body.error) || "logout-failed" };
+        })
+        .catch(function () {
+          return { ok: false, error: "logout-failed" };
+        });
+    });
+  }
+
   function getBalances(address, chainIds, fetchFn, extraTokens) {
     fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
     if (!fetchFn) {
@@ -490,6 +516,7 @@
     getBalances: getBalances,
     requestNonce: requestNonce,
     openSession: openSession,
+    closeSession: closeSession,
     listPendingSigns: listPendingSigns,
     broadcastRaw: broadcastRaw,
     getTokenMeta: getTokenMeta,
