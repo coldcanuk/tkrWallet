@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Pack tkrWallet on kiff. Vault stays on ATHENA (headless).
 # Usage: ./scripts/pack-crx.sh
-# Writes $XDG_RUNTIME_DIR/tkrwallet-pack/tkrwallet.crx, shreds the PEM,
-# and opens Chrome + Brave extension pages to install the same CRX in both.
+# Writes tkrwallet.crx in this repo (gitignored) and shreds the PEM.
+# Opens Chrome + Brave extension pages so the same CRX is installed in both.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -21,6 +21,12 @@ CHROME_UI=()
 BRAVE_UI=()
 
 die() { echo "error: $*" >&2; exit 1; }
+
+# Permission denied → sudo mkdir, then chuck:chuck. No debate.
+chuck_dir() {
+  mkdir -p "$1" 2>/dev/null || sudo mkdir -p "$1"
+  sudo chown chuck:chuck "$1"
+}
 
 resolve_chrome_ui() {
   if [[ -x /usr/bin/google-chrome-stable ]]; then
@@ -116,7 +122,11 @@ resolve_packer
 
 umask 077
 rm -rf "$PACK"
-mkdir -p "$PACK"
+chuck_dir "$PACK"
+if ! mkdir -p "$RUN_DIR/doc/by-app/com.brave.Browser" "$RUN_DIR/doc/by-app/com.google.Chrome" 2>/dev/null; then
+  sudo mkdir -p "$RUN_DIR/doc/by-app/com.brave.Browser" "$RUN_DIR/doc/by-app/com.google.Chrome"
+  sudo chown -R chuck:chuck "$RUN_DIR/doc"
+fi
 
 # TTY only for unseal (GPG may prompt). Checkout is -T so the PEM never hits the terminal.
 ssh -t "$ATHENA" python3 "$VAULT_OPS" unseal
@@ -201,22 +211,23 @@ cp -a \
 
 [[ -f "$STAGE.crx" ]] || die "packer did not write $STAGE.crx"
 mv -f "$STAGE.crx" "$CRX"
-chmod 644 "$CRX"
+cp -f "$CRX" "$ROOT/tkrwallet.crx"
+chmod 644 "$CRX" "$ROOT/tkrwallet.crx"
 
 "${CHROME_UI[@]}" chrome://extensions >/dev/null 2>&1 &
 "${BRAVE_UI[@]}" brave://extensions >/dev/null 2>&1 &
 
 echo
-echo "packed: $CRX"
+echo "packed: $ROOT/tkrwallet.crx"
 echo
 echo "Do not click Pack extension. The PEM is not a file you browse to."
 echo
 echo "Install in Chrome"
 echo "  1. Developer mode on"
-echo "  2. Drag $CRX onto chrome://extensions"
+echo "  2. Drag $ROOT/tkrwallet.crx onto chrome://extensions"
 echo
 echo "Install in Brave"
 echo "  1. Developer mode on"
-echo "  2. Drag $CRX onto brave://extensions"
+echo "  2. Drag $ROOT/tkrwallet.crx onto brave://extensions"
 echo
 echo "Same file, both browsers. ID stays kfgmpcgplemjepolfpdbodmakceacook."
