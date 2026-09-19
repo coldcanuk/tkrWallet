@@ -381,19 +381,19 @@ Vary: Origin
 
 ```
 Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self';
-  img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self';
-  base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none';
-  worker-src 'self'
+  img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self' blob:;
+  manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none';
+  object-src 'none'; worker-src 'self'
 X-Content-Type-Options: nosniff
 Referrer-Policy: no-referrer
-Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=(), usb=()
 Cross-Origin-Opener-Policy: same-origin
 X-Frame-Options: DENY
 ```
 
-`connect-src 'self'` is the load-bearing line — see §0. The wallet loads no
-third-party resources, so nothing here needs loosening; if a future change wants
-to loosen it, that should be a deliberate, reviewed act.
+`connect-src 'self'` is the load-bearing line — see §0. `media-src 'self' blob:`
+and `camera=(self)` exist so Send can scan a QR from the desk webcam. Microphone
+stays off. Loosen nothing else without a review.
 
 ---
 

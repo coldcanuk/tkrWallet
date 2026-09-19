@@ -596,6 +596,63 @@
     return out.slice(0, max);
   }
 
+  function mergeSearchRows(primary, extra, limit) {
+    var max = limit || 20;
+    var out = [];
+    var seen = Object.create(null);
+    function push(tok) {
+      var chainId = Number(tok.chain_id);
+      if (!SEARCHABLE_CHAINS[chainId]) {
+        return;
+      }
+      var key = chainId + ":" + String(tok.address || "native").toLowerCase();
+      if (seen[key]) {
+        return;
+      }
+      seen[key] = true;
+      out.push({
+        symbol: tok.symbol,
+        name: tok.name || tok.symbol,
+        address: tok.address || null,
+        chain_id: chainId,
+        chain_name: chainName(chainId),
+        decimals: tok.decimals || 18,
+        color: colorFor(tok.symbol),
+        custom: !!tok.custom,
+      });
+    }
+    (primary || []).forEach(push);
+    (extra || []).forEach(push);
+    return out.slice(0, max);
+  }
+
+  /** Edge catalog first (own L1/L2 index). Falls back to the built-in list. */
+  function searchTokens(query, extras, fetchFn) {
+    var extraList = Array.isArray(extras) ? extras : [];
+    var local = searchCatalog(query, 20, extraList);
+    fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
+    var q = String(query || "").trim();
+    if (!q) {
+      return Promise.resolve([]);
+    }
+    if (!fetchFn) {
+      return Promise.resolve(local);
+    }
+    return fetchFn(apiUrl("/api/wallet/tokens/search?q=" + encodeURIComponent(q)))
+      .then(function (res) {
+        return res.json().then(function (body) {
+          return { ok: res.ok, body: body };
+        });
+      })
+      .then(function (r) {
+        var remote = r.ok && r.body && Array.isArray(r.body.tokens) ? r.body.tokens : [];
+        return mergeSearchRows(remote, local, 20);
+      })
+      .catch(function () {
+        return local;
+      });
+  }
+
   function toAtomicAmount(human, decimals) {
     var s = String(human || "").trim();
     if (!/^\d+(\.\d+)?$/.test(s)) {
@@ -616,6 +673,30 @@
       return null;
     }
     return raw;
+  }
+
+  function fromAtomicAmount(raw, decimals) {
+    var s = String(raw || "").trim();
+    if (!/^\d+$/.test(s)) {
+      return null;
+    }
+    s = s.replace(/^0+(?=\d)/, "") || "0";
+    var dec = Number(decimals);
+    if (!Number.isInteger(dec) || dec < 0 || dec > 18) {
+      return null;
+    }
+    if (s === "0") {
+      return "0";
+    }
+    if (dec === 0) {
+      return s;
+    }
+    while (s.length <= dec) {
+      s = "0" + s;
+    }
+    var whole = s.slice(0, s.length - dec).replace(/^0+(?=\d)/, "") || "0";
+    var frac = s.slice(s.length - dec).replace(/0+$/, "");
+    return frac ? whole + "." + frac : whole;
   }
 
   function quoteSwap(payload, fetchFn) {
@@ -678,7 +759,9 @@
     estimateValue: estimateValue,
     splitHoldings: splitHoldings,
     searchCatalog: searchCatalog,
+    searchTokens: searchTokens,
     toAtomicAmount: toAtomicAmount,
+    fromAtomicAmount: fromAtomicAmount,
     quoteSwap: quoteSwap,
     buildSwap: buildSwap,
     PREVIEW_HOLDINGS: PREVIEW_HOLDINGS,

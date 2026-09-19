@@ -53,9 +53,9 @@ server {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer" always;
-    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
+    add_header Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=(), usb=()" always;
     add_header Cross-Origin-Opener-Policy "same-origin" always;
-    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; worker-src 'self'" always;
+    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; worker-src 'self'" always;
 
     # Header hygiene: never forward a client-supplied hop header (R-3/R-4).
     # X-Forwarded-For carries the single authoritative value: $remote_addr,

@@ -78,7 +78,7 @@ function readFile(rel) {
 
 test("ui.js exports the shell API", function () {
   const ui = require("./ui.js");
-  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings", "detail", "send", "receive"]);
+  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings", "detail", "send", "receive", "airdrops"]);
   assert.strictEqual(typeof ui.renderTokens, "function");
   assert.strictEqual(typeof ui.setWalletValue, "function");
   assert.strictEqual(typeof ui.renderDetail, "function");
@@ -90,6 +90,7 @@ test("route parsing is strict and never throws", function () {
   assert.strictEqual(ui.parseRoute("#/swap"), "swap");
   assert.strictEqual(ui.parseRoute("#/send"), "send");
   assert.strictEqual(ui.parseRoute("#/receive"), "receive");
+  assert.strictEqual(ui.parseRoute("#/airdrops"), "airdrops");
   assert.strictEqual(ui.parseRoute(""), "home");
   assert.strictEqual(ui.parseRoute("#/nope"), "home");
   assert.strictEqual(ui.parseRoute(null), "home");
@@ -339,7 +340,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.13") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.14") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -614,7 +615,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v12"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v13"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -1424,12 +1425,13 @@ test("holdings coverage is disclosed and a token can be added by address", funct
     "id=\"add-token-btn\"",
     "id=\"add-token-form\"",
     "id=\"add-token-address\"",
-    "id=\"airdrops-toggle\"",
+    "id=\"airdrops-open\"",
     "id=\"airdrop-list\"",
   ].forEach(function (n) {
     assert.ok(html.indexOf(n) !== -1, "index.html must include " + n);
   });
-  assert.ok(html.indexOf('data-screen="airdrops"') === -1, "Airdrops is a home drawer, not a fifth nav screen");
+  assert.ok(html.indexOf('data-screen="airdrops"') !== -1, "Airdrops is a submenu screen");
+  assert.ok(html.indexOf('data-nav="airdrops"') === -1, "Airdrops is not a fifth nav tab");
   const ui = readFile("ui.js");
   const wallet = readFile("wallet.js");
   assert.ok(ui.indexOf("holdingsScopeText") !== -1, "the scope of the list must be stated");
@@ -1855,6 +1857,67 @@ test("catalogue: every token address is well-formed and unique within its chain"
       assert.ok(Number.isInteger(t.decimals) && t.decimals >= 0 && t.decimals <= 36, "bad decimals for " + t.symbol);
     });
   });
+});
+
+test("fromAtomicAmount converts quoted raw amounts to human units", function () {
+  const wallet = require("./wallet.js");
+  assert.strictEqual(wallet.fromAtomicAmount("2467250184", 6), "2467.250184");
+  assert.strictEqual(wallet.fromAtomicAmount("1000000000000000000", 18), "1");
+  assert.strictEqual(wallet.fromAtomicAmount("1500000000", 9), "1.5");
+  assert.strictEqual(wallet.fromAtomicAmount("1", 6), "0.000001");
+});
+
+test("vendored QR encoder returns a module matrix without innerHTML", function () {
+  const qr = require("./vendor/qr.js");
+  assert.strictEqual(typeof qr.encode, "function");
+  const out = qr.encode("0x9858EfFD232B4033E47d90003D41EC34EcaEda94");
+  assert.ok(out && Array.isArray(out.data) && out.data.length > 10);
+  assert.ok(out.data.some(function (row) { return row.some(Boolean); }));
+  const src = readFile("vendor/qr.js");
+  assert.ok(src.indexOf(".innerHTML") === -1);
+  assert.ok(readFile("ui.js").indexOf("toDataURL") !== -1, "QR must paint via canvas PNG");
+  assert.ok(readFile("sw.js").indexOf('"./vendor/qr.js"') !== -1, "sw must precache qr.js");
+  assert.ok(readFile("index.html").indexOf('src="./vendor/qr.js"') !== -1);
+});
+
+test("desk UX: airdrops submenu, receive QR, send contacts, live quote estimate", function () {
+  const html = readFile("index.html");
+  const ui = readFile("ui.js");
+  const wallet = readFile("wallet.js");
+  const storeSrc = readFile("store.js");
+  [
+    "id=\"airdrops-open\"",
+    "data-screen=\"airdrops\"",
+    "id=\"receive-qr\"",
+    "id=\"send-recent\"",
+    "id=\"send-scan\"",
+    "id=\"send-camera\"",
+    "id=\"send-contacts\"",
+    "id=\"send-contact-label\"",
+    "id=\"swap-estimate\"",
+    "id=\"swap-quote-dialog\"",
+    "id=\"swap-quote-timer\"",
+  ].forEach(function (n) {
+    assert.ok(html.indexOf(n) !== -1, "index.html must include " + n);
+  });
+  assert.ok(html.indexOf("Swap Now") !== -1);
+  assert.ok(html.indexOf("This is an estimate from Scratchpost") !== -1);
+  assert.ok(html.indexOf("media-src 'self' blob:") !== -1, "camera needs media-src");
+  const nginx = readFile("deploy/nginx/tkrwallet-edge.conf.template");
+  assert.ok(nginx.indexOf("media-src 'self' blob:") !== -1, "edge nginx must allow camera blobs");
+  assert.ok(nginx.indexOf("camera=(self)") !== -1, "edge nginx must allow same-origin camera");
+  assert.ok(ui.indexOf("paintReceiveQr") !== -1);
+  assert.ok(ui.indexOf("paintSendRecent") !== -1);
+  assert.ok(ui.indexOf("startSendCamera") !== -1);
+  assert.ok(ui.indexOf("showSwapEstimate") !== -1);
+  assert.ok(ui.indexOf("quoteStillLive") !== -1);
+  assert.ok(ui.indexOf("/api/wallet/tokens/search") === -1, "ui.js must not fetch the catalogue itself");
+  assert.ok(wallet.indexOf("/api/wallet/tokens/search") !== -1);
+  assert.ok(wallet.indexOf("searchTokens: searchTokens") !== -1);
+  assert.ok(storeSrc.indexOf("listContacts") !== -1);
+  assert.ok(storeSrc.indexOf("listRecentRecipients") !== -1);
+  assert.ok(storeSrc.indexOf("rememberRecipient") !== -1);
+  assert.ok(storeSrc.indexOf("DB_VERSION = 2") !== -1);
 });
 
 test("catalogue: a token is never listed on a chain it is not deployed on (the OP bug)", function () {

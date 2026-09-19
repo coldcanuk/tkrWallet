@@ -13,7 +13,7 @@
 (function (root) {
   "use strict";
 
-  var SCREENS = ["home", "swap", "activity", "search", "settings", "detail", "send", "receive"];
+  var SCREENS = ["home", "swap", "activity", "search", "settings", "detail", "send", "receive", "airdrops"];
   var ACCOUNT_COLORS = ["#e8a33d", "#a8a29e", "#4ade80", "#cfc8b8", "#d98a1f"];
   var DEFAULT_SCREEN = "home";
   var CURRENCIES = ["usd", "cad"];
@@ -519,11 +519,18 @@
         input.focus();
       }
     }
+    if (next !== "send") {
+      stopSendCamera();
+      hideSendRecent();
+    }
     if (next === "detail") {
       renderDetail();
     }
     if (next === "receive") {
       renderReceive();
+    }
+    if (next === "send") {
+      paintSendContacts();
     }
     if (next === "swap") {
       fillSwapPairs();
@@ -587,9 +594,57 @@
     setText(
       el("receive-note"),
       addr
-        ? "Same address on Ethereum, Base, and other EVM chains."
+        ? "Same address on Ethereum, Base, and other EVM chains. Scan the QR to pay this account."
         : "No wallet is unlocked."
     );
+    paintReceiveQr(addr);
+  }
+
+  function paintReceiveQr(addr) {
+    var img = el("receive-qr");
+    if (!img) {
+      return;
+    }
+    if (!addr || !root.tkrQr || typeof root.tkrQr.encode !== "function") {
+      img.setAttribute("hidden", "");
+      img.removeAttribute("src");
+      return;
+    }
+    try {
+      var qr = root.tkrQr.encode(String(addr));
+      var data = qr && qr.data;
+      if (!data || !data.length) {
+        img.setAttribute("hidden", "");
+        return;
+      }
+      var size = data.length;
+      var scale = Math.max(4, Math.floor(192 / size));
+      var canvas = document.createElement("canvas");
+      canvas.width = size * scale;
+      canvas.height = size * scale;
+      var ctx = canvas.getContext("2d");
+      if (!ctx) {
+        img.setAttribute("hidden", "");
+        return;
+      }
+      ctx.fillStyle = "#faf8f2";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#12100e";
+      var y;
+      var x;
+      for (y = 0; y < size; y++) {
+        for (x = 0; x < size; x++) {
+          if (data[y][x]) {
+            ctx.fillRect(x * scale, y * scale, scale, scale);
+          }
+        }
+      }
+      img.src = canvas.toDataURL("image/png");
+      img.removeAttribute("hidden");
+    } catch (e) {
+      img.setAttribute("hidden", "");
+      img.removeAttribute("src");
+    }
   }
 
   function renderAccountDrawer() {
@@ -900,47 +955,29 @@
   }
 
   function renderAirdrops(airdrops, prices) {
-    var btn = el("airdrops-toggle");
-    var label = el("airdrops-toggle-label");
-    var note = el("airdrops-note");
+    var open = el("airdrops-open");
     var box = el("airdrop-list");
     var count = airdrops && airdrops.length ? airdrops.length : 0;
-    if (!btn || !box) {
+    if (open) {
+      setText(open, count ? "Airdrops (" + count + ")" : "Airdrops");
+    }
+    if (!box) {
       return;
     }
+    box.textContent = "";
     if (!count) {
-      uiData.airdropsOpen = false;
-      btn.setAttribute("hidden", "");
-      btn.setAttribute("aria-expanded", "false");
-      if (note) {
-        note.setAttribute("hidden", "");
-      }
-      box.setAttribute("hidden", "");
-      box.textContent = "";
+      var empty = document.createElement("p");
+      empty.className = "px-4 py-6 text-center text-sm text-cream-300";
+      empty.textContent = "No unpriced airdrops right now.";
+      box.appendChild(empty);
       return;
     }
-    btn.removeAttribute("hidden");
-    setText(label, count + " airdrop" + (count === 1 ? "" : "s"));
-    btn.setAttribute("aria-expanded", uiData.airdropsOpen ? "true" : "false");
-    if (uiData.airdropsOpen) {
-      if (note) {
-        note.removeAttribute("hidden");
+    airdrops.forEach(function (holding) {
+      var row = fillTokenRow(holding, prices);
+      if (row) {
+        box.appendChild(row);
       }
-      box.removeAttribute("hidden");
-      box.textContent = "";
-      airdrops.forEach(function (holding) {
-        var row = fillTokenRow(holding, prices);
-        if (row) {
-          box.appendChild(row);
-        }
-      });
-    } else {
-      if (note) {
-        note.setAttribute("hidden", "");
-      }
-      box.setAttribute("hidden", "");
-      box.textContent = "";
-    }
+    });
   }
 
   function renderTokens(holdings, prices) {
@@ -986,7 +1023,7 @@
     if (!desk.length && split.airdrops.length) {
       var quiet = document.createElement("p");
       quiet.className = "px-4 py-6 text-center text-sm text-cream-500";
-      quiet.textContent = "No priced tokens on the home list. Airdrops are below.";
+      quiet.textContent = "No priced tokens on the home list. Open Airdrops for unpriced tokens.";
       box.appendChild(quiet);
       return desk;
     }
@@ -1041,35 +1078,31 @@
 
   /* ---- search ------------------------------------------------------------ */
 
-  /** Filter the built-in catalogue. Offline and synchronous — the catalogue is
-   * already in the client. A chain-wide search needs the edge catalogue. */
-  function searchResults(query) {
-    var box = el("search-results");
-    var tpl = el("tpl-search-row");
-    if (!box) {
-      return [];
-    }
-    box.textContent = "";
-    var q = String(query || "").trim();
-    var rows = q && root.tkrWalletData ? root.tkrWalletData.searchCatalog(q, 20, readStoredTokens()) : [];
+  /** Paint search hits. Edge catalogue first (ETH/Base); local list fills gaps. */
+  var searchSeq = 0;
+  var searchDebounce = null;
 
-    if (!rows.length) {
-      var hint = document.createElement("div");
-      hint.className = "px-4 py-6 text-center";
-      var line = document.createElement("p");
-      line.className = "text-sm text-cream-300";
-      line.textContent = q ? "No match in known tokens." : "Search known tokens";
-      var sub = document.createElement("p");
-      sub.className = "mt-1 text-xs text-cream-500";
-      sub.textContent = q
-        ? "Only a short search list ships in the app. Holdings are what you actually hold — add any ERC-20 by contract if discovery missed it."
-        : "Search is a short known-token list. Your home list is discovered holdings, not this catalogue.";
-      hint.appendChild(line);
-      hint.appendChild(sub);
-      box.appendChild(hint);
-      return [];
-    }
+  function paintSearchHint(box, q, fromEdge) {
+    var hint = document.createElement("div");
+    hint.className = "px-4 py-6 text-center";
+    var line = document.createElement("p");
+    line.className = "text-sm text-cream-300";
+    line.textContent = q
+      ? fromEdge
+        ? "No match on Ethereum or Base."
+        : "No match in known tokens."
+      : "Search Ethereum and Base tokens";
+    var sub = document.createElement("p");
+    sub.className = "mt-1 text-xs text-cream-500";
+    sub.textContent = q
+      ? "Search uses Scratchpost's indexed Mainnet and Base catalogue. Solana and TRON stay address-only so we do not burn vendor API credits."
+      : "Type a ticker, name, or 0x address. Missing tokens mean they are not indexed yet.";
+    hint.appendChild(line);
+    hint.appendChild(sub);
+    box.appendChild(hint);
+  }
 
+  function paintSearchRows(box, tpl, rows) {
     rows.forEach(function (tok) {
       var row = tpl.content.firstElementChild.cloneNode(true);
       var badge = row.querySelector("[data-token-badge]");
@@ -1088,7 +1121,48 @@
       });
       box.appendChild(row);
     });
-    return rows;
+  }
+
+  function searchResults(query) {
+    var box = el("search-results");
+    var tpl = el("tpl-search-row");
+    if (!box) {
+      return [];
+    }
+    box.textContent = "";
+    var q = String(query || "").trim();
+    var local = q && root.tkrWalletData ? root.tkrWalletData.searchCatalog(q, 20, readStoredTokens()) : [];
+    if (!q) {
+      paintSearchHint(box, "", false);
+      return [];
+    }
+    if (local.length) {
+      paintSearchRows(box, tpl, local);
+    } else {
+      paintSearchHint(box, q, false);
+    }
+    var seq = ++searchSeq;
+    if (!root.tkrWalletData || typeof root.tkrWalletData.searchTokens !== "function") {
+      return local;
+    }
+    root.tkrWalletData.searchTokens(q, readStoredTokens()).then(function (remote) {
+      if (seq !== searchSeq) {
+        return;
+      }
+      var hits = Array.isArray(remote) ? remote : [];
+      if (!hits.length) {
+        if (!local.length) {
+          box.textContent = "";
+          paintSearchHint(box, q, true);
+        }
+        return;
+      }
+      box.textContent = "";
+      paintSearchRows(box, tpl, hits);
+    }).catch(function () {
+      /* keep local rows */
+    });
+    return local;
   }
 
   /* ---- wallet wiring: shell talks to the data layer only ------------------ */
@@ -1099,7 +1173,8 @@
     account: null,
     lastBalances: null, // { state, reason, chains } from the last read
     lastChecked: null, // when that read happened
-    airdropsOpen: false,
+    lastQuote: null,
+    quoteTimer: null,
   };
 
   /** Re-render the list and value from whatever we last knew. */
@@ -1333,7 +1408,7 @@
     return (
       "Tokens you hold on Ethereum, Base, and Robinhood, with prices when Scratchpost has them" +
       (extra ? " · " + extra + " added by address" : "") +
-      ". Unpriced airdrops sit behind Airdrops, not on this list."
+      ". Open Airdrops for unpriced tokens, not this list."
     );
   }
 
@@ -1540,6 +1615,9 @@
   var session = { vault: null, address: null, solAddress: null, tronAddress: null, locked: false, index: 0, phrase: null, accounts: [] };
   var pendingCreate = null;
   var pendingSwapQuote = null;
+  var sendCameraStream = null;
+  var sendScanTimer = null;
+  var QUOTE_TTL_MS = 15000;
 
   function chromeExtensionDocument() {
     try {
@@ -1871,6 +1949,11 @@
     session.accounts = [];
     session.locked = session.locked || wasUnlocked;
     clearViewSession();
+    pendingSwapQuote = null;
+    clearQuoteTimer();
+    hideSwapEstimate();
+    closeQuoteDialog();
+    stopSendCamera();
     uiData.lastHoldings = null;
     uiData.lastPrices = null;
     uiData.lastBalances = null;
@@ -2254,6 +2337,347 @@
     }
   }
 
+  function looksLikeSendAddress(value) {
+    var s = String(value || "").trim();
+    return (
+      /^0x[a-fA-F0-9]{40}$/.test(s) ||
+      /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(s) ||
+      /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s)
+    );
+  }
+
+  function addressFromQrText(text) {
+    var s = String(text || "").trim();
+    if (!s) {
+      return "";
+    }
+    var hex = s.match(/0x[a-fA-F0-9]{40}/);
+    if (hex) {
+      return hex[0];
+    }
+    if (/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(s) || /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s)) {
+      return s;
+    }
+    return "";
+  }
+
+  function hideSendRecent() {
+    var box = el("send-recent");
+    if (box) {
+      box.setAttribute("hidden", "");
+      box.textContent = "";
+    }
+  }
+
+  function paintSendRecent() {
+    var box = el("send-recent");
+    var s = store();
+    if (!box || !s || typeof s.listRecentRecipients !== "function") {
+      return;
+    }
+    s.listRecentRecipients(3)
+      .then(function (rows) {
+        box.textContent = "";
+        var list = Array.isArray(rows) ? rows.slice(0, 3) : [];
+        if (!list.length) {
+          box.setAttribute("hidden", "");
+          return;
+        }
+        list.forEach(function (row) {
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className =
+            "min-h-9 w-full rounded-full bg-ink-950 px-4 text-left text-xs text-cream-100 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40";
+          btn.textContent = shortAddress(row.address);
+          btn.addEventListener("mousedown", function (event) {
+            event.preventDefault();
+          });
+          btn.addEventListener("click", function () {
+            var input = el("send-to");
+            if (input) {
+              input.value = row.address;
+            }
+            hideSendRecent();
+          });
+          box.appendChild(btn);
+        });
+        box.removeAttribute("hidden");
+      })
+      .catch(function () {
+        hideSendRecent();
+      });
+  }
+
+  function paintSendContacts() {
+    var box = el("send-contacts");
+    var s = store();
+    if (!box) {
+      return;
+    }
+    if (!s || typeof s.listContacts !== "function") {
+      box.textContent = "";
+      return;
+    }
+    s.listContacts()
+      .then(function (rows) {
+        box.textContent = "";
+        (rows || []).forEach(function (row) {
+          var wrap = document.createElement("div");
+          wrap.className = "flex items-center gap-2";
+          var pick = document.createElement("button");
+          pick.type = "button";
+          pick.className =
+            "min-h-9 min-w-0 flex-1 rounded-full bg-ink-950 px-4 py-2 text-left ring-1 ring-inset ring-white/10 hover:ring-ember-400/40";
+          var title = document.createElement("span");
+          title.className = "block truncate text-xs text-cream-100";
+          title.textContent = row.label || shortAddress(row.address);
+          var sub = document.createElement("span");
+          sub.className = "block truncate text-[11px] text-cream-500";
+          sub.textContent = shortAddress(row.address);
+          pick.appendChild(title);
+          pick.appendChild(sub);
+          pick.addEventListener("click", function () {
+            var input = el("send-to");
+            if (input) {
+              input.value = row.address;
+            }
+            hideSendRecent();
+          });
+          var del = document.createElement("button");
+          del.type = "button";
+          del.className =
+            "min-h-9 shrink-0 rounded-full px-3 text-xs text-cream-500 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40";
+          del.textContent = "Remove";
+          del.addEventListener("click", function () {
+            s.removeContact(row.id).then(paintSendContacts).catch(function () {});
+          });
+          wrap.appendChild(pick);
+          wrap.appendChild(del);
+          box.appendChild(wrap);
+        });
+      })
+      .catch(function () {
+        box.textContent = "";
+      });
+  }
+
+  function onSaveContact() {
+    var addr = String((el("send-to") || {}).value || "").trim();
+    var label = String((el("send-contact-label") || {}).value || "").trim();
+    var s = store();
+    if (!addr) {
+      setText(el("send-note"), "Enter an address to save.");
+      return;
+    }
+    if (!s || typeof s.addContact !== "function") {
+      setText(el("send-note"), "Contacts are unavailable in this browser.");
+      return;
+    }
+    s.addContact(label || shortAddress(addr), addr)
+      .then(function () {
+        var name = el("send-contact-label");
+        if (name) {
+          name.value = "";
+        }
+        paintSendContacts();
+        setText(el("send-note"), "Contact saved on this device.");
+      })
+      .catch(function () {
+        setText(el("send-note"), "Could not save that contact.");
+      });
+  }
+
+  function stopSendCamera() {
+    if (sendScanTimer) {
+      root.clearTimeout(sendScanTimer);
+      sendScanTimer = null;
+    }
+    if (sendCameraStream) {
+      sendCameraStream.getTracks().forEach(function (track) {
+        track.stop();
+      });
+      sendCameraStream = null;
+    }
+    var video = el("send-camera");
+    if (video) {
+      video.srcObject = null;
+      video.setAttribute("hidden", "");
+    }
+  }
+
+  function detectQrFromVideo(video) {
+    if (!root.BarcodeDetector) {
+      return Promise.resolve("");
+    }
+    try {
+      var det = new root.BarcodeDetector({ formats: ["qr_code"] });
+      return det.detect(video).then(function (codes) {
+        return codes && codes[0] && codes[0].rawValue ? String(codes[0].rawValue) : "";
+      }).catch(function () {
+        return "";
+      });
+    } catch (e) {
+      return Promise.resolve("");
+    }
+  }
+
+  function tickSendScan() {
+    var video = el("send-camera");
+    if (!video || !sendCameraStream) {
+      return;
+    }
+    detectQrFromVideo(video).then(function (text) {
+      var addr = addressFromQrText(text);
+      if (addr) {
+        var input = el("send-to");
+        if (input) {
+          input.value = addr;
+        }
+        stopSendCamera();
+        setText(el("send-note"), "Address filled from QR.");
+        return;
+      }
+      sendScanTimer = root.setTimeout(tickSendScan, 400);
+    });
+  }
+
+  function startSendCamera() {
+    var video = el("send-camera");
+    if (!video || !root.navigator || !root.navigator.mediaDevices || !root.navigator.mediaDevices.getUserMedia) {
+      setText(el("send-note"), "Camera is unavailable in this browser.");
+      return;
+    }
+    stopSendCamera();
+    root.navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "environment" }, audio: false })
+      .then(function (stream) {
+        sendCameraStream = stream;
+        video.srcObject = stream;
+        video.removeAttribute("hidden");
+        return video.play();
+      })
+      .then(function () {
+        if (!root.BarcodeDetector) {
+          setText(el("send-note"), "Camera is on. This browser cannot decode QR codes.");
+          return;
+        }
+        setText(el("send-note"), "Hold a QR code to the camera.");
+        tickSendScan();
+      })
+      .catch(function () {
+        setText(el("send-note"), "Camera permission was denied. Nothing was signed.");
+      });
+  }
+
+  function clearQuoteTimer() {
+    if (uiData.quoteTimer) {
+      root.clearInterval(uiData.quoteTimer);
+      uiData.quoteTimer = null;
+    }
+  }
+
+  function quoteStillLive() {
+    return Boolean(pendingSwapQuote && pendingSwapQuote.expiresAt && Date.now() < pendingSwapQuote.expiresAt);
+  }
+
+  function applyQuoteExpiryUi() {
+    var live = quoteStillLive();
+    var btn = el("swap-submit");
+    if (btn) {
+      btn.disabled = !live;
+      if (live) {
+        btn.removeAttribute("aria-disabled");
+      } else {
+        btn.setAttribute("aria-disabled", "true");
+      }
+    }
+    var timer = el("swap-quote-timer");
+    if (!timer) {
+      return;
+    }
+    if (!pendingSwapQuote) {
+      setText(timer, "");
+    } else if (!live) {
+      setText(timer, "Quote expired. Request a new quote.");
+    } else {
+      var sec = Math.max(0, Math.ceil((pendingSwapQuote.expiresAt - Date.now()) / 1000));
+      setText(timer, "Expires in " + sec + "s");
+    }
+  }
+
+  function startQuoteTimer() {
+    clearQuoteTimer();
+    applyQuoteExpiryUi();
+    uiData.quoteTimer = root.setInterval(function () {
+      applyQuoteExpiryUi();
+      if (!quoteStillLive()) {
+        clearQuoteTimer();
+      }
+    }, 250);
+  }
+
+  function hideSwapEstimate() {
+    var btn = el("swap-estimate");
+    if (btn) {
+      btn.setAttribute("hidden", "");
+    }
+    setText(el("swap-estimate-value"), "\u2014");
+  }
+
+  function showSwapEstimate(human, symbol) {
+    var btn = el("swap-estimate");
+    setText(el("swap-estimate-value"), human ? human + " " + symbol : "\u2014");
+    if (btn) {
+      btn.removeAttribute("hidden");
+    }
+  }
+
+  function closeQuoteDialog() {
+    var dlg = el("swap-quote-dialog");
+    if (dlg && dlg.open && typeof dlg.close === "function") {
+      dlg.close();
+    }
+  }
+
+  function openQuoteDialog() {
+    if (!pendingSwapQuote || !pendingSwapQuote.body) {
+      return;
+    }
+    var wallet = root.tkrWalletData;
+    var from = pendingSwapQuote.from;
+    var to = pendingSwapQuote.to;
+    var body = pendingSwapQuote.body;
+    var chain =
+      wallet && typeof wallet.chainName === "function" ? wallet.chainName(pendingSwapQuote.chainId) : "";
+    var min =
+      wallet && typeof wallet.fromAtomicAmount === "function"
+        ? wallet.fromAtomicAmount(
+            body.other_amount_threshold,
+            to.token && to.token.decimals != null ? to.token.decimals : 18
+          )
+        : "";
+    var amount = String((el("swap-amount") || {}).value || "");
+    setText(
+      el("swap-quote-detail"),
+      "You send " +
+        amount +
+        " " +
+        from.token.symbol +
+        (chain ? " on " + chain : "") +
+        ". You receive about " +
+        pendingSwapQuote.human +
+        " " +
+        to.token.symbol +
+        (min ? " (at least " + min + " after slippage)" : "") +
+        "."
+    );
+    applyQuoteExpiryUi();
+    var dlg = el("swap-quote-dialog");
+    if (dlg && typeof dlg.showModal === "function" && !dlg.open) {
+      dlg.showModal();
+    }
+  }
+
   function selectedSwapToken(selectEl) {
     var wallet = root.tkrWalletData;
     var value = selectEl ? String(selectEl.value || "") : "";
@@ -2272,11 +2696,10 @@
   function onSwapQuote() {
     var wallet = root.tkrWalletData;
     pendingSwapQuote = null;
+    clearQuoteTimer();
+    hideSwapEstimate();
+    closeQuoteDialog();
     setText(el("swap-out"), "");
-    if (!session.phrase) {
-      setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
-      return;
-    }
     if (!wallet || typeof wallet.quoteSwap !== "function") {
       setText(el("swap-note"), "Swap is unavailable in this browser.");
       return;
@@ -2315,22 +2738,45 @@
         if (!body || body.ok === false) {
           throw new Error((body && body.error) || "quote-failed");
         }
-        pendingSwapQuote = { chainId: fromSel.chainId, from: fromSel, to: toSel, body: body };
+        if (!body.out_amount) {
+          throw new Error("quote-failed");
+        }
+        var decimals = toSel.token && toSel.token.decimals != null ? toSel.token.decimals : 18;
+        var human =
+          typeof wallet.fromAtomicAmount === "function" ? wallet.fromAtomicAmount(body.out_amount, decimals) : null;
+        if (!human) {
+          throw new Error("quote-failed");
+        }
+        var expiresAt = Number(body.expires_at);
+        if (!Number.isFinite(expiresAt) || expiresAt <= 0) {
+          expiresAt = Date.now() + QUOTE_TTL_MS;
+        }
+        pendingSwapQuote = {
+          chainId: fromSel.chainId,
+          from: fromSel,
+          to: toSel,
+          body: body,
+          human: human,
+          expiresAt: expiresAt,
+        };
+        showSwapEstimate(human, toSel.token.symbol);
+        setText(el("swap-out"), "");
         setText(
-          el("swap-out"),
-          "You send " +
-            ((el("swap-amount") || {}).value || "") +
-            " " +
-            fromSel.token.symbol +
-            " \u2192 receive at least the quoted " +
-            toSel.token.symbol +
-            (body.out_amount ? " (" + body.out_amount + " raw)" : "") +
-            "."
+          el("swap-note"),
+          "Estimate from Scratchpost. The final amount may vary slightly. Tap the number for details."
         );
-        setText(el("swap-note"), "Connect, then Swap. The key stays on this device.");
+        startQuoteTimer();
       })
-      .catch(function () {
-        setText(el("swap-note"), "No quote. Scratchpost did not publish one. Nothing was signed.");
+      .catch(function (err) {
+        pendingSwapQuote = null;
+        hideSwapEstimate();
+        var why = err && err.message ? String(err.message) : "";
+        setText(
+          el("swap-note"),
+          why && why !== "quote-failed"
+            ? "No quote (" + why + "). Scratchpost did not publish one. Nothing was signed."
+            : "No quote. Scratchpost did not publish one. Nothing was signed."
+        );
         setWalletStatus("Quote failed. Nothing was signed.");
       });
   }
@@ -2338,11 +2784,17 @@
   function onSwapSubmit() {
     var wallet = root.tkrWalletData;
     var c = crypto();
-    if (!session.phrase || !pendingSwapQuote || !pendingSwapQuote.body || !pendingSwapQuote.body.quote) {
-      setText(el("swap-note"), pendingSwapQuote ? "Quote first. Nothing was signed." : "Quote first. Nothing was signed.");
-      if (!session.phrase) {
-        setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
-      }
+    if (!pendingSwapQuote || !pendingSwapQuote.body || !pendingSwapQuote.body.quote) {
+      setText(el("swap-note"), "Quote first. Nothing was signed.");
+      return;
+    }
+    if (!quoteStillLive()) {
+      applyQuoteExpiryUi();
+      setText(el("swap-note"), "Quote expired. Request a new quote. Nothing was signed.");
+      return;
+    }
+    if (!session.phrase) {
+      setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
       return;
     }
     if (!wallet || typeof wallet.buildSwap !== "function") {
@@ -2392,6 +2844,9 @@
           throw new Error((sent && sent.error) || "broadcast");
         }
         pendingSwapQuote = null;
+        clearQuoteTimer();
+        hideSwapEstimate();
+        closeQuoteDialog();
         setText(el("swap-note"), "Broadcast " + (sent.tx_hash || "") + ". Key stayed on this device.");
         setWalletStatus("Swap broadcast. Key stayed on this device.");
         refreshBalances();
@@ -2496,9 +2951,35 @@
         setWalletStatus("Address copied.");
       });
     }
+    var sendTo = el("send-to");
+    if (sendTo) {
+      sendTo.addEventListener("focus", function () {
+        paintSendRecent();
+      });
+      sendTo.addEventListener("blur", function () {
+        root.setTimeout(hideSendRecent, 180);
+      });
+    }
+    var sendScan = el("send-scan");
+    if (sendScan) {
+      sendScan.addEventListener("click", function () {
+        startSendCamera();
+      });
+    }
+    var sendAddContact = el("send-add-contact");
+    if (sendAddContact) {
+      sendAddContact.addEventListener("click", function () {
+        onSaveContact();
+      });
+    }
     var sendSubmit = el("send-submit");
     if (sendSubmit) {
       sendSubmit.addEventListener("click", function () {
+        var to = String((el("send-to") || {}).value || "").trim();
+        var s = store();
+        if (looksLikeSendAddress(to) && s && typeof s.rememberRecipient === "function") {
+          s.rememberRecipient(to).catch(function () {});
+        }
         setText(
           el("send-note"),
           "Scratchpost has not published unsigned send calldata. Nothing was signed."
@@ -2510,6 +2991,18 @@
     if (swapQuote) {
       swapQuote.addEventListener("click", function () {
         onSwapQuote();
+      });
+    }
+    var swapEstimate = el("swap-estimate");
+    if (swapEstimate) {
+      swapEstimate.addEventListener("click", function () {
+        openQuoteDialog();
+      });
+    }
+    var swapQuoteClose = el("swap-quote-close");
+    if (swapQuoteClose) {
+      swapQuoteClose.addEventListener("click", function () {
+        closeQuoteDialog();
       });
     }
     var swapSubmit = el("swap-submit");
@@ -2570,7 +3063,13 @@
     var searchInput = el("search-input");
     if (searchInput) {
       searchInput.addEventListener("input", function (event) {
-        searchResults(event.currentTarget.value);
+        var value = event.currentTarget.value;
+        if (searchDebounce) {
+          root.clearTimeout(searchDebounce);
+        }
+        searchDebounce = root.setTimeout(function () {
+          searchResults(value);
+        }, 180);
       });
     }
 
@@ -2727,11 +3226,16 @@
       });
     }
 
-    var airdropsToggle = el("airdrops-toggle");
-    if (airdropsToggle) {
-      airdropsToggle.addEventListener("click", function () {
-        uiData.airdropsOpen = !uiData.airdropsOpen;
-        renderTokens(uiData.lastHoldings, uiData.lastPrices);
+    var airdropsOpen = el("airdrops-open");
+    if (airdropsOpen) {
+      airdropsOpen.addEventListener("click", function () {
+        go("airdrops");
+      });
+    }
+    var airdropsBack = el("airdrops-back");
+    if (airdropsBack) {
+      airdropsBack.addEventListener("click", function () {
+        go("home");
       });
     }
 

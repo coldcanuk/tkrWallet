@@ -187,6 +187,7 @@ cp -a \
   "$ROOT/icon.svg" \
   "$STAGE/"
 cp -a "$ROOT/vendor/noble.js" "$STAGE/vendor/"
+cp -a "$ROOT/vendor/qr.js" "$STAGE/vendor/"
 cp -a \
   "$ROOT/icons/icon16.png" \
   "$ROOT/icons/icon32.png" \
