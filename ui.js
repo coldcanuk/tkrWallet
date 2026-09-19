@@ -16,7 +16,7 @@
   var SCREENS = ["home", "swap", "activity", "search", "settings", "detail", "send", "receive", "airdrops"];
   var ACCOUNT_COLORS = ["#e8a33d", "#a8a29e", "#4ade80", "#cfc8b8", "#d98a1f"];
   var DEFAULT_SCREEN = "home";
-  var CURRENCIES = ["usd", "cad"];
+  var CURRENCIES = ["usd", "cad", "mxn"];
   var STORAGE_KEY = "tkrwallet.currency";
   var AUTOLOCK_KEY = "tkrwallet.autolock";
   var VIEW_SESSION_KEY = "tkrwallet.view-session";
@@ -139,6 +139,9 @@
   /** Normalise a currency code, falling back to USD. */
   function parseCurrency(value) {
     var code = String(value == null ? "" : value).toLowerCase();
+    if (code === "mxd") {
+      code = "mxn";
+    }
     return CURRENCIES.indexOf(code) === -1 ? "usd" : code;
   }
 
@@ -268,6 +271,28 @@
       return "0";
     }
     return n.toLocaleString(undefined, { maximumFractionDigits: digits });
+  }
+
+  function formatHeld(value) {
+    if (value === null || value === undefined || value === "" || isNaN(Number(value))) {
+      return "\u2014";
+    }
+    var n = Number(value);
+    if (Number.isInteger(n)) {
+      return String(n);
+    }
+    return formatAmount(n);
+  }
+
+  function formatAsOf(unix) {
+    if (unix === null || unix === undefined || unix === "" || isNaN(Number(unix))) {
+      return "\u2014";
+    }
+    var d = new Date(Number(unix) * 1000);
+    if (isNaN(d.getTime())) {
+      return "\u2014";
+    }
+    return d.toLocaleString();
   }
 
   /* ---- DOM layer -------------------------------------------------------- */
@@ -794,6 +819,37 @@
   }
 
   /** Fiat value for one holding, or null when unpriced/unknown (renders —). */
+  function unitPriceFor(holding, prices) {
+    var wallet = root.tkrWalletData;
+    if (!prices || prices.state !== "ok" || !prices.prices) {
+      return null;
+    }
+    var entry = prices.prices[wallet ? wallet.assetKey(holding) : ""];
+    if (!entry && holding && holding.address) {
+      entry = prices.prices[holding.chain_id + ":" + String(holding.address).toLowerCase()];
+    }
+    if (!entry || typeof entry[state.currency] !== "number" || !isFinite(entry[state.currency])) {
+      return null;
+    }
+    return entry[state.currency];
+  }
+
+  function usdPriceFor(holding, prices) {
+    var wallet = root.tkrWalletData;
+    if (!prices || prices.state !== "ok" || !prices.prices || !holding) {
+      return null;
+    }
+    var entry = prices.prices[wallet ? wallet.assetKey(holding) : ""];
+    if (!entry && holding.address) {
+      entry = prices.prices[holding.chain_id + ":" + String(holding.address).toLowerCase()];
+    }
+    if (!entry || typeof entry.usd !== "number" || !isFinite(entry.usd)) {
+      return null;
+    }
+    return entry.usd;
+  }
+
+  /** Fiat value for one holding, or null when unpriced/unknown (renders —). */
   function fiatFor(holding, prices) {
     var wallet = root.tkrWalletData;
     if (!wallet || !holding || holding.state !== "ok" || holding.amount === null) {
@@ -900,7 +956,7 @@
     }
     var logo = badge.querySelector("[data-token-logo]");
     var src =
-      address && root.tkrWalletData && root.tkrWalletData.tokenIconUrl
+      root.tkrWalletData && root.tkrWalletData.tokenIconUrl
         ? root.tkrWalletData.tokenIconUrl(chainId, address)
         : null;
     if (!logo || !src) {
@@ -934,12 +990,12 @@
       goToken(holding.chain_id, holding.address);
     });
     setText(row.querySelector("[data-token-name]"), holding.symbol || "?");
-    setText(row.querySelector("[data-token-chain]"), chainLineFor(holding));
     setText(
       row.querySelector("[data-token-amount]"),
-      holding.state === "unknown" ? "\u2014" : formatAmount(holding.amount)
+      holding.state === "unknown" ? "\u2014" : formatHeld(holding.amount)
     );
-    setText(row.querySelector("[data-token-fiat]"), formatFiat(fiatFor(holding, prices), state.currency));
+    setText(row.querySelector("[data-token-price]"), formatFiat(unitPriceFor(holding, prices), state.currency));
+    setText(row.querySelector("[data-token-asof]"), formatAsOf(prices && prices.as_of));
     if (badge) {
       paintTokenBadge(badge, holding.symbol, holding.color, holding.chain_id, holding.address);
     }
@@ -1220,6 +1276,7 @@
     lastQuote: null,
     quoteTimer: null,
     deskTab: "mine",
+    fxSource: "boc",
   };
 
   /** Re-render the list and value from whatever we last knew. */
@@ -1240,6 +1297,18 @@
     var est = wallet.estimateValue(split.desk, uiData.lastPrices, state.currency);
     if (est.state === "ok") {
       var note = est.priced < est.total ? est.priced + " of " + est.total + " holdings priced" : "";
+      var fx = uiData.lastPrices && uiData.lastPrices.fx;
+      var fxNote =
+        uiData.fxSource === "live"
+          ? "Live FX"
+          : fx && fx.observation_date
+            ? "BoC " + fx.observation_date
+            : "";
+      if (note && fxNote) {
+        note = note + " \u00b7 " + fxNote;
+      } else if (fxNote) {
+        note = fxNote;
+      }
       setWalletValue(est.value, state.currency, note);
     } else if (!holdings.length) {
       var read = uiData.lastBalances;
@@ -1255,20 +1324,71 @@
     }
   }
 
+  function priceAssets() {
+    var wallet = root.tkrWalletData;
+    var keys = Object.create(null);
+    function addKey(k) {
+      if (k) {
+        keys[k] = true;
+      }
+    }
+    function addHolding(h) {
+      if (h && wallet) {
+        addKey(wallet.assetKey(h));
+      }
+    }
+    (uiData.lastHoldings || []).forEach(function (h) {
+      if (h && h.state === "ok") {
+        addHolding(h);
+      }
+    });
+    if (wallet && typeof wallet.tokenListRows === "function") {
+      wallet
+        .tokenListRows(
+          uiData.lastHoldings || [],
+          uiData.lastBalances && uiData.lastBalances.chains,
+          readStoredTokens()
+        )
+        .forEach(addHolding);
+    }
+    addKey("1:native");
+    addKey("8453:native");
+    addKey("1:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+    addKey("8453:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
+    return Object.keys(keys);
+  }
+
+  function paintFxButton() {
+    var btn = el("fx-live");
+    if (!btn) {
+      return;
+    }
+    btn.setAttribute("aria-pressed", uiData.fxSource === "live" ? "true" : "false");
+  }
+
+  function fetchLiveFx() {
+    uiData.fxSource = "live";
+    paintFxButton();
+    setWalletStatus("Fetching live exchange rate\u2026");
+    return refreshPrices();
+  }
+
   function refreshPrices() {
     var wallet = root.tkrWalletData;
-    var holdings = uiData.lastHoldings;
-    if (!wallet || !holdings || !holdings.length) {
+    if (!wallet || uiData.lastHoldings == null) {
       uiData.lastPrices = null;
       renderAll();
       return Promise.resolve(null);
     }
-    var assets = holdings.filter(function (h) {
-      return h.state === "ok" && h.amount !== null;
-    }).map(function (h) {
-      return wallet.assetKey(h);
-    });
-    return wallet.getPrices(assets, [state.currency]).then(function (prices) {
+    var assets = priceAssets();
+    if (!assets.length) {
+      uiData.lastPrices = null;
+      renderAll();
+      return Promise.resolve(null);
+    }
+    var vs = state.currency === "usd" ? ["usd"] : ["usd", state.currency];
+    paintFxButton();
+    return wallet.getPrices(assets, vs, null, uiData.fxSource).then(function (prices) {
       uiData.lastPrices = prices;
       renderAll();
       return prices;
@@ -1571,6 +1691,50 @@
     return null;
   }
 
+  var USDC_MAIN = "1:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+  var USDC_BASE = "8453:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
+  function amountInUsdAsset(usdValue, assetKey) {
+    var prices = uiData.lastPrices;
+    if (usdValue === null || usdValue === undefined || !prices || prices.state !== "ok" || !prices.prices) {
+      return null;
+    }
+    var entry = prices.prices[assetKey];
+    var px = entry && entry.usd;
+    if (typeof px !== "number" || !isFinite(px) || !(px > 0)) {
+      return null;
+    }
+    return usdValue / px;
+  }
+
+  function openSwapFor(chainId, asset) {
+    fillSwapPairs();
+    var from = el("swap-from");
+    var value = Number(chainId) + ":" + (asset || "native");
+    if (from) {
+      if (from.value !== value) {
+        var found = false;
+        var opts = from.options;
+        for (var i = 0; i < opts.length; i++) {
+          if (opts[i].value.toLowerCase() === value.toLowerCase()) {
+            from.value = opts[i].value;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          var opt = document.createElement("option");
+          opt.value = value;
+          var meta = metaFor(chainId, asset);
+          opt.textContent = ((meta && meta.symbol) || "Token") + " \u00b7 chain " + chainId;
+          from.appendChild(opt);
+          from.value = value;
+        }
+      }
+    }
+    go("swap");
+  }
+
   /** Render the detail screen for the current hash. An invalid route goes home
    * rather than showing an empty shell. */
   function renderDetail() {
@@ -1585,25 +1749,54 @@
     var symbol = (holding && holding.symbol) || (meta && meta.symbol) || shortAddress(route.asset, 6, 4);
     var name = (meta && meta.name) || (holding && holding.symbol) || "Token";
     var chainName = (root.tkrWalletData && root.tkrWalletData.chainName(route.chainId)) || "chain " + route.chainId;
+    var probe = holding || {
+      chain_id: route.chainId,
+      address: route.asset,
+      symbol: symbol,
+      color: root.tkrWalletData && root.tkrWalletData.colorFor(symbol),
+      state: "ok",
+      amount: 0,
+    };
 
     setText(el("detail-heading"), symbol);
     setText(el("detail-name"), name);
     setText(el("detail-chain"), chainName);
-    var badge = el("detail-badge");
-    if (badge) {
-      badge.style.backgroundColor = (holding && holding.color) || (root.tkrWalletData && root.tkrWalletData.colorFor(symbol)) || "#cfc8b8";
-      setText(badge, String(symbol).slice(0, 3));
-    }
+    paintTokenBadge(
+      el("detail-badge"),
+      symbol,
+      (holding && holding.color) || (root.tkrWalletData && root.tkrWalletData.colorFor(symbol)),
+      route.chainId,
+      route.asset
+    );
 
-    // Amount: unknown stays an em dash. "Not held" is only claimed when every
-    // chain was actually read.
     var read = uiData.lastBalances;
+    var unit = unitPriceFor(probe, uiData.lastPrices);
+    setText(el("detail-price"), formatFiat(unit, state.currency));
     if (holding && holding.state === "ok") {
-      setText(el("detail-amount"), formatAmount(holding.amount));
+      setText(el("detail-amount"), formatHeld(holding.amount));
       setText(el("detail-fiat"), formatFiat(fiatFor(holding, uiData.lastPrices), state.currency));
     } else {
       setText(el("detail-amount"), "\u2014");
       setText(el("detail-fiat"), "\u2014");
+    }
+    var usdUnit = usdPriceFor(probe, uiData.lastPrices);
+    var usdValue =
+      holding && holding.state === "ok" && holding.amount !== null && usdUnit != null
+        ? holding.amount * usdUnit
+        : null;
+    setText(el("detail-eth-main"), formatAmount(amountInUsdAsset(usdValue, "1:native")));
+    setText(el("detail-eth-base"), formatAmount(amountInUsdAsset(usdValue, "8453:native")));
+    setText(
+      el("detail-usdc"),
+      formatAmount(amountInUsdAsset(usdValue, USDC_MAIN) != null
+        ? amountInUsdAsset(usdValue, USDC_MAIN)
+        : amountInUsdAsset(usdValue, USDC_BASE))
+    );
+    setText(el("detail-lesou"), "lesou coming soon");
+    var buy = el("detail-buy");
+    if (buy) {
+      buy.setAttribute("data-chain", String(route.chainId));
+      buy.setAttribute("data-asset", route.asset || "native");
     }
     var note;
     if (!holding) {
@@ -2972,7 +3165,7 @@
     for (var j = 0; j < currencies.length; j++) {
       currencies[j].addEventListener("click", function (event) {
         setCurrency(event.currentTarget.getAttribute("data-currency"));
-        renderAll(); // re-paint fiat column and value in the new currency
+        refreshPrices();
       });
     }
 
@@ -3350,6 +3543,21 @@
     if (detailCopy) {
       detailCopy.addEventListener("click", copyDetailContract);
     }
+    var detailBuy = el("detail-buy");
+    if (detailBuy) {
+      detailBuy.addEventListener("click", function () {
+        var chainId = Number(detailBuy.getAttribute("data-chain"));
+        var asset = detailBuy.getAttribute("data-asset");
+        openSwapFor(chainId, asset === "native" ? null : asset);
+      });
+    }
+    var fxLive = el("fx-live");
+    if (fxLive) {
+      fxLive.addEventListener("click", function () {
+        fetchLiveFx();
+      });
+    }
+    paintFxButton();
 
     setText(el("holdings-scope"), holdingsScopeText());
 
@@ -3518,6 +3726,10 @@
     parseTokenRoute: parseTokenRoute,
     parseShellMode: parseShellMode,
     parseCurrency: parseCurrency,
+    formatHeld: formatHeld,
+    formatAsOf: formatAsOf,
+    fetchLiveFx: fetchLiveFx,
+    openSwapFor: openSwapFor,
     runCliCommand: runCliCommand,
     parseAutolockMinutes: parseAutolockMinutes,
     parseViewSession: parseViewSession,

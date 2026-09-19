@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.16 — 2026-09-19
+
+### Added
+- Wallet value **arrow-path** fetches Scratchpost live FX (`fx=live`). Default
+  quotes stay Bank of Canada CAD cache.
+- **MXN** (Mexican peso) next to USD and CAD. CAD/MXN come from Scratchpost FX,
+  not CoinGecko.
+- Tokens rows write **Held**, **Price** (selected fiat), and **last update**.
+- Token detail: logo, unit price, ETH on Ethereum and Base, USDC, lesou coming
+  soon, contract copy icon, and **Buy Now** which opens Swap with that coin.
+
+### Changed
+- Native ETH/Base icons request Scratchpost `address=native`. Catalogue tokens
+  ask the edge to fill missing art from DexScreener then CoinGecko bytes.
+
 ## 0.10.15 — 2026-09-19
 
 ### Changed

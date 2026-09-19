@@ -422,7 +422,7 @@ async function pricesHandler(url, fetchFn) {
   const vs = (url.searchParams.get("vs") || "usd")
     .split(",")
     .filter(function (c) {
-      return c === "usd" || c === "cad";
+      return c === "usd" || c === "cad" || c === "mxn";
     });
   if (!assets.length || !vs.length) {
     return httpError(400, "bad-request", "assets and vs are required");

@@ -30,14 +30,12 @@
   }
 
   function tokenIconUrl(chainId, address) {
-    if (!address) {
-      return null;
-    }
+    var addr = address ? String(address) : "native";
     return apiUrl(
       "/api/wallet/token-icon?chain=" +
         encodeURIComponent(String(chainId)) +
         "&address=" +
-        encodeURIComponent(String(address))
+        encodeURIComponent(addr)
     );
   }
 
@@ -200,13 +198,20 @@
   /* Prices from the edge. assets is an array of "chain:address" strings with
    * "native" for gas tokens. Network/parse failure -> { state: "unknown" }.
    * Assets the response omits are unpriced, never zero. */
-  function getPrices(assets, currencies, fetchFn) {
+  function getPrices(assets, currencies, fetchFn, fxSource) {
     fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
     if (!fetchFn) {
       return Promise.resolve({ state: "unknown" });
     }
     var vs = (currencies && currencies.length ? currencies : ["usd"]).join(",");
-    var q = "assets=" + encodeURIComponent(assets.join(",")) + "&vs=" + encodeURIComponent(vs);
+    var fx = fxSource === "live" ? "live" : "boc";
+    var q =
+      "assets=" +
+      encodeURIComponent(assets.join(",")) +
+      "&vs=" +
+      encodeURIComponent(vs) +
+      "&fx=" +
+      encodeURIComponent(fx);
     return fetchFn(apiUrl("/api/wallet/prices?" + q))
       .then(function (res) {
         if (!res.ok) {
@@ -218,7 +223,7 @@
         if (!body || typeof body !== "object" || !body.prices) {
           return { state: "unknown" };
         }
-        return { state: "ok", prices: body.prices, as_of: body.as_of || null };
+        return { state: "ok", prices: body.prices, as_of: body.as_of || null, fx: body.fx || null };
       })
       .catch(function () {
         return { state: "unknown" };
