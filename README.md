@@ -130,10 +130,22 @@ Open `index.html` (or any static host). Install when the browser offers it.
 
 Unpacked (either browser):
 
-1. Extensions → Load unpacked
-2. Select this directory
-3. `manifest.json` is Manifest V3, with a pinned `key` so the extension ID
-   (`kfgmpcgplemjepolfpdbodmakceacook`) is stable across unpacked loads.
+On kiff (Flatpak Brave), do not pick `/opt/repo` in the file dialog — that
+path is often a stale portal mount. Stage first:
+
+```sh
+cd /opt/repo/thePlatform/tkrWallet
+git pull
+./scripts/stage-unpacked.sh
+```
+
+Then Extensions → Remove tkrWallet → Load unpacked → `$HOME/tkrWallet-unpacked`.
+
+The home card must read **tkrWallet 0.10.10**. If it does not, Brave is not
+this tree. Site access for `tkrwallet.scratchpost.ai` must not be “On click”.
+
+`manifest.json` is Manifest V3, with a pinned `key` so the extension ID
+(`kfgmpcgplemjepolfpdbodmakceacook`) is stable across unpacked loads.
 
 Packed CRX on **kiff** (installs in Chrome and Brave). Vault stays on ATHENA.
 

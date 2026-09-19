@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "tkrWallet",
-  "version": "0.10.9",
+  "version": "0.10.10",
   "description": "Self-custody wallet for Scratchpost. You hold the keys.",
   "action": {
     "default_popup": "index.html",
@@ -25,6 +25,9 @@
     "128": "icons/icon128.png"
   },
   "host_permissions": [
+    "https://tkrwallet.scratchpost.ai/*"
+  ],
+  "optional_host_permissions": [
     "https://tkrwallet.scratchpost.ai/*"
   ],
   "content_security_policy": {

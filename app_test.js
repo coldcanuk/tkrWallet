@@ -328,6 +328,9 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   const htmlBoot = readFile("index.html");
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
+  assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.10") !== -1, "home/settings must show the running build");
+  assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
     "PWA/tab document must not scroll under #main"
@@ -508,6 +511,7 @@ test("shipped client files contain no lab IPs, internal hostnames, or extra orig
 test("host_permissions is exactly the wallet origin", function () {
   const manifest = JSON.parse(readFile("manifest.json"));
   assert.deepStrictEqual(manifest.host_permissions, [ALLOWED_ORIGIN + "/*"]);
+  assert.deepStrictEqual(manifest.optional_host_permissions, [ALLOWED_ORIGIN + "/*"]);
 });
 
 test("extension CSP is tightened, not relaxed", function () {

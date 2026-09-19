@@ -1086,7 +1086,18 @@
     var extras = readStoredTokens().map(function (t) {
       return t.chain_id + ":" + t.address;
     });
-    return wallet
+    return ensureEdgeAccess().then(function (allowed) {
+      if (!allowed) {
+        uiData.lastChecked = Date.now();
+        uiData.lastBalances = {
+          state: "unknown",
+          reason: "edge-unreachable",
+          detail: "Brave site access is off for tkrwallet.scratchpost.ai. Open the extension card → Site access → allow that host.",
+        };
+        renderBalancesNotice();
+        return null;
+      }
+      return wallet
       .getBalances(session.address, [1, 8453], null, extras)
       .then(function (evm) {
         if (!session.solAddress) {
@@ -1118,6 +1129,7 @@
         setWalletValue(null, state.currency, "Balances unavailable until the wallet edge responds.");
         return null;
       });
+    });
   }
 
   /* ---- user-added tokens -------------------------------------------------
@@ -2674,15 +2686,45 @@
   }
 
   function registerServiceWorker() {
-    // Guarded: serviceWorker is unavailable in MV3 extension pages, and the
-    // popup must not throw on boot.
+    // PWA only. MV3 popup pages must not register the offline worker — if
+    // Brave exposes the API, a same-origin worker can still surprise us.
     try {
+      if (parseShellMode(root.location && root.location.search, root.location && root.location.protocol) !== "page") {
+        return;
+      }
       if (root.navigator && "serviceWorker" in root.navigator) {
         root.navigator.serviceWorker.register("./sw.js");
       }
     } catch (e) {
       /* offline chrome is a nicety, not a requirement */
     }
+  }
+
+  function edgeHostPermission() {
+    return { origins: ["https://tkrwallet.scratchpost.ai/*"] };
+  }
+
+  /** Brave/Chrome "Site access: On click" blocks every edge fetch. */
+  function ensureEdgeAccess() {
+    var perms = root.chrome && chrome.permissions;
+    if (!perms || typeof perms.contains !== "function") {
+      return Promise.resolve(true);
+    }
+    return new Promise(function (resolve) {
+      perms.contains(edgeHostPermission(), function (ok) {
+        if (ok) {
+          resolve(true);
+          return;
+        }
+        if (typeof perms.request !== "function") {
+          resolve(false);
+          return;
+        }
+        perms.request(edgeHostPermission(), function (granted) {
+          resolve(Boolean(granted));
+        });
+      });
+    });
   }
 
   var api = {

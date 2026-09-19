@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.10 — 2026-09-19
+
+### Fixed
+- Popup size is on the `<html>` tag (432×580) so Flatpak cannot load JS
+  too late and leave a monitor-tall document. Home shows the build id.
+- `scripts/stage-unpacked.sh` copies the tree to `$HOME/tkrWallet-unpacked`
+  so Brave’s file picker is not the xdg-document portal over `/opt/repo`.
+- Ask for `tkrwallet.scratchpost.ai` site access when Brave has it set to
+  “On click” (that blocks every edge fetch with no CORS involved).
+
 ## 0.10.9 — 2026-09-19
 
 ### Fixed

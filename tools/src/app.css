@@ -87,8 +87,10 @@
     width: 432px;
     min-width: 432px;
     max-width: 432px;
-    height: 600px;
-    max-height: 600px;
+    /* 580, not 600: Chromium clamps the action window near 600 and a
+     * 600px document plus chrome produces the outer scrollbar. */
+    height: 580px;
+    max-height: 580px;
     overflow: hidden;
   }
 
