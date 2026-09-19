@@ -126,20 +126,24 @@ the Tailwind CDN and cannot relax `script-src`.
 Open `index.html` (or any static host). Install when the browser offers it.
 `manifest.webmanifest` + `sw.js` enable install and offline shell.
 
-## Load as Chrome extension
+## Load as Chrome or Brave extension
 
-1. Chrome → Extensions → Load unpacked
+Unpacked (either browser):
+
+1. Extensions → Load unpacked
 2. Select this directory
 3. `manifest.json` is Manifest V3, with a pinned `key` so the extension ID
    (`kfgmpcgplemjepolfpdbodmakceacook`) is stable across unpacked loads.
 
-Pack the `.crx` on **kiff**. Vault stays on ATHENA.
+Packed CRX on **kiff** (installs in Chrome and Brave). Vault stays on ATHENA.
 
 ```sh
+cd /opt/repo/thePlatform/tkrWallet
+git pull
 ./scripts/pack-crx.sh
 ```
 
-Then `brave://extensions` → Developer mode on → drag `/dev/shm/tkrwallet.crx`.
+The script opens `chrome://extensions` and `brave://extensions`. Developer mode on in each. Drag the printed `tkrwallet.crx` onto both pages. Same file, same ID.
 
 ## Edge contract
 

@@ -1,22 +1,80 @@
 #!/usr/bin/env bash
-# Pack tkrWallet on kiff with Brave. Vault stays on ATHENA (headless).
+# Pack tkrWallet on kiff. Vault stays on ATHENA (headless).
 # Usage: ./scripts/pack-crx.sh
-# Writes /dev/shm/tkrwallet.crx on kiff and shreds the PEM.
+# Writes $XDG_RUNTIME_DIR/tkrwallet-pack/tkrwallet.crx, shreds the PEM,
+# and opens Chrome + Brave extension pages to install the same CRX in both.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ATHENA="chuck@athena.local"
 VAULT_OPS="/opt/repo/thePlatform/blockchain-infrastructure/host/vault/vault_ops.py"
 VAULT_PATH="theplatform/tkrwallet/chrome-crx-key"
-STAGE="/dev/shm/tkrwallet-ext"
-KEY="/dev/shm/tkrwallet-crx-key.pem"
-CRX="/dev/shm/tkrwallet.crx"
-BRAVE_PROFILE="/dev/shm/tkrwallet-brave-pack"
+RUN_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+PACK="$RUN_DIR/tkrwallet-pack"
+STAGE="$PACK/ext"
+KEY="$PACK/key.pem"
+CRX="$PACK/tkrwallet.crx"
+PACK_PROFILE="$PACK/pack-profile"
+PUB="$PACK/pub.der"
 PACK_CMD=()
+CHROME_UI=()
+BRAVE_UI=()
 
 die() { echo "error: $*" >&2; exit 1; }
 
-resolve_brave() {
+resolve_chrome_ui() {
+  if [[ -x /usr/bin/google-chrome-stable ]]; then
+    CHROME_UI=(/usr/bin/google-chrome-stable)
+    return
+  fi
+  if [[ -x /usr/bin/google-chrome ]]; then
+    CHROME_UI=(/usr/bin/google-chrome)
+    return
+  fi
+  if [[ -x /opt/google/chrome/chrome ]]; then
+    CHROME_UI=(/opt/google/chrome/chrome)
+    return
+  fi
+  if command -v flatpak >/dev/null && flatpak info com.google.Chrome >/dev/null 2>&1; then
+    CHROME_UI=(flatpak run com.google.Chrome)
+    return
+  fi
+  die "Chrome not found. Pop Shop installs /usr/bin/google-chrome-stable."
+}
+
+resolve_brave_ui() {
+  if [[ -x /usr/bin/brave-browser ]]; then
+    BRAVE_UI=(/usr/bin/brave-browser)
+    return
+  fi
+  if [[ -x /usr/bin/brave-browser-stable ]]; then
+    BRAVE_UI=(/usr/bin/brave-browser-stable)
+    return
+  fi
+  if [[ -x /opt/brave.com/brave/brave ]]; then
+    BRAVE_UI=(/opt/brave.com/brave/brave)
+    return
+  fi
+  if command -v flatpak >/dev/null && flatpak info com.brave.Browser >/dev/null 2>&1; then
+    BRAVE_UI=(flatpak run com.brave.Browser)
+    return
+  fi
+  die "Brave not found. Pop Shop installs /usr/bin/brave-browser or Flathub com.brave.Browser."
+}
+
+resolve_packer() {
+  if [[ -x /usr/bin/google-chrome-stable ]]; then
+    PACK_CMD=(/usr/bin/google-chrome-stable)
+    return
+  fi
+  if [[ -x /usr/bin/google-chrome ]]; then
+    PACK_CMD=(/usr/bin/google-chrome)
+    return
+  fi
+  if [[ -x /opt/google/chrome/chrome ]]; then
+    PACK_CMD=(/opt/google/chrome/chrome)
+    return
+  fi
   if [[ -x /usr/bin/brave-browser ]]; then
     PACK_CMD=(/usr/bin/brave-browser)
     return
@@ -29,17 +87,21 @@ resolve_brave() {
     PACK_CMD=(/opt/brave.com/brave/brave)
     return
   fi
-  if command -v flatpak >/dev/null && flatpak info com.brave.Browser >/dev/null 2>&1; then
-    PACK_CMD=(flatpak run --filesystem=/dev/shm com.brave.Browser)
+  if command -v flatpak >/dev/null && flatpak info com.google.Chrome >/dev/null 2>&1; then
+    PACK_CMD=(flatpak run --filesystem=xdg-run/tkrwallet-pack com.google.Chrome)
     return
   fi
-  die "Brave not found. Pop Shop installs /usr/bin/brave-browser or Flathub com.brave.Browser."
+  if command -v flatpak >/dev/null && flatpak info com.brave.Browser >/dev/null 2>&1; then
+    PACK_CMD=(flatpak run --filesystem=xdg-run/tkrwallet-pack com.brave.Browser)
+    return
+  fi
+  die "No Chrome or Brave packer found."
 }
 
 scrub() {
-  shred -u "$KEY" "$STAGE.pem" /dev/shm/tkrwallet-crx-pub.der 2>/dev/null || true
-  rm -f "$KEY" "$STAGE.pem" /dev/shm/tkrwallet-crx-pub.der
-  rm -rf "$BRAVE_PROFILE"
+  shred -u "$KEY" "$STAGE.pem" "$PUB" 2>/dev/null || true
+  rm -f "$KEY" "$STAGE.pem" "$PUB"
+  rm -rf "$PACK_PROFILE"
 }
 trap scrub EXIT
 
@@ -47,11 +109,16 @@ host="$(hostname -s)"
 [[ "${host,,}" == "kiff" ]] || die "run on kiff"
 [[ "$(id -un)" == "chuck" ]] || die "run as chuck"
 [[ -f "$ROOT/manifest.json" ]] || die "missing $ROOT/manifest.json"
-resolve_brave
+[[ -d "$RUN_DIR" ]] || die "missing runtime dir $RUN_DIR"
+resolve_chrome_ui
+resolve_brave_ui
+resolve_packer
 
 umask 077
-rm -f "$KEY" "$CRX" "$STAGE.crx" "$STAGE.pem"
-rm -rf "$STAGE" "$BRAVE_PROFILE"
+rm -rf "$PACK"
+mkdir -p "$PACK"
+mkdir -p "$RUN_DIR/doc/by-app/com.brave.Browser"
+mkdir -p "$RUN_DIR/doc/by-app/com.google.Chrome"
 
 # TTY only for unseal (GPG may prompt). Checkout is -T so the PEM never hits the terminal.
 ssh -t "$ATHENA" python3 "$VAULT_OPS" unseal
@@ -60,7 +127,7 @@ chmod 600 "$KEY"
 
 # Same RSA key, not the same base64 spelling. kiff's openssl base64 wrap
 # (or a different SPKI DER) made a string compare fail on a matching PEM.
-python3 - "$KEY" "$ROOT/manifest.json" <<'PY'
+python3 - "$KEY" "$ROOT/manifest.json" "$PUB" <<'PY'
 import base64
 import json
 import re
@@ -84,7 +151,7 @@ if block != raw:
     pem_path.write_bytes(block)
 
 want = json.loads(Path(sys.argv[2]).read_text())["key"]
-pub = Path("/dev/shm/tkrwallet-crx-pub.der")
+pub = Path(sys.argv[3])
 try:
     pub.write_bytes(base64.b64decode(want))
     try:
@@ -128,16 +195,28 @@ cp -a \
   "$STAGE/icons/"
 
 "${PACK_CMD[@]}" \
-  --user-data-dir="$BRAVE_PROFILE" \
+  --user-data-dir="$PACK_PROFILE" \
   --no-first-run \
   --disable-gpu \
   --pack-extension="$STAGE" \
   --pack-extension-key="$KEY"
 
-[[ -f "$STAGE.crx" ]] || die "Brave did not write $STAGE.crx"
+[[ -f "$STAGE.crx" ]] || die "packer did not write $STAGE.crx"
 mv -f "$STAGE.crx" "$CRX"
 chmod 644 "$CRX"
 
+"${CHROME_UI[@]}" chrome://extensions >/dev/null 2>&1 &
+"${BRAVE_UI[@]}" brave://extensions >/dev/null 2>&1 &
+
 echo
 echo "packed: $CRX"
-echo "next: brave://extensions → Developer mode on → drag $CRX onto the page"
+echo
+echo "Install in Chrome"
+echo "  1. Developer mode on"
+echo "  2. Drag $CRX onto chrome://extensions"
+echo
+echo "Install in Brave"
+echo "  1. Developer mode on"
+echo "  2. Drag $CRX onto brave://extensions"
+echo
+echo "Same file, both browsers. ID stays kfgmpcgplemjepolfpdbodmakceacook."
