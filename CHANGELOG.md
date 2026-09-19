@@ -15,6 +15,10 @@
   reports `chains[]`. Native SOL is read from Scratchpost Caesar, not Phantom.
 - TRON (BIP-44 `m/44'/195'/0'/0/0`) is derived next to EVM and Solana so a
   TRX balance can be read and swapped through the same edge session.
+- kiff install stays in `$HOME`. Flatpak Chrome cannot `--pack-extension`
+  (`bwrap` document portal). `pack-crx.sh` no longer uses Flatpak as the
+  packer and no longer writes a CRX into `/opt/repo`; with only Flatpak
+  installed it stages `$HOME/tkrWallet-unpacked`.
 
 ## 0.10.10 — 2026-09-19
 

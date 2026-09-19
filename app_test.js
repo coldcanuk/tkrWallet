@@ -557,6 +557,16 @@ test("the CRX private key is ignored and never tracked", function () {
   assert.strictEqual(tracked, "", "key.pem must never be committed");
 });
 
+test("kiff pack stays in HOME and never uses Flatpak as the packer", function () {
+  const sh = readFile("scripts/pack-crx.sh");
+  assert.ok(sh.indexOf("tkrWallet-unpacked") !== -1, "Flatpak path must stage $HOME/tkrWallet-unpacked");
+  assert.ok(sh.indexOf("HOME_CRX") !== -1, "a CRX must land in $HOME");
+  assert.ok(sh.indexOf("REPO_CRX") === -1, "do not write a CRX into /opt/repo");
+  assert.ok(sh.indexOf("flatpak run") === -1, "Flatpak --pack-extension dies in the document portal");
+  const staged = readFile("scripts/stage-unpacked.sh");
+  assert.ok(staged.indexOf("${HOME}/tkrWallet-unpacked") !== -1);
+});
+
 /* ── manifest.webmanifest: the PWA ──────────────────────────────────────── */
 
 test("PWA manifest colours match the dark theme", function () {
