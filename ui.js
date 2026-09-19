@@ -207,11 +207,16 @@
     if (solAddress && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(solAddress)) {
       solAddress = "";
     }
+    var tronAddress = String(parsed.tronAddress || "").trim();
+    if (tronAddress && !/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(tronAddress)) {
+      tronAddress = "";
+    }
     return {
       address: address,
       lastActivity: lastActivity,
       autolockMinutes: minutes,
       solAddress: solAddress || null,
+      tronAddress: tronAddress || null,
     };
   }
 
@@ -1045,27 +1050,64 @@
     });
   }
 
-  function mergeBalanceReads(evm, sol) {
+  function mergeBalanceReads(evm, sol, tron) {
     var evmState = (evm && evm.state) || "unknown";
-    var solState = (sol && sol.state) || "unknown";
+    var solState = sol ? sol.state || "unknown" : "ok";
+    var tronState = tron ? tron.state || "unknown" : "ok";
     var balances = []
       .concat((evm && evm.balances) || [])
-      .concat((sol && sol.balances) || []);
+      .concat((sol && sol.balances) || [])
+      .concat((tron && tron.balances) || []);
     var chains = []
       .concat((evm && evm.chains) || [])
-      .concat((sol && sol.chains) || []);
+      .concat((sol && sol.chains) || [])
+      .concat((tron && tron.chains) || []);
+    function hasChain(id) {
+      return chains.some(function (c) {
+        return c && Number(c.chain_id) === id;
+      });
+    }
+    if (sol && solState !== "ok" && !hasChain(900001)) {
+      chains.push({
+        chain_id: 900001,
+        state: solState === "partial" ? "partial" : "unknown",
+        error: sol.reason || sol.detail || "sol-read-failed",
+      });
+    }
+    if (tron && tronState !== "ok" && !hasChain(728126428)) {
+      chains.push({
+        chain_id: 728126428,
+        state: tronState === "partial" ? "partial" : "unknown",
+        error: tron.reason || tron.detail || "tron-read-failed",
+      });
+    }
+    if (evm && evmState !== "ok" && !(evm.chains && evm.chains.length)) {
+      [1, 8453].forEach(function (id) {
+        if (!hasChain(id)) {
+          chains.push({
+            chain_id: id,
+            state: evmState === "partial" ? "partial" : "unknown",
+            error: evm.reason || evm.detail || "evm-read-failed",
+          });
+        }
+      });
+    }
+    var fetched = [evmState, sol ? solState : null, tron ? tronState : null].filter(function (s) {
+      return s != null;
+    });
     var stateOut = "ok";
-    if (evmState === "unknown" && solState === "unknown") {
+    if (fetched.every(function (s) { return s === "unknown"; })) {
       stateOut = "unknown";
-    } else if (evmState !== "ok" || solState !== "ok") {
+    } else if (fetched.some(function (s) { return s !== "ok"; })) {
       stateOut = "partial";
     }
     return {
       state: stateOut,
       balances: balances,
       chains: chains,
-      reason: stateOut === "ok" ? null : "some-chains-failed",
-      as_of: (evm && evm.as_of) || (sol && sol.as_of) || null,
+      reason: stateOut === "ok" ? null : (tron && tron.reason) || (sol && sol.reason) || (evm && evm.reason) || "some-chains-failed",
+      detail: (tron && tron.detail) || (sol && sol.detail) || (evm && evm.detail) || null,
+      as_of: (evm && evm.as_of) || (sol && sol.as_of) || (tron && tron.as_of) || null,
     };
   }
 
@@ -1100,11 +1142,25 @@
       return wallet
       .getBalances(session.address, [1, 8453], null, extras)
       .then(function (evm) {
-        if (!session.solAddress) {
-          return evm;
+        var next = Promise.resolve({ evm: evm, sol: null, tron: null });
+        if (session.solAddress) {
+          next = next.then(function (acc) {
+            return wallet.getBalances(session.solAddress, [900001]).then(function (sol) {
+              acc.sol = sol;
+              return acc;
+            });
+          });
         }
-        return wallet.getBalances(session.solAddress, [900001]).then(function (sol) {
-          return mergeBalanceReads(evm, sol);
+        if (session.tronAddress) {
+          next = next.then(function (acc) {
+            return wallet.getBalances(session.tronAddress, [728126428]).then(function (tron) {
+              acc.tron = tron;
+              return acc;
+            });
+          });
+        }
+        return next.then(function (acc) {
+          return mergeBalanceReads(acc.evm, acc.sol, acc.tron);
         });
       })
       .then(function (res) {
@@ -1385,9 +1441,9 @@
 
   /* ---- wallet gate: unlock with password, or import a recovery phrase ----- */
 
-  var session = { vault: null, address: null, solAddress: null, locked: false, index: 0, phrase: null, accounts: [] };
+  var session = { vault: null, address: null, solAddress: null, tronAddress: null, locked: false, index: 0, phrase: null, accounts: [] };
   var pendingCreate = null;
-  var pendingSolQuote = null;
+  var pendingSwapQuote = null;
 
   function chromeExtensionDocument() {
     try {
@@ -1428,6 +1484,7 @@
         JSON.stringify({
           address: session.address,
           solAddress: session.solAddress || null,
+          tronAddress: session.tronAddress || null,
           lastActivity: state.lastActivity,
           autolockMinutes: state.autolockMinutes,
         })
@@ -1605,6 +1662,7 @@
     var w = c.importMnemonic(phrase, index);
     session.address = w.evmAddress;
     session.solAddress = w.solAddress;
+    session.tronAddress = w.tronAddress;
     session.index = w.index;
     session.phrase = w.mnemonic;
     session.locked = false;
@@ -1710,6 +1768,7 @@
     }
     session.address = null;
     session.solAddress = null;
+    session.tronAddress = null;
     session.index = 0;
     session.phrase = null;
     session.vault = null;
@@ -2047,6 +2106,7 @@
           nonce: issued.nonce,
           signature: signed.signature,
           sol_address: session.solAddress,
+          tron_address: session.tronAddress,
         });
       })
       .then(function (sess) {
@@ -2061,45 +2121,53 @@
       });
   }
 
-  function solSwapTokenValue(tok) {
-    return tok.address ? String(tok.address) : "native";
+  function swapTokenValue(chainId, tok) {
+    return Number(chainId) + ":" + (tok && tok.address ? String(tok.address) : "native");
   }
 
   function fillSwapPairs() {
     var from = el("swap-from");
     var to = el("swap-to");
     var wallet = root.tkrWalletData;
-    if (!from || !to || !wallet || !wallet.TOKENS || !wallet.TOKENS[900001]) {
+    if (!from || !to || !wallet || !wallet.TOKENS) {
       return;
     }
     var keepFrom = from.value;
     var keepTo = to.value;
     from.textContent = "";
     to.textContent = "";
-    wallet.TOKENS[900001].forEach(function (tok) {
-      var value = solSwapTokenValue(tok);
-      var label = tok.symbol + " · Solana";
-      [from, to].forEach(function (sel) {
-        var opt = document.createElement("option");
-        opt.value = value;
-        opt.textContent = label;
-        sel.appendChild(opt);
+    [1, 8453, 900001, 728126428].forEach(function (chainId) {
+      var list = wallet.TOKENS[chainId] || [];
+      var chain = wallet.CHAINS[chainId];
+      var chainName = chain ? chain.name : "chain " + chainId;
+      list.forEach(function (tok) {
+        var value = swapTokenValue(chainId, tok);
+        var label = tok.symbol + " \u00b7 " + chainName;
+        [from, to].forEach(function (sel) {
+          var opt = document.createElement("option");
+          opt.value = value;
+          opt.textContent = label;
+          sel.appendChild(opt);
+        });
       });
     });
-    from.value = keepFrom || "native";
-    to.value = keepTo || (from.value === "native" ? (wallet.TOKENS[900001][1] ? solSwapTokenValue(wallet.TOKENS[900001][1]) : "") : "native");
-    if (from.value === to.value && wallet.TOKENS[900001][1]) {
-      to.value = solSwapTokenValue(wallet.TOKENS[900001][1]);
+    from.value = keepFrom || "1:native";
+    to.value = keepTo || "1:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+    if (from.value === to.value) {
+      to.value = "1:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
     }
   }
 
   function selectedSwapToken(selectEl) {
     var wallet = root.tkrWalletData;
-    var value = selectEl ? selectEl.value : "";
-    var list = (wallet && wallet.TOKENS && wallet.TOKENS[900001]) || [];
+    var value = selectEl ? String(selectEl.value || "") : "";
+    var bits = value.split(":");
+    var chainId = Number(bits[0]);
+    var asset = bits.slice(1).join(":") || "native";
+    var list = (wallet && wallet.TOKENS && wallet.TOKENS[chainId]) || [];
     for (var i = 0; i < list.length; i++) {
-      if (solSwapTokenValue(list[i]) === value) {
-        return list[i];
+      if (swapTokenValue(chainId, list[i]) === value) {
+        return { chainId: chainId, token: list[i], mint: asset };
       }
     }
     return null;
@@ -2107,9 +2175,9 @@
 
   function onSwapQuote() {
     var wallet = root.tkrWalletData;
-    pendingSolQuote = null;
+    pendingSwapQuote = null;
     setText(el("swap-out"), "");
-    if (!session.phrase || !session.solAddress) {
+    if (!session.phrase) {
       setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
       return;
     }
@@ -2117,13 +2185,24 @@
       setText(el("swap-note"), "Swap is unavailable in this browser.");
       return;
     }
-    var fromTok = selectedSwapToken(el("swap-from"));
-    var toTok = selectedSwapToken(el("swap-to"));
-    var amount = wallet.toAtomicAmount((el("swap-amount") || {}).value, fromTok && fromTok.decimals != null ? fromTok.decimals : 9);
-    if (!fromTok || !toTok || fromTok === toTok || solSwapTokenValue(fromTok) === solSwapTokenValue(toTok)) {
-      setText(el("swap-note"), "Pick two different Solana assets.");
+    var fromSel = selectedSwapToken(el("swap-from"));
+    var toSel = selectedSwapToken(el("swap-to"));
+    if (!fromSel || !toSel || fromSel.chainId !== toSel.chainId || fromSel.mint === toSel.mint) {
+      setText(el("swap-note"), "Pick two different assets on the same chain. Mainnet and Base are separate swaps, not a bridge.");
       return;
     }
+    if (fromSel.chainId === 900001 && !session.solAddress) {
+      setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
+      return;
+    }
+    if (fromSel.chainId === 728126428 && !session.tronAddress) {
+      setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
+      return;
+    }
+    var amount = wallet.toAtomicAmount(
+      (el("swap-amount") || {}).value,
+      fromSel.token && fromSel.token.decimals != null ? fromSel.token.decimals : 18
+    );
     if (!amount) {
       setText(el("swap-note"), "Enter an amount greater than zero.");
       return;
@@ -2131,72 +2210,99 @@
     setText(el("swap-note"), "Asking Scratchpost for a quote\u2026");
     wallet
       .quoteSwap({
-        input_mint: solSwapTokenValue(fromTok),
-        output_mint: solSwapTokenValue(toTok),
+        chain_id: fromSel.chainId,
+        input_mint: fromSel.mint,
+        output_mint: toSel.mint,
         amount: amount,
       })
       .then(function (body) {
         if (!body || body.ok === false) {
           throw new Error((body && body.error) || "quote-failed");
         }
-        pendingSolQuote = body;
-        var outHuman = body.out_amount || "";
+        pendingSwapQuote = { chainId: fromSel.chainId, from: fromSel, to: toSel, body: body };
         setText(
           el("swap-out"),
           "You send " +
             ((el("swap-amount") || {}).value || "") +
             " " +
-            fromTok.symbol +
+            fromSel.token.symbol +
             " \u2192 receive at least the quoted " +
-            toTok.symbol +
-            (outHuman ? " (" + outHuman + " raw)" : "") +
+            toSel.token.symbol +
+            (body.out_amount ? " (" + body.out_amount + " raw)" : "") +
             "."
         );
         setText(el("swap-note"), "Connect, then Swap. The key stays on this device.");
       })
       .catch(function () {
         setText(el("swap-note"), "No quote. Scratchpost did not publish one. Nothing was signed.");
-        setWalletStatus("SOL quote failed. Nothing was signed.");
+        setWalletStatus("Quote failed. Nothing was signed.");
       });
   }
 
   function onSwapSubmit() {
     var wallet = root.tkrWalletData;
     var c = crypto();
-    if (!session.phrase || !session.solAddress) {
-      setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
+    if (!session.phrase || !pendingSwapQuote || !pendingSwapQuote.body || !pendingSwapQuote.body.quote) {
+      setText(el("swap-note"), pendingSwapQuote ? "Quote first. Nothing was signed." : "Quote first. Nothing was signed.");
+      if (!session.phrase) {
+        setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
+      }
       return;
     }
-    if (!pendingSolQuote || !pendingSolQuote.quote) {
-      setText(el("swap-note"), "Quote first. Nothing was signed.");
-      return;
-    }
-    if (!wallet || typeof wallet.buildSwap !== "function" || !c || typeof c.signSolanaVersionedTx !== "function") {
+    if (!wallet || typeof wallet.buildSwap !== "function") {
       setText(el("swap-note"), "Swap signing is unavailable in this browser.");
       return;
     }
+    var chainId = pendingSwapQuote.chainId;
     setText(el("swap-note"), "Building unsigned swap\u2026");
-    wallet
-      .buildSwap({ quote: pendingSolQuote.quote })
-      .then(function (built) {
-        if (!built || built.ok === false || !built.unsigned_tx) {
-          throw new Error((built && built.error) || "build-failed");
+    function signBuilt(built) {
+      if (!built || built.ok === false) {
+        throw new Error((built && built.error) || "build-failed");
+      }
+      if (built.needs_approval && built.tx) {
+        var approved = c.signAndBroadcastPayload(session.phrase, session.index, built.tx);
+        return wallet.broadcastRaw({ raw: approved.raw, chain_id: approved.chainId }).then(function (sent) {
+          if (!sent || sent.ok === false) {
+            throw new Error((sent && sent.error) || "broadcast");
+          }
+          return wallet.buildSwap({ chain_id: chainId, quote: pendingSwapQuote.body.quote });
+        }).then(signBuilt);
+      }
+      var signed;
+      if (chainId === 900001) {
+        if (!built.unsigned_tx || typeof c.signSolanaVersionedTx !== "function") {
+          throw new Error("build-failed");
         }
-        var signed = c.signSolanaVersionedTx(session.phrase, built.unsigned_tx);
-        return wallet.broadcastRaw({ raw: signed.raw, chain_id: signed.chainId });
-      })
+        signed = c.signSolanaVersionedTx(session.phrase, built.unsigned_tx);
+      } else if (chainId === 728126428) {
+        if (!built.unsigned_tx || typeof c.signTronTransaction !== "function") {
+          throw new Error("build-failed");
+        }
+        signed = c.signTronTransaction(session.phrase, built.unsigned_tx);
+      } else {
+        var tx = built.tx || built.unsigned_tx;
+        if (!tx || typeof c.signAndBroadcastPayload !== "function") {
+          throw new Error("build-failed");
+        }
+        signed = c.signAndBroadcastPayload(session.phrase, session.index, tx);
+      }
+      return wallet.broadcastRaw({ raw: signed.raw, chain_id: signed.chainId });
+    }
+    wallet
+      .buildSwap({ chain_id: chainId, quote: pendingSwapQuote.body.quote })
+      .then(signBuilt)
       .then(function (sent) {
         if (!sent || sent.ok === false) {
           throw new Error((sent && sent.error) || "broadcast");
         }
-        pendingSolQuote = null;
+        pendingSwapQuote = null;
         setText(el("swap-note"), "Broadcast " + (sent.tx_hash || "") + ". Key stayed on this device.");
-        setWalletStatus("SOL swap broadcast. Key stayed on this device.");
+        setWalletStatus("Swap broadcast. Key stayed on this device.");
         refreshBalances();
       })
       .catch(function () {
         setText(el("swap-note"), "Swap did not broadcast. The key did not leave this device.");
-        setWalletStatus("SOL swap failed. The key did not leave this device.");
+        setWalletStatus("Swap failed. The key did not leave this device.");
       });
   }
 
@@ -2625,6 +2731,7 @@
       if (restored) {
         session.address = restored.address;
         session.solAddress = restored.solAddress || null;
+        session.tronAddress = restored.tronAddress || null;
         session.locked = false;
         state.lastActivity = restored.lastActivity;
         state.autolockMinutes = restored.autolockMinutes;
@@ -2762,6 +2869,8 @@
     readStoredTokens: readStoredTokens,
     addToken: addToken,
     holdingsScopeText: holdingsScopeText,
+    mergeBalanceReads: mergeBalanceReads,
+    chainProblems: chainProblems,
     openGate: openGate,
     closeGate: closeGate,
     showGateForm: showGateForm,
