@@ -36,6 +36,7 @@
     8453: { name: "Base", native: "ETH" },
     4663: { name: "Robinhood", native: "ETH" },
     900001: { name: "Solana", native: "SOL" },
+    728126428: { name: "TRON", native: "TRX" },
   };
 
   /* Built-in catalogue: Mainnet + Base tokens the wallet knows by name,
@@ -90,6 +91,10 @@
       { symbol: "USDC", name: "USD Coin", address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", decimals: 6 },
       { symbol: "USDT", name: "Tether USD", address: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", decimals: 6 },
     ],
+    728126428: [
+      { symbol: "TRX", name: "TRON", decimals: 6 },
+      { symbol: "USDT", name: "Tether USD", address: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", decimals: 6 },
+    ],
   };
 
   /* Local colour table. Never a wire-supplied colour (audit W8/S-7). */
@@ -128,6 +133,7 @@
     cbETH: "#0052ff",
     wstETH: "#00a3ff",
     SOL: "#e8a33d",
+    TRX: "#eb0029",
   };
 
   /* Preview mode (?preview=1): the operator's mockup numbers, clearly labelled
@@ -333,14 +339,22 @@
     }
     return fetchFn(apiUrl("/api/wallet/balances?" + q))
       .then(function (res) {
-        if (!res.ok) {
-          var err = new Error("HTTP " + res.status);
+        return Promise.resolve(res.json()).then(
+          function (body) {
+            return { ok: res.ok, status: res.status, body: body };
+          },
+          function () {
+            return { ok: res.ok, status: res.status, body: null };
+          }
+        );
+      })
+      .then(function (got) {
+        var body = got.body;
+        if (!got.ok && !(body && typeof body === "object" && Array.isArray(body.balances))) {
+          var err = new Error("HTTP " + got.status);
           err.name = "EdgeHttpError";
           throw err;
         }
-        return res.json();
-      })
-      .then(function (body) {
         if (!body || typeof body !== "object" || !Array.isArray(body.balances)) {
           return { state: "unknown", reason: "bad-response" };
         }

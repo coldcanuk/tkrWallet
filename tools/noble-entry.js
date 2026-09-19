@@ -9,6 +9,7 @@
 export { secp256k1 } from "@noble/curves/secp256k1.js";
 export { ed25519 } from "@noble/curves/ed25519.js";
 export { keccak_256 } from "@noble/hashes/sha3.js";
+export { sha256 } from "@noble/hashes/sha2.js";
 export { HDKey } from "@scure/bip32";
 export { validateMnemonic, mnemonicToSeedSync, generateMnemonic, entropyToMnemonic } from "@scure/bip39";
 export { wordlist } from "@scure/bip39/wordlists/english.js";

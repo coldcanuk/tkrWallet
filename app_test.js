@@ -217,6 +217,16 @@ test("parseViewSession restores a fresh viewing session and rejects an expired o
     now
   );
   assert.strictEqual(badSol.solAddress, null, "a junk Solana field must be dropped, not the whole session");
+  const withTron = ui.parseViewSession(
+    JSON.stringify({
+      address: addr,
+      tronAddress: "TXYZopYRdj2D9XRtbG411XZZWxU8kC5xwF",
+      lastActivity: now,
+      autolockMinutes: 15,
+    }),
+    now
+  );
+  assert.strictEqual(withTron.tronAddress, "TXYZopYRdj2D9XRtbG411XZZWxU8kC5xwF");
 });
 
 test("reload keeps the viewing session; lock and expiry do not; keys never land in it", function () {
@@ -329,7 +339,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.10") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.11") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -647,7 +657,7 @@ test("wallet.js declares the single origin and a chain catalogue", function () {
   // Integer-like object keys enumerate in numeric order regardless of insertion.
   assert.deepStrictEqual(
     Object.keys(wallet.CHAINS).sort((a, b) => a - b),
-    ["1", "4663", "8453", "900001"]
+    ["1", "4663", "8453", "900001", "728126428"]
   );
 });
 
@@ -731,6 +741,52 @@ test("getBalances() does not send cookies — public reads must not require CORS
   const fn = src.match(/function getBalances\([\s\S]*?\n  \}/);
   assert.ok(fn, "getBalances must exist");
   assert.ok(fn[0].indexOf('credentials: "include"') === -1, "credentialed GET balances dies when the CRX id is not pinned");
+});
+
+test("getBalances() keeps a 502 body that still reports chains", function () {
+  const wallet = require("./wallet.js");
+  return wallet
+    .getBalances("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", [900001], function () {
+      return Promise.resolve({
+        ok: false,
+        status: 502,
+        json: function () {
+          return Promise.resolve({
+            balances: [],
+            chains: [{ chain_id: 900001, state: "unknown", error: "vendor_native_unavailable" }],
+          });
+        },
+      });
+    })
+    .then(function (got) {
+      assert.strictEqual(got.state, "unknown");
+      assert.strictEqual(got.chains[0].chain_id, 900001);
+      assert.strictEqual(got.reason, "all-chains-failed");
+    });
+});
+
+test("mergeBalanceReads names Solana when the SOL HTTP call has no chains[]", function () {
+  global.tkrWalletData = require("./wallet.js");
+  const ui = require("./ui.js");
+  const merged = ui.mergeBalanceReads(
+    {
+      state: "ok",
+      balances: [{ symbol: "ETH", chain_id: 1, amount: 0.01 }],
+      chains: [
+        { chain_id: 1, state: "ok" },
+        { chain_id: 8453, state: "ok" },
+      ],
+    },
+    { state: "unknown", reason: "edge-http", detail: "HTTP 400" }
+  );
+  assert.strictEqual(merged.state, "partial");
+  assert.ok(
+    merged.chains.some(function (c) {
+      return c.chain_id === 900001 && c.state === "unknown";
+    }),
+    "Solana must appear in the read report"
+  );
+  assert.match(ui.chainProblems(merged), /Solana could not be read/);
 });
 
 test("getBalances() HTTP errors are edge-http, not unreachable", function () {
@@ -967,6 +1023,7 @@ test("crypto: BIP-39/44 vector derives the canonical EVM address", function () {
   const w = c.importMnemonic(phrase);
   assert.strictEqual(w.evmAddress, "0x9858EfFD232B4033E47d90003D41EC34EcaEda94");
   assert.strictEqual(w.solAddress.length, 44, "Solana address is base58");
+  assert.ok(/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(w.tronAddress), "TRON address is base58check");
 });
 
 test("crypto: invalid mnemonic is rejected before any key material is derived", function () {
@@ -1365,6 +1422,22 @@ test("crypto: signSolanaVersionedTx overlays ed25519 on message bytes", function
   assert.strictEqual(c.base58Encode(Buffer.alloc(32)), "1".repeat(32));
 });
 
+test("crypto: signTronTransaction attaches a secp256k1 signature to txID", function () {
+  const c = require("./crypto.js");
+  const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  const w = c.importMnemonic(phrase);
+  const unsigned = {
+    txID: "ab".repeat(32),
+    raw_data: { contract: [{ parameter: { value: { owner_address: w.tronAddress } } }] },
+  };
+  const signed = c.signTronTransaction(phrase, unsigned);
+  assert.strictEqual(signed.chainId, 728126428);
+  assert.strictEqual(signed.address, w.tronAddress);
+  const body = JSON.parse(signed.raw);
+  assert.strictEqual(body.txID, unsigned.txID);
+  assert.ok(Array.isArray(body.signature) && /^[0-9a-f]{130}$/.test(body.signature[0]));
+});
+
 test("SOL catalogue supports native in and out; search stays Mainnet/Base", function () {
   const wallet = require("./wallet.js");
   const sol = wallet.TOKENS[900001];
@@ -1379,24 +1452,28 @@ test("SOL catalogue supports native in and out; search stays Mainnet/Base", func
   });
 });
 
-test("swap screen quotes SOL through the wallet edge, never a vendor host", function () {
+test("swap screen quotes same-chain swaps through the wallet edge, never a vendor host", function () {
   const html = readFile("index.html");
   assert.match(html, /id="swap-from"/);
   assert.match(html, /id="swap-quote"/);
   assert.match(html, /id="swap-submit"/);
   assert.ok(html.indexOf("Under construction") === -1 || html.indexOf("data-screen=\"swap\"") < html.indexOf("Under construction"));
   const swapSection = html.split('data-screen="swap"')[1].split('data-screen="receive"')[0];
-  assert.ok(swapSection.indexOf("Under construction") === -1, "SOL swap is no longer a placeholder");
+  assert.ok(swapSection.indexOf("Under construction") === -1, "swap is no longer a placeholder");
+  assert.match(swapSection, /Ethereum, Base, Solana, and TRON/);
   const ui = readFile("ui.js");
   assert.ok(ui.indexOf("quoteSwap") !== -1);
   assert.ok(ui.indexOf("signSolanaVersionedTx") !== -1);
+  assert.ok(ui.indexOf("signTronTransaction") !== -1);
+  assert.ok(ui.indexOf("signAndBroadcastPayload") !== -1);
   assert.ok(ui.indexOf("sol_address") !== -1);
+  assert.ok(ui.indexOf("tron_address") !== -1);
   const wallet = readFile("wallet.js");
   assert.ok(wallet.indexOf("/api/wallet/swap/quote") !== -1);
   assert.ok(wallet.indexOf("/api/wallet/swap/build") !== -1);
   CLIENT_SHIPPED.forEach(function (file) {
     const src = readFile(file);
-    assert.ok(!/helius|jupiter|lite-api\.jup|mainnet\.helius/i.test(src), file + " must not name swap vendors");
+    assert.ok(!/helius|jupiter|lite-api\.jup|mainnet\.helius|trongrid|sunswap/i.test(src), file + " must not name swap vendors");
   });
 });
 
@@ -1665,6 +1742,10 @@ test("catalogue: every token address is well-formed and unique within its chain"
       }
       if (Number(chainId) === 900001) {
         assert.ok(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(t.address), "malformed address on chain " + chainId + ": " + t.address);
+        assert.ok(!seen[t.address], "duplicate address on chain " + chainId + ": " + t.address);
+        seen[t.address] = true;
+      } else if (Number(chainId) === 728126428) {
+        assert.ok(/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(t.address), "malformed TRON address on chain " + chainId + ": " + t.address);
         assert.ok(!seen[t.address], "duplicate address on chain " + chainId + ": " + t.address);
         seen[t.address] = true;
       } else {

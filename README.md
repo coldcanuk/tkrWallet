@@ -141,7 +141,7 @@ git pull
 
 Then Extensions → Remove tkrWallet → Load unpacked → `$HOME/tkrWallet-unpacked`.
 
-The home card must read **tkrWallet 0.10.10**. If it does not, Brave is not
+The home card must read **tkrWallet 0.10.11**. If it does not, Brave is not
 this tree. Site access for `tkrwallet.scratchpost.ai` must not be “On click”.
 
 `manifest.json` is Manifest V3, with a pinned `key` so the extension ID

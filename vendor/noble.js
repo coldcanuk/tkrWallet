@@ -27,6 +27,7 @@ var nobleCrypto = (() => {
     keccak_256: () => keccak_256,
     mnemonicToSeedSync: () => mnemonicToSeedSync,
     secp256k1: () => secp256k1,
+    sha256: () => sha256,
     validateMnemonic: () => validateMnemonic,
     wordlist: () => wordlist
   });

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.10.11 — 2026-09-19
+
+### Added
+- Same-chain swaps on Ethereum, Base, Solana, and TRON through the wallet
+  edge. Scratchpost builds the unsigned swap; this device signs it.
+  Mainnet and Base are separate Uniswap v3 swaps, not a bridge. Native
+  SOL and TRX in/out are first-class. Keys never leave the device.
+
+### Fixed
+- “Some chains could not be read” with no chain name was a Solana HTTP 400:
+  the live wallet-edge only accepted 0x addresses. The client now names
+  Solana when that second request fails, and keeps a 502 body that still
+  reports `chains[]`. Native SOL is read from Scratchpost Caesar, not Phantom.
+- TRON (BIP-44 `m/44'/195'/0'/0/0`) is derived next to EVM and Solana so a
+  TRX balance can be read and swapped through the same edge session.
+
 ## 0.10.10 — 2026-09-19
 
 ### Fixed

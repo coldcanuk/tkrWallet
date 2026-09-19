@@ -23,6 +23,8 @@
   }
 
   var BIP44_SOL = "m/44'/501'/0'/0'";
+  var BIP44_TRON = "m/44'/195'/0'/0/0";
+  var TRON_CHAIN_ID = 728126428;
   var KDF_ITERATIONS = 600000;
   var MAX_ACCOUNTS = 20;
 
@@ -154,6 +156,36 @@
     };
   }
 
+  function sha256Bytes(bytes) {
+    if (typeof noble.sha256 === "function") {
+      return noble.sha256(bytes);
+    }
+    return new Uint8Array(require("crypto").createHash("sha256").update(Buffer.from(bytes)).digest());
+  }
+
+  function tronAddressFrom20(addr20) {
+    var payload = new Uint8Array(21);
+    payload[0] = 0x41;
+    payload.set(addr20, 1);
+    var checksum = sha256Bytes(sha256Bytes(payload)).subarray(0, 4);
+    var out = new Uint8Array(25);
+    out.set(payload, 0);
+    out.set(checksum, 21);
+    return base58Encode(out);
+  }
+
+  function deriveTron(seed) {
+    var node = noble.HDKey.fromMasterSeed(seed).derive(BIP44_TRON);
+    var priv = node.privateKey;
+    var pub = noble.secp256k1.getPublicKey(priv, false);
+    var addr20 = noble.keccak_256(pub.slice(1)).slice(-20);
+    return {
+      path: BIP44_TRON,
+      privateKey: priv,
+      address: tronAddressFrom20(addr20),
+    };
+  }
+
   /* ---- public API: import / generate ------------------------------------ */
 
   function importMnemonic(mnemonic, index) {
@@ -165,12 +197,14 @@
     var seed = noble.mnemonicToSeedSync(phrase);
     var evm = deriveEvm(seed, i);
     var sol = deriveSolana(seed);
+    var tron = deriveTron(seed);
     return {
       mnemonic: phrase,
       index: i,
       path: evm.path,
       evmAddress: evm.address,
       solAddress: sol.address,
+      tronAddress: tron.address,
     };
   }
 
@@ -483,6 +517,38 @@
     return { address: sol.address, raw: b64encode(out), chainId: 900001 };
   }
 
+  /* Sign an unsigned TRON tx. Scratchpost built it; this device signs txID. */
+  function signTronTransaction(mnemonic, unsignedTx) {
+    var w = importMnemonic(mnemonic, 0);
+    var seed = noble.mnemonicToSeedSync(w.mnemonic);
+    var tron = deriveTron(seed);
+    var tx;
+    try {
+      tx = JSON.parse(JSON.stringify(unsignedTx || {}));
+    } catch (e) {
+      wipeBytes(tron.privateKey);
+      wipeBytes(seed);
+      throw new Error("bad-tx");
+    }
+    var txid = String(tx.txID || "").replace(/^0x/, "");
+    if (!/^[0-9a-fA-F]{64}$/.test(txid)) {
+      wipeBytes(tron.privateKey);
+      wipeBytes(seed);
+      throw new Error("bad-tx");
+    }
+    var rec = noble.secp256k1.sign(hexToBytes(txid), tron.privateKey, {
+      prehash: false,
+      format: "recovered",
+      lowS: true,
+    });
+    var sig = hex(rec.subarray(1, 65)) + ("0" + (27 + (rec[0] & 1)).toString(16)).slice(-2);
+    tx.signature = [sig];
+    var address = tron.address;
+    wipeBytes(tron.privateKey);
+    wipeBytes(seed);
+    return { address: address, raw: JSON.stringify(tx), chainId: TRON_CHAIN_ID };
+  }
+
   /* Recover the signer's EIP-55 address from a 65-byte personal_sign hex. */
   function recoverSigner(sigHex, message) {
     var sig = hexToBytes(sigHex);
@@ -592,6 +658,7 @@
     signTransaction: signTransaction,
     signAndBroadcastPayload: signAndBroadcastPayload,
     signSolanaVersionedTx: signSolanaVersionedTx,
+    signTronTransaction: signTronTransaction,
     readCompactU16: readCompactU16,
     recoverSigner: recoverSigner,
     recoverTxSigner: recoverTxSigner,
