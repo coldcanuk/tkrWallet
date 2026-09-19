@@ -73,10 +73,12 @@ and remediations): [`docs/reviews/2026-09-14-technical-review.md`](docs/reviews/
 - **Token detail**: tapping a holding or a search result opens
   `#/token/<chain>:<asset>` — symbol, name, chain, amount, fiat value, contract
   address (copyable), and an explicit note when the balance is unknown.
-- **Token search and coverage**: a 37-token Mainnet + Base catalogue searchable
-  offline by symbol, name, or address. The holdings list states that scope and
-  offers **Add token by address**, which reads symbol/decimals from the contract
-  via the edge — so a holding outside the catalogue is no longer invisible.
+- **Token search and coverage**: a Mainnet + Base catalogue searchable offline
+  by symbol, name, or address. Holdings are discovered ERC-20s you actually
+  hold on Ethereum, Base, and Robinhood. Unpriced airdrops are behind
+  **Airdrops** on Home, not on the main list. **Add token by address** reads
+  symbol/decimals from the contract via the edge and pins that token to the
+  desk.
 - Service worker: network-first shell, offline fallback, same-origin only,
   `/api/*` never cached.
 - Honest placeholders: Swap is under construction (no router exists in this
@@ -142,7 +144,7 @@ Then chrome://extensions and brave://extensions → Remove tkrWallet →
 Load unpacked → `/home/chuck/tkrWallet-unpacked`. Do not pick `/opt/repo`
 in the file dialog.
 
-The home card must read **tkrWallet 0.10.12**. If it does not, the browser
+The home card must read **tkrWallet 0.10.13**. If it does not, the browser
 is not this tree. Site access for `tkrwallet.scratchpost.ai` must not be
 “On click”.
 

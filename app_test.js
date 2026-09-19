@@ -339,7 +339,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.12") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.13") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -968,6 +968,69 @@ test("estimateValue() reports ok/partial/unknown honestly", function () {
   assert.strictEqual(noCad.state, "ok", "cad values exist in the fixture");
 });
 
+test("splitHoldings keeps desk tokens on home and hides unpriced airdrops", function () {
+  const wallet = require("./wallet.js");
+  const spam = {
+    symbol: "AIR",
+    address: "0x1111111111111111111111111111111111111111",
+    chain_id: 1,
+    amount: 99,
+    state: "ok",
+  };
+  const rhSpam = {
+    symbol: "RHJUNK",
+    address: "0x2222222222222222222222222222222222222222",
+    chain_id: 4663,
+    amount: 1,
+    state: "ok",
+  };
+  const usdc = {
+    symbol: "USDC",
+    address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    chain_id: 1,
+    amount: 2,
+    state: "ok",
+  };
+  const eth = { symbol: "ETH", address: null, chain_id: 1, amount: 1, state: "ok" };
+  const sol = { symbol: "SOL", address: null, chain_id: 900001, amount: 1, state: "ok" };
+  const prices = {
+    state: "ok",
+    prices: {
+      "1:native": { usd: 1000 },
+    },
+  };
+  const ready = wallet.splitHoldings([eth, usdc, spam, rhSpam, sol], prices, [], "usd");
+  assert.deepStrictEqual(
+    ready.desk.map((h) => h.symbol),
+    ["ETH", "USDC", "SOL"],
+    "native, catalogue, and SOL stay on the home list"
+  );
+  assert.deepStrictEqual(
+    ready.airdrops.map((h) => h.symbol),
+    ["AIR", "RHJUNK"],
+    "unpriced discovered contracts, including Robinhood, wait behind Airdrops"
+  );
+  const loading = wallet.splitHoldings([eth, spam], null, [], "usd");
+  assert.strictEqual(loading.airdrops.length, 0, "nothing is hidden until prices return");
+  assert.strictEqual(loading.desk.length, 2);
+  const priced = wallet.splitHoldings(
+    [spam],
+    { state: "ok", prices: { "1:0x1111111111111111111111111111111111111111": { usd: 0.01 } } },
+    [],
+    "usd"
+  );
+  assert.strictEqual(priced.desk.length, 1, "a priced discovered token stays on the desk");
+  assert.strictEqual(priced.airdrops.length, 0);
+  const pinned = wallet.splitHoldings(
+    [spam],
+    prices,
+    [{ chain_id: 1, address: "0x1111111111111111111111111111111111111111" }],
+    "usd"
+  );
+  assert.strictEqual(pinned.desk.length, 1, "add-by-address pins an airdrop to the home list");
+  assert.strictEqual(pinned.airdrops.length, 0);
+});
+
 test("preview mode ships the mockup numbers and is opt-in only", function () {
   const wallet = require("./wallet.js");
   assert.strictEqual(wallet.PREVIEW_HOLDINGS.length, 4);
@@ -1356,14 +1419,27 @@ test("a failed read is retryable and never rendered as an empty wallet", functio
 
 test("holdings coverage is disclosed and a token can be added by address", function () {
   const html = readFile("index.html");
-  ["id=\"holdings-scope\"", "id=\"add-token-btn\"", "id=\"add-token-form\"", "id=\"add-token-address\""].forEach(function (n) {
+  [
+    "id=\"holdings-scope\"",
+    "id=\"add-token-btn\"",
+    "id=\"add-token-form\"",
+    "id=\"add-token-address\"",
+    "id=\"airdrops-toggle\"",
+    "id=\"airdrop-list\"",
+  ].forEach(function (n) {
     assert.ok(html.indexOf(n) !== -1, "index.html must include " + n);
   });
+  assert.ok(html.indexOf('data-screen="airdrops"') === -1, "Airdrops is a home drawer, not a fifth nav screen");
   const ui = readFile("ui.js");
+  const wallet = readFile("wallet.js");
   assert.ok(ui.indexOf("holdingsScopeText") !== -1, "the scope of the list must be stated");
+  assert.ok(ui.indexOf("built-in tokens") === -1, "holdings must not advertise a 40-token catalogue cap");
+  assert.ok(ui.indexOf("renderAirdrops") !== -1, "unpriced airdrops must be reachable from home");
+  assert.ok(wallet.indexOf("splitHoldings: splitHoldings") !== -1, "wallet.js must export splitHoldings");
+  assert.ok(ui.indexOf("paintTokenBadge") !== -1, "rows must paint Scratchpost icons with a letter fallback");
+  assert.ok(wallet.indexOf("tokenIconUrl") !== -1, "icon URLs stay on the wallet edge");
   assert.ok(ui.indexOf("getTokenMeta") !== -1, "adding a token must read its metadata from the edge");
   assert.ok(ui.indexOf("TOKENS_KEY") !== -1, "added tokens must persist");
-  const wallet = readFile("wallet.js");
   assert.ok(wallet.indexOf("getTokenMeta: getTokenMeta") !== -1, "wallet.js must export getTokenMeta");
   // Only public metadata is stored — never anything from the vault.
   const store = ui.match(/function storeTokens\(list\) \{[\s\S]*?\n  \}/);

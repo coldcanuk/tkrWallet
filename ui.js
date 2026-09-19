@@ -834,6 +834,115 @@
     return names.length ? names.join("; ") + "." : "";
   }
 
+  function paintTokenBadge(badge, symbol, color, chainId, address) {
+    if (!badge) {
+      return;
+    }
+    badge.style.backgroundColor = color || "#cfc8b8";
+    var letter = badge.querySelector("[data-token-letter]");
+    if (letter) {
+      letter.textContent = String(symbol || "?").slice(0, 3);
+    }
+    var logo = badge.querySelector("[data-token-logo]");
+    var src =
+      address && root.tkrWalletData && root.tkrWalletData.tokenIconUrl
+        ? root.tkrWalletData.tokenIconUrl(chainId, address)
+        : null;
+    if (!logo || !src) {
+      if (logo) {
+        logo.setAttribute("hidden", "");
+      }
+      if (!letter) {
+        badge.textContent = String(symbol || "?").slice(0, 3);
+      }
+      return;
+    }
+    logo.onload = function () {
+      logo.removeAttribute("hidden");
+    };
+    logo.onerror = function () {
+      logo.setAttribute("hidden", "");
+      logo.removeAttribute("src");
+    };
+    logo.setAttribute("hidden", "");
+    logo.src = src;
+  }
+
+  function fillTokenRow(holding, prices) {
+    var tpl = el("tpl-token-row");
+    if (!tpl) {
+      return null;
+    }
+    var row = tpl.content.firstElementChild.cloneNode(true);
+    var badge = row.querySelector("[data-token-badge]");
+    row.addEventListener("click", function () {
+      goToken(holding.chain_id, holding.address);
+    });
+    setText(row.querySelector("[data-token-name]"), holding.symbol || "?");
+    setText(row.querySelector("[data-token-chain]"), chainLineFor(holding));
+    setText(
+      row.querySelector("[data-token-amount]"),
+      holding.state === "unknown" ? "\u2014" : formatAmount(holding.amount)
+    );
+    setText(row.querySelector("[data-token-fiat]"), formatFiat(fiatFor(holding, prices), state.currency));
+    if (badge) {
+      paintTokenBadge(badge, holding.symbol, holding.color, holding.chain_id, holding.address);
+    }
+    return row;
+  }
+
+  function splitCurrentHoldings(holdings, prices) {
+    var wallet = root.tkrWalletData;
+    if (!wallet || !wallet.splitHoldings) {
+      return { desk: holdings || [], airdrops: [] };
+    }
+    return wallet.splitHoldings(holdings, prices, readStoredTokens(), state.currency);
+  }
+
+  function renderAirdrops(airdrops, prices) {
+    var btn = el("airdrops-toggle");
+    var label = el("airdrops-toggle-label");
+    var note = el("airdrops-note");
+    var box = el("airdrop-list");
+    var count = airdrops && airdrops.length ? airdrops.length : 0;
+    if (!btn || !box) {
+      return;
+    }
+    if (!count) {
+      uiData.airdropsOpen = false;
+      btn.setAttribute("hidden", "");
+      btn.setAttribute("aria-expanded", "false");
+      if (note) {
+        note.setAttribute("hidden", "");
+      }
+      box.setAttribute("hidden", "");
+      box.textContent = "";
+      return;
+    }
+    btn.removeAttribute("hidden");
+    setText(label, count + " airdrop" + (count === 1 ? "" : "s"));
+    btn.setAttribute("aria-expanded", uiData.airdropsOpen ? "true" : "false");
+    if (uiData.airdropsOpen) {
+      if (note) {
+        note.removeAttribute("hidden");
+      }
+      box.removeAttribute("hidden");
+      box.textContent = "";
+      airdrops.forEach(function (holding) {
+        var row = fillTokenRow(holding, prices);
+        if (row) {
+          box.appendChild(row);
+        }
+      });
+    } else {
+      if (note) {
+        note.setAttribute("hidden", "");
+      }
+      box.setAttribute("hidden", "");
+      box.textContent = "";
+    }
+  }
+
   function renderTokens(holdings, prices) {
     var box = el("token-list");
     var tpl = el("tpl-token-row");
@@ -842,6 +951,9 @@
     }
     box.textContent = "";
     renderBalancesNotice();
+    var split = splitCurrentHoldings(holdings, prices);
+    var desk = split.desk;
+    renderAirdrops(split.airdrops, prices);
     if (!holdings || !holdings.length) {
       var tplEmpty = el("tpl-token-empty");
       if (tplEmpty) {
@@ -871,28 +983,20 @@
       }
       return [];
     }
-    holdings.forEach(function (holding) {
-      var row = tpl.content.firstElementChild.cloneNode(true);
-      var badge = row.querySelector("[data-token-badge]");
-      // Tapping a coin opens its detail screen (this used to be a dead click).
-      row.addEventListener("click", function () {
-        goToken(holding.chain_id, holding.address);
-      });
-      setText(row.querySelector("[data-token-name]"), holding.symbol || "?");
-      setText(row.querySelector("[data-token-chain]"), chainLineFor(holding));
-      setText(
-        row.querySelector("[data-token-amount]"),
-        holding.state === "unknown" ? "\u2014" : formatAmount(holding.amount)
-      );
-      setText(row.querySelector("[data-token-fiat]"), formatFiat(fiatFor(holding, prices), state.currency));
-      if (badge) {
-        // Colour comes from the data layer's local map — never from the wire.
-        badge.style.backgroundColor = holding.color || "#cfc8b8";
-        badge.textContent = String(holding.symbol || "?").slice(0, 3);
+    if (!desk.length && split.airdrops.length) {
+      var quiet = document.createElement("p");
+      quiet.className = "px-4 py-6 text-center text-sm text-cream-500";
+      quiet.textContent = "No priced tokens on the home list. Airdrops are below.";
+      box.appendChild(quiet);
+      return desk;
+    }
+    desk.forEach(function (holding) {
+      var row = fillTokenRow(holding, prices);
+      if (row) {
+        box.appendChild(row);
       }
-      box.appendChild(row);
     });
-    return holdings;
+    return desk;
   }
 
   /** A visible, retryable notice when the read was not complete. Rows that did
@@ -954,12 +1058,12 @@
       hint.className = "px-4 py-6 text-center";
       var line = document.createElement("p");
       line.className = "text-sm text-cream-300";
-      line.textContent = q ? "No match in the built-in catalogue." : "Search the built-in catalogue";
+      line.textContent = q ? "No match in known tokens." : "Search known tokens";
       var sub = document.createElement("p");
       sub.className = "mt-1 text-xs text-cream-500";
       sub.textContent = q
-        ? "Only Mainnet and Base tokens this wallet ships with are searchable until the edge catalogue lands."
-        : "Mainnet and Base tokens this wallet knows about. Full chain-wide search needs the wallet edge.";
+        ? "Only a short search list ships in the app. Holdings are what you actually hold — add any ERC-20 by contract if discovery missed it."
+        : "Search is a short known-token list. Your home list is discovered holdings, not this catalogue.";
       hint.appendChild(line);
       hint.appendChild(sub);
       box.appendChild(hint);
@@ -977,8 +1081,7 @@
           (tok.address ? " \u00b7 " + shortAddress(tok.address, 6, 4) : "")
       );
       if (badge) {
-        badge.style.backgroundColor = tok.color || "#cfc8b8";
-        badge.textContent = String(tok.symbol).slice(0, 3);
+        paintTokenBadge(badge, tok.symbol, tok.color, tok.chain_id, tok.address);
       }
       row.addEventListener("click", function () {
         goToken(tok.chain_id, tok.address);
@@ -996,6 +1099,7 @@
     account: null,
     lastBalances: null, // { state, reason, chains } from the last read
     lastChecked: null, // when that read happened
+    airdropsOpen: false,
   };
 
   /** Re-render the list and value from whatever we last knew. */
@@ -1012,7 +1116,8 @@
     if (!wallet || !holdings) {
       return;
     }
-    var est = wallet.estimateValue(holdings, uiData.lastPrices, state.currency);
+    var split = splitCurrentHoldings(holdings, uiData.lastPrices);
+    var est = wallet.estimateValue(split.desk, uiData.lastPrices, state.currency);
     if (est.state === "ok") {
       var note = est.priced < est.total ? est.priced + " of " + est.total + " holdings priced" : "";
       setWalletValue(est.value, state.currency, note);
@@ -1190,8 +1295,8 @@
 
   /* ---- user-added tokens -------------------------------------------------
    * Public token metadata only (symbol/name/decimals/address). Never key
-   * material, never anything from the vault. The built-in catalogue is a fixed
-   * list, so without this a wallet holding anything else looks empty. */
+   * material, never anything from the vault. Discovery lists what you hold;
+   * this is the miss path for a token Scratchpost did not index. */
 
   var TOKENS_KEY = "tkrwallet.tokens";
 
@@ -1221,23 +1326,14 @@
   }
 
   /** Say out loud what the holdings list covers. The old screen implied the
-   * list was the whole wallet; it is a fixed catalogue plus whatever the user
-   * added, on Mainnet, Base, and Robinhood. */
+   * list was the whole wallet; it is discovered holdings on Mainnet, Base, and
+   * Robinhood, plus tokens you add by address. */
   function holdingsScopeText() {
-    var data = root.tkrWalletData;
-    var count = 0;
-    if (data && data.TOKENS) {
-      [1, 8453, 4663].forEach(function (chainId) {
-        count += (data.TOKENS[chainId] || []).length;
-      });
-    }
     var extra = readStoredTokens().length;
     return (
-      "Mainnet, Base, and Robinhood. " +
-      count +
-      " built-in tokens" +
-      (extra ? " plus " + extra + " you added" : "") +
-      ". Add any other token by its contract address."
+      "Tokens you hold on Ethereum, Base, and Robinhood, with prices when Scratchpost has them" +
+      (extra ? " · " + extra + " added by address" : "") +
+      ". Unpriced airdrops sit behind Airdrops, not on this list."
     );
   }
 
@@ -2631,8 +2727,15 @@
       });
     }
 
-    /* Add token by address: the built-in catalogue is fixed, so this is how a
-     * holding outside it becomes visible. */
+    var airdropsToggle = el("airdrops-toggle");
+    if (airdropsToggle) {
+      airdropsToggle.addEventListener("click", function () {
+        uiData.airdropsOpen = !uiData.airdropsOpen;
+        renderTokens(uiData.lastHoldings, uiData.lastPrices);
+      });
+    }
+
+    /* Add token by address: discovery lists what you hold; this catches a miss. */
     var addBtn = el("add-token-btn");
     if (addBtn) {
       addBtn.addEventListener("click", function () {

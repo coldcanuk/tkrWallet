@@ -29,6 +29,18 @@
     return isExtension ? BASE_URL + path : path;
   }
 
+  function tokenIconUrl(chainId, address) {
+    if (!address) {
+      return null;
+    }
+    return apiUrl(
+      "/api/wallet/token-icon?chain=" +
+        encodeURIComponent(String(chainId)) +
+        "&address=" +
+        encodeURIComponent(String(address))
+    );
+  }
+
   /* Chain catalogue. Solana native + SPL catalogue is queried through the
    * wallet edge. The client never dials a Solana RPC. */
   var CHAINS = {
@@ -39,9 +51,9 @@
     728126428: { name: "TRON", native: "TRX" },
   };
 
-  /* Built-in catalogue: Mainnet + Base for search; Robinhood ETH/WETH/USDG for
-   * holdings and same-chain swaps. Search stays Mainnet + Base. Every
-   * address below is a well-known, documented contract. */
+  /* Built-in catalogue: search + swap presets. Holdings are discovered by
+   * Scratchpost (what you actually hold), not this list. Robinhood ETH/WETH/USDG
+   * stay here for same-chain swaps. Every address below is a well-known contract. */
   var TOKENS = {
     1: [
       { symbol: "ETH", name: "Ether" },
@@ -226,7 +238,7 @@
    * Only `ok` with an empty array may be rendered as "you hold none".
    *
    * `extraTokens` are user-added "chain:address" strings, read in addition to
-   * the built-in catalogue. */
+   * discovered holdings and the built-in catalogue. */
   function requestNonce(fetchFn) {
     fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
     if (!fetchFn) {
@@ -465,6 +477,58 @@
     return { state: "ok", value: value, priced: priced, total: total };
   }
 
+  /** Home list vs airdrops. Native, catalogue, user-added, and priced tokens
+   * stay on the desk. Unpriced discovered contracts wait behind Airdrops so
+   * spam does not crowd Ethereum/Base/Robinhood holdings. Until prices return,
+   * nothing is hidden — a load must not look like a wipe. */
+  function knownAssetKeys(extras) {
+    var keys = Object.create(null);
+    Object.keys(TOKENS).forEach(function (chainKey) {
+      (TOKENS[chainKey] || []).forEach(function (t) {
+        keys[Number(chainKey) + ":" + String(t.address || "native").toLowerCase()] = true;
+      });
+    });
+    (extras || []).forEach(function (t) {
+      if (!t || !t.address || !Number.isFinite(Number(t.chain_id))) {
+        return;
+      }
+      keys[Number(t.chain_id) + ":" + String(t.address).toLowerCase()] = true;
+    });
+    return keys;
+  }
+
+  function holdingHasPrice(holding, prices, currency) {
+    if (!prices || prices.state !== "ok" || !prices.prices) {
+      return false;
+    }
+    var vs = currency || "usd";
+    var entry = prices.prices[assetKey(holding)];
+    if (!entry && holding.address) {
+      entry = prices.prices[holding.chain_id + ":" + String(holding.address).toLowerCase()];
+    }
+    return Boolean(entry && typeof entry[vs] === "number" && Number.isFinite(entry[vs]));
+  }
+
+  function splitHoldings(holdings, prices, extras, currency) {
+    var desk = [];
+    var airdrops = [];
+    var known = knownAssetKeys(extras);
+    var pricesReady = Boolean(prices && prices.state === "ok");
+    (holdings || []).forEach(function (h) {
+      if (!h) {
+        return;
+      }
+      var key = h.chain_id + ":" + String(h.address || "native").toLowerCase();
+      var pinned = !h.address || known[key];
+      if (pinned || holdingHasPrice(h, prices, currency) || !pricesReady) {
+        desk.push(h);
+      } else {
+        airdrops.push(h);
+      }
+    });
+    return { desk: desk, airdrops: airdrops };
+  }
+
   /* Search the built-in catalogue by symbol, name or address — the same
    * matching a server-side catalogue would do, applied to the list we already
    * hold. Pure and offline: no network call.
@@ -601,6 +665,7 @@
     TOKEN_COLORS: TOKEN_COLORS,
     chainName: chainName,
     colorFor: colorFor,
+    tokenIconUrl: tokenIconUrl,
     assetKey: assetKey,
     getPrices: getPrices,
     getBalances: getBalances,
@@ -611,6 +676,7 @@
     broadcastRaw: broadcastRaw,
     getTokenMeta: getTokenMeta,
     estimateValue: estimateValue,
+    splitHoldings: splitHoldings,
     searchCatalog: searchCatalog,
     toAtomicAmount: toAtomicAmount,
     quoteSwap: quoteSwap,
