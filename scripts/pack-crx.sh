@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Pack tkrWallet on kiff. Vault stays on ATHENA (headless).
 # Usage: ./scripts/pack-crx.sh
-# Writes tkrwallet.crx in the repo and in $HOME. Shreds the PEM.
+# Native Chrome/Brave (Pop Shop deb) writes $HOME/tkrwallet.crx.
+# Flatpak cannot --pack-extension (bwrap /run/user/1000/doc). In that
+# case this script stages $HOME/tkrWallet-unpacked and stops. Never
+# writes a CRX into /opt/repo. Shreds the PEM.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,11 +16,11 @@ STAGE="$PACK/ext"
 KEY="$PACK/key.pem"
 PUB="$PACK/pub.der"
 PACK_PROFILE="$PACK/pack-profile"
-REPO_CRX="$ROOT/tkrwallet.crx"
 HOME_CRX="$HOME/tkrwallet.crx"
 PACK_CMD=()
 CHROME_UI=()
 BRAVE_UI=()
+VER="$(node -p "require('$ROOT/package.json').version")"
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -34,11 +37,6 @@ resolve_chrome_ui() {
     CHROME_UI=(/opt/google/chrome/chrome)
     return
   fi
-  if command -v flatpak >/dev/null && flatpak info com.google.Chrome >/dev/null 2>&1; then
-    CHROME_UI=(flatpak run com.google.Chrome)
-    return
-  fi
-  die "Chrome not found. Pop Shop installs /usr/bin/google-chrome-stable."
 }
 
 resolve_brave_ui() {
@@ -54,13 +52,10 @@ resolve_brave_ui() {
     BRAVE_UI=(/opt/brave.com/brave/brave)
     return
   fi
-  if command -v flatpak >/dev/null && flatpak info com.brave.Browser >/dev/null 2>&1; then
-    BRAVE_UI=(flatpak run com.brave.Browser)
-    return
-  fi
-  die "Brave not found. Pop Shop installs /usr/bin/brave-browser or Flathub com.brave.Browser."
 }
 
+# Flatpak is UI-only on kiff. --pack-extension dies in bwrap:
+#   Can't find source path /run/user/1000/doc/by-app/com.google.Chrome
 resolve_packer() {
   if [[ -x /usr/bin/google-chrome-stable ]]; then
     PACK_CMD=(/usr/bin/google-chrome-stable)
@@ -86,15 +81,21 @@ resolve_packer() {
     PACK_CMD=(/opt/brave.com/brave/brave)
     return
   fi
-  if command -v flatpak >/dev/null && flatpak info com.google.Chrome >/dev/null 2>&1; then
-    PACK_CMD=(flatpak run --filesystem=home com.google.Chrome)
-    return
-  fi
-  if command -v flatpak >/dev/null && flatpak info com.brave.Browser >/dev/null 2>&1; then
-    PACK_CMD=(flatpak run --filesystem=home com.brave.Browser)
-    return
-  fi
-  die "No Chrome or Brave packer found."
+}
+
+stage_home_unpacked() {
+  "$ROOT/scripts/stage-unpacked.sh"
+  echo
+  echo "Flatpak cannot pack a CRX (bwrap document portal)."
+  echo "Install unpacked from \$HOME. Do not pick /opt/repo in the file dialog."
+  echo
+  echo "  1. chrome://extensions and brave://extensions"
+  echo "  2. Developer mode on"
+  echo "  3. Remove tkrWallet if it is already loaded"
+  echo "  4. Load unpacked → $HOME/tkrWallet-unpacked"
+  echo
+  echo "Home card must read tkrWallet $VER."
+  echo "Site access for tkrwallet.scratchpost.ai must not be On click."
 }
 
 scrub() {
@@ -112,6 +113,11 @@ host="$(hostname -s)"
 resolve_chrome_ui
 resolve_brave_ui
 resolve_packer
+
+if [[ ${#PACK_CMD[@]} -eq 0 ]]; then
+  stage_home_unpacked
+  exit 0
+fi
 
 umask 077
 rm -rf "$PACK"
@@ -197,17 +203,19 @@ cp -a \
   --pack-extension-key="$KEY"
 
 [[ -f "$STAGE.crx" ]] || die "packer did not write $STAGE.crx"
-cp -f "$STAGE.crx" "$REPO_CRX"
 cp -f "$STAGE.crx" "$HOME_CRX"
-chmod 644 "$REPO_CRX" "$HOME_CRX"
+chmod 644 "$HOME_CRX"
 rm -f "$STAGE.crx"
 
-"${CHROME_UI[@]}" chrome://extensions >/dev/null 2>&1 &
-"${BRAVE_UI[@]}" brave://extensions >/dev/null 2>&1 &
+if [[ ${#CHROME_UI[@]} -gt 0 ]]; then
+  "${CHROME_UI[@]}" chrome://extensions >/dev/null 2>&1 &
+fi
+if [[ ${#BRAVE_UI[@]} -gt 0 ]]; then
+  "${BRAVE_UI[@]}" brave://extensions >/dev/null 2>&1 &
+fi
 
 echo
 echo "packed:"
-echo "  $REPO_CRX"
 echo "  $HOME_CRX"
 echo
 echo "Do not click Pack extension. The PEM is not a file you browse to."
@@ -221,3 +229,4 @@ echo "  1. Developer mode on"
 echo "  2. Drag $HOME_CRX onto brave://extensions"
 echo
 echo "Same file, both browsers. ID stays kfgmpcgplemjepolfpdbodmakceacook."
+echo "Do not pick /opt/repo in any file dialog."

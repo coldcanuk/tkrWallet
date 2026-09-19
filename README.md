@@ -128,10 +128,9 @@ Open `index.html` (or any static host). Install when the browser offers it.
 
 ## Load as Chrome or Brave extension
 
-Unpacked (either browser):
-
-On kiff (Flatpak Brave), do not pick `/opt/repo` in the file dialog — that
-path is often a stale portal mount. Stage first:
+On **kiff**, install from `$HOME`. Flatpak Chrome/Brave cannot pack or load
+from `/opt/repo` — the xdg-document portal dies with
+`bwrap: Can't find source path /run/user/1000/doc/by-app/…`.
 
 ```sh
 cd /opt/repo/thePlatform/tkrWallet
@@ -139,15 +138,21 @@ git pull
 ./scripts/stage-unpacked.sh
 ```
 
-Then Extensions → Remove tkrWallet → Load unpacked → `$HOME/tkrWallet-unpacked`.
+Then chrome://extensions and brave://extensions → Remove tkrWallet →
+Load unpacked → `/home/chuck/tkrWallet-unpacked`. Do not pick `/opt/repo`
+in the file dialog.
 
-The home card must read **tkrWallet 0.10.11**. If it does not, Brave is not
-this tree. Site access for `tkrwallet.scratchpost.ai` must not be “On click”.
+The home card must read **tkrWallet 0.10.11**. If it does not, the browser
+is not this tree. Site access for `tkrwallet.scratchpost.ai` must not be
+“On click”.
 
 `manifest.json` is Manifest V3, with a pinned `key` so the extension ID
 (`kfgmpcgplemjepolfpdbodmakceacook`) is stable across unpacked loads.
 
-Packed CRX on **kiff** (installs in Chrome and Brave). Vault stays on ATHENA.
+Packed CRX is only for Pop Shop **deb** Chrome or Brave. Vault stays on
+ATHENA. The script never uses Flatpak as the packer and never writes a
+CRX into `/opt/repo`. If only Flatpak is installed it stages
+`$HOME/tkrWallet-unpacked` and stops.
 
 ```sh
 cd /opt/repo/thePlatform/tkrWallet
@@ -155,13 +160,8 @@ git pull
 ./scripts/pack-crx.sh
 ```
 
-The script writes the same gitignored file to:
-
-- `/opt/repo/thePlatform/tkrWallet/tkrwallet.crx`
-- `/home/chuck/tkrwallet.crx`
-
-It opens `chrome://extensions` and `brave://extensions`. Developer mode on in each.
-Drag `/home/chuck/tkrwallet.crx` onto both pages. Same file, same ID. Do not click Pack extension.
+Drag `/home/chuck/tkrwallet.crx` if a CRX was written. Do not click Pack
+extension. Do not pick `/opt/repo` in any file dialog.
 
 ## Edge contract
 
