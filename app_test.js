@@ -152,8 +152,42 @@ test("token routes parse to a detail screen, and malformed ones fall home", func
 test("currency parsing falls back to USD", function () {
   const ui = require("./ui.js");
   assert.strictEqual(ui.parseCurrency("CAD"), "cad");
+  assert.strictEqual(ui.parseCurrency("mxn"), "mxn");
+  assert.strictEqual(ui.parseCurrency("mxd"), "mxn");
   assert.strictEqual(ui.parseCurrency("eur"), "usd");
   assert.strictEqual(ui.parseCurrency(null), "usd");
+  assert.strictEqual(ui.formatHeld(3), "3");
+  assert.strictEqual(ui.formatHeld(0), "0");
+  assert.strictEqual(ui.formatHeld(null), "—");
+});
+
+test("Wallet value live FX, MXN, labeled token rows, and Buy Now", function () {
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('id="fx-live"') !== -1, "arrow-path live FX control");
+  assert.ok(html.indexOf("M4.755 10.059") !== -1, "Heroicons arrow-path");
+  assert.ok(html.indexOf('data-currency="mxn"') !== -1, "MXN selector");
+  assert.ok(html.indexOf("Held:") !== -1, "token rows label Held");
+  assert.ok(html.indexOf("data-token-price") !== -1, "token rows show unit price");
+  assert.ok(html.indexOf("data-token-asof") !== -1, "token rows show last update");
+  assert.ok(html.indexOf('id="detail-buy"') !== -1, "detail Buy Now");
+  assert.ok(html.indexOf("lesou coming soon") !== -1, "lesou is disclosed as coming soon");
+  assert.ok(html.indexOf('id="detail-eth-main"') !== -1, "ETH mainnet equivalent");
+  const wallet = require("./wallet.js");
+  assert.ok(String(wallet.tokenIconUrl(1, null)).indexOf("address=native") !== -1, "native ETH requests native art");
+  return wallet
+    .getPrices(["1:native"], ["usd", "mxn"], function (url) {
+      assert.ok(String(url).indexOf("fx=live") !== -1, url);
+      return Promise.resolve({
+        ok: true,
+        json: function () {
+          return Promise.resolve({ as_of: 1, prices: { "1:native": { usd: 1, mxn: 17 } } });
+        },
+      });
+    }, "live")
+    .then(function (got) {
+      assert.strictEqual(got.state, "ok");
+      assert.strictEqual(got.prices["1:native"].mxn, 17);
+    });
 });
 
 test("auto-lock minutes: clamped, snapped, never off, never past an hour", function () {
@@ -340,7 +374,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.15") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.16") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -677,6 +711,7 @@ test("getPrices() surfaces the edge contract and never invents a price", functio
   return wallet
     .getPrices(["1:native", "1:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"], ["usd", "cad"], function (url) {
       assert.ok(String(url).indexOf("/api/wallet/prices?assets=") === 0, url);
+      assert.ok(String(url).indexOf("fx=boc") !== -1, "default FX is Bank of Canada cache");
       assert.ok(String(url).indexOf("1%3Anative") !== -1, "assets must be encoded");
       return Promise.resolve({
         ok: true,
