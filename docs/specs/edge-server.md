@@ -370,8 +370,8 @@ Vary: Origin
   network error.
 - **Extension ID pinned (resolved).** `manifest.json` now carries a generated
   `key` (public half of a 2048-bit RSA pair, private half gitignored). The
-  resulting ID is **`hkljagpgkenlmfemcddcnhoaddpndldn`**, so the stable popup
-  origin is **`chrome-extension://hkljagpgkenlmfemcddcnhoaddpndldn`**. The edge
+  resulting ID is **`kfgmpcgplemjepolfpdbodmakceacook`**, so the stable popup
+  origin is **`chrome-extension://kfgmpcgplemjepolfpdbodmakceacook`**. The edge
   should allow-list that origin (or use `ACAO: *`, since the extension uses a
   bearer token rather than cookies).
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.10.7 — 2026-09-19
+
+### Fixed
+- Extension CORS: the live wallet-edge now allowlists both the Vault-pinned
+  CRX id and the pre-Vault id. A pin mismatch was the real “edge could not
+  be reached” error — the edge was up; credentialed fetches were blocked.
+- Auto-lock survives popup close. MV3 destroys `sessionStorage` with the
+  popup; the viewing session now uses `localStorage` on `chrome-extension:`
+  pages and still expires after the chosen minutes. Settings show a visible
+  “Saved.” line. Closing the popup within the window no longer re-prompts.
+- Balance reads distinguish HTTP errors from a true unreachable edge.
+- Viewing-session restore keeps the Solana address so SOL balances reload.
+
+## 0.10.6 — 2026-09-19
+
+### Fixed
+- One page scrollbar. The 660px popup document was taller than Chromium’s
+  clamped window, so the outer window and `#main` both scrolled. The shell
+  now fits the actual viewport; only `#main` (or the gate / CLI log) scrolls.
+
+### Added
+- Header trio like Phantom: Terminal, Search, Dock (Heroicons). Terminal
+  opens the in-wallet CLI. Dock opens the wallet in the browser side panel.
+- Settings moved to the account drawer.
+
 ## 0.10.5 — 2026-09-16
 
 ### Fixed

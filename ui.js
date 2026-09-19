@@ -13,7 +13,8 @@
 (function (root) {
   "use strict";
 
-  var SCREENS = ["home", "swap", "activity", "search", "settings", "detail"];
+  var SCREENS = ["home", "swap", "activity", "search", "settings", "detail", "send", "receive"];
+  var ACCOUNT_COLORS = ["#e8a33d", "#a8a29e", "#4ade80", "#cfc8b8", "#d98a1f"];
   var DEFAULT_SCREEN = "home";
   var CURRENCIES = ["usd", "cad"];
   var STORAGE_KEY = "tkrwallet.currency";
@@ -50,6 +51,91 @@
     return SCREENS.indexOf(name) === -1 ? DEFAULT_SCREEN : name;
   }
 
+  /** Extension popup vs docked side panel vs PWA/tab. Never throws. */
+  function parseShellMode(search, protocol) {
+    var q = String(search == null ? "" : search);
+    if (/(^|[?&])mode=panel([&#]|$)/.test(q)) {
+      return "panel";
+    }
+    if (String(protocol || "") === "chrome-extension:") {
+      return "popup";
+    }
+    return "page";
+  }
+
+  var CLI_HELP = [
+    "tkrWallet CLI. Secrets are never printed.",
+    "help              this list",
+    "status            lock state and public account",
+    "home | search | settings | swap | activity",
+    "search <query>    open token search",
+    "lock              lock now",
+    "dock              dock to the browser side panel",
+    "clear             clear this log",
+    "close             close the terminal",
+  ];
+  var CLI_REFUSE = /^(seed|mnemonic|phrase|secret|private|privkey|password|passwd|export|backup)$/i;
+
+  /**
+   * Wallet CLI. Pure — tests call this without a DOM.
+   * Returns { lines, action, refuse }. Never includes key material.
+   */
+  function runCliCommand(raw, ctx) {
+    var line = String(raw == null ? "" : raw).trim();
+    var out = { lines: [], action: null, refuse: false };
+    if (!line) {
+      return out;
+    }
+    var parts = line.split(/\s+/);
+    var cmd = parts[0].toLowerCase();
+    var rest = parts.slice(1).join(" ");
+    if (CLI_REFUSE.test(cmd)) {
+      out.refuse = true;
+      out.lines.push("refused: the CLI never prints keys, phrases, or passwords.");
+      return out;
+    }
+    if (cmd === "help" || cmd === "?") {
+      out.lines = CLI_HELP.slice();
+      return out;
+    }
+    if (cmd === "clear") {
+      out.action = { type: "clear" };
+      return out;
+    }
+    if (cmd === "close" || cmd === "exit") {
+      out.action = { type: "close" };
+      return out;
+    }
+    if (cmd === "lock") {
+      out.action = { type: "lock" };
+      out.lines.push("locking.");
+      return out;
+    }
+    if (cmd === "dock") {
+      out.action = { type: "dock" };
+      return out;
+    }
+    if (cmd === "home" || cmd === "settings" || cmd === "swap" || cmd === "activity") {
+      out.action = { type: "go", screen: cmd };
+      out.lines.push("opening " + cmd + ".");
+      return out;
+    }
+    if (cmd === "search") {
+      out.action = { type: "search", query: rest };
+      out.lines.push(rest ? "searching." : "opening search.");
+      return out;
+    }
+    if (cmd === "status") {
+      var unlocked = !!(ctx && ctx.unlocked);
+      var address = ctx && ctx.address ? String(ctx.address) : "";
+      out.lines.push(unlocked ? "unlocked." : "locked.");
+      out.lines.push(address ? shortAddress(address) : "no account.");
+      return out;
+    }
+    out.lines.push("unknown command. type help.");
+    return out;
+  }
+
   /** Normalise a currency code, falling back to USD. */
   function parseCurrency(value) {
     var code = String(value == null ? "" : value).toLowerCase();
@@ -84,8 +170,9 @@
 
   /**
    * Viewing session: public address + activity timestamp, never key material.
-   * Survives reload (sessionStorage) for the auto-lock window; rejected when
-   * stale, malformed, or missing. Pure — tests call this without a DOM.
+   * PWA keeps it in sessionStorage; the MV3 popup uses localStorage because
+   * the popup document is destroyed on close. Rejected when stale, malformed,
+   * or missing. Pure — tests call this without a DOM.
    */
   function parseViewSession(raw, now) {
     if (raw === null || raw === undefined || String(raw).trim() === "") {
@@ -116,7 +203,16 @@
     if (at - lastActivity >= minutes * 60000) {
       return null;
     }
-    return { address: address, lastActivity: lastActivity, autolockMinutes: minutes };
+    var solAddress = String(parsed.solAddress || "").trim();
+    if (solAddress && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(solAddress)) {
+      solAddress = "";
+    }
+    return {
+      address: address,
+      lastActivity: lastActivity,
+      autolockMinutes: minutes,
+      solAddress: solAddress || null,
+    };
   }
 
   /** Typed backup confirm: exact sentence, trimmed. Not a checkbox. */
@@ -179,6 +275,178 @@
     if (node) {
       node.textContent = value;
     }
+  }
+
+  function applyShellClass() {
+    var search = root.location && root.location.search;
+    var protocol = root.location && root.location.protocol;
+    var mode = parseShellMode(search, protocol);
+    if (typeof document === "undefined" || !document.documentElement) {
+      return mode;
+    }
+    document.documentElement.classList.remove("extension-popup", "extension-panel");
+    if (mode === "panel") {
+      document.documentElement.classList.add("extension-panel");
+    } else if (mode === "popup") {
+      document.documentElement.classList.add("extension-popup");
+    }
+    var dock = el("header-dock");
+    if (dock) {
+      if (mode === "panel") {
+        dock.setAttribute("aria-pressed", "true");
+        dock.setAttribute("aria-label", "Undock");
+      } else {
+        dock.removeAttribute("aria-pressed");
+        dock.setAttribute("aria-label", "Dock");
+      }
+    }
+    return mode;
+  }
+
+  function appendTerminalLine(kind, text) {
+    var log = el("terminal-log");
+    if (!log) {
+      return;
+    }
+    var line = document.createElement("p");
+    line.className = kind === "in" ? "text-cream-500" : "whitespace-pre-wrap text-cream-100";
+    line.textContent = text;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function clearTerminalLog() {
+    var log = el("terminal-log");
+    if (log) {
+      while (log.firstChild) {
+        log.removeChild(log.firstChild);
+      }
+    }
+  }
+
+  function openTerminal() {
+    var term = el("wallet-terminal");
+    if (!term) {
+      return;
+    }
+    var log = el("terminal-log");
+    if (log && !log.firstChild) {
+      appendTerminalLine("out", "tkrWallet CLI. Type help. Secrets are never printed.");
+    }
+    term.removeAttribute("hidden");
+    var input = el("terminal-input");
+    if (input) {
+      input.focus();
+    }
+  }
+
+  function closeTerminal() {
+    var term = el("wallet-terminal");
+    if (term) {
+      term.setAttribute("hidden", "");
+    }
+  }
+
+  function applyCliResult(result) {
+    if (!result) {
+      return;
+    }
+    var i;
+    for (i = 0; i < result.lines.length; i++) {
+      appendTerminalLine("out", result.lines[i]);
+    }
+    var action = result.action;
+    if (!action || !action.type) {
+      return;
+    }
+    if (action.type === "clear") {
+      clearTerminalLog();
+      return;
+    }
+    if (action.type === "close") {
+      closeTerminal();
+      return;
+    }
+    if (action.type === "lock") {
+      closeTerminal();
+      lockNow();
+      return;
+    }
+    if (action.type === "dock") {
+      dockWallet();
+      return;
+    }
+    if (action.type === "go") {
+      closeTerminal();
+      go(action.screen);
+      return;
+    }
+    if (action.type === "search") {
+      closeTerminal();
+      go("search");
+      var input = el("search-input");
+      if (input) {
+        input.value = action.query || "";
+        searchResults(input.value);
+        input.focus();
+      }
+    }
+  }
+
+  function submitTerminal() {
+    var input = el("terminal-input");
+    var raw = input ? input.value : "";
+    if (input) {
+      input.value = "";
+    }
+    if (String(raw).trim()) {
+      appendTerminalLine("in", "$ " + String(raw).trim());
+    }
+    applyCliResult(
+      runCliCommand(raw, {
+        unlocked: !!(session.address && !session.locked),
+        address: session.address || "",
+      })
+    );
+  }
+
+  function dockWallet() {
+    var mode = parseShellMode(root.location && root.location.search, root.location && root.location.protocol);
+    if (mode === "panel") {
+      if (typeof root.close === "function") {
+        root.close();
+      }
+      return;
+    }
+    var chromeApi = root.chrome;
+    var sidePanel = chromeApi && chromeApi.sidePanel;
+    var windowsApi = chromeApi && chromeApi.windows;
+    if (!sidePanel || typeof sidePanel.open !== "function" || !windowsApi || typeof windowsApi.getCurrent !== "function") {
+      setWalletStatus("Dock needs the Chrome or Brave extension.");
+      return;
+    }
+    windowsApi.getCurrent(function (win) {
+      if (!win || !win.id) {
+        setWalletStatus("Dock could not find this browser window.");
+        return;
+      }
+      var opened = sidePanel.open({ windowId: win.id });
+      if (opened && typeof opened.then === "function") {
+        opened
+          .then(function () {
+            if (typeof root.close === "function") {
+              root.close();
+            }
+          })
+          .catch(function () {
+            setWalletStatus("Dock is not available in this browser.");
+          });
+        return;
+      }
+      if (typeof root.close === "function") {
+        root.close();
+      }
+    });
   }
 
   function readStoredCurrency() {
@@ -249,6 +517,12 @@
     if (next === "detail") {
       renderDetail();
     }
+    if (next === "receive") {
+      renderReceive();
+    }
+    if (next === "swap") {
+      fillSwapPairs();
+    }
     return next;
   }
 
@@ -276,6 +550,151 @@
   }
 
   /** Reflect wallet state in the header. `unknown` never renders as zero. */
+  function accountDotLabel(index) {
+    var n = Number(index);
+    if (!isFinite(n) || n < 0) {
+      n = 0;
+    }
+    return "A" + String(n + 1);
+  }
+
+  function selectedIndexFromVault(vault) {
+    if (!vault || !vault.accounts || !vault.accounts.length) {
+      return 0;
+    }
+    var selected = Number(vault.selectedIndex);
+    var i;
+    if (isFinite(selected) && selected >= 0 && selected === Math.floor(selected)) {
+      for (i = 0; i < vault.accounts.length; i++) {
+        if (Number(vault.accounts[i].i) === selected) {
+          return selected;
+        }
+      }
+    }
+    var first = Number(vault.accounts[0].i);
+    return isFinite(first) && first >= 0 ? first : 0;
+  }
+
+  function renderReceive() {
+    var addr = session.address;
+    setText(el("receive-account-label"), "Account " + (Number(session.index) + 1));
+    setText(el("receive-address"), addr || "Unlock to see this address.");
+    setText(
+      el("receive-note"),
+      addr
+        ? "Same address on Ethereum, Base, and other EVM chains."
+        : "No wallet is unlocked."
+    );
+  }
+
+  function renderAccountDrawer() {
+    var list = el("account-list");
+    if (!list) {
+      return;
+    }
+    while (list.firstChild) {
+      list.removeChild(list.firstChild);
+    }
+    var accounts = session.accounts || [];
+    if (!session.address || !accounts.length) {
+      return;
+    }
+    accounts.forEach(function (acc, n) {
+      var wrap = document.createElement("div");
+      var btn = document.createElement("button");
+      var cap = document.createElement("span");
+      var idx = acc && acc.i != null ? Number(acc.i) : n;
+      var mine =
+        acc &&
+        acc.evmAddress &&
+        session.address &&
+        String(acc.evmAddress).toLowerCase() === String(session.address).toLowerCase();
+      wrap.className = "flex flex-col items-center gap-1";
+      btn.type = "button";
+      btn.className =
+        "flex size-11 items-center justify-center rounded-full text-xs font-semibold text-ink-950 ring-1 ring-inset ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400";
+      if (mine) {
+        btn.className += " ring-2";
+      }
+      btn.style.backgroundColor = ACCOUNT_COLORS[n % ACCOUNT_COLORS.length];
+      btn.textContent = accountDotLabel(idx);
+      btn.setAttribute("aria-label", "Account " + (idx + 1));
+      btn.setAttribute("aria-current", mine ? "true" : "false");
+      btn.addEventListener("click", function () {
+        switchAccount(idx);
+      });
+      cap.className = "max-w-14 truncate text-center text-[10px] leading-tight text-cream-500";
+      cap.textContent = "Account " + (idx + 1);
+      wrap.appendChild(btn);
+      wrap.appendChild(cap);
+      list.appendChild(wrap);
+    });
+  }
+
+  function setDrawerOpen(open) {
+    var btn = el("account-btn");
+    if (btn) {
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+  }
+
+  function openAccountDrawer() {
+    renderAccountDrawer();
+    var drawer = el("account-drawer");
+    var backdrop = el("account-drawer-backdrop");
+    if (drawer) {
+      drawer.removeAttribute("hidden");
+    }
+    if (backdrop) {
+      backdrop.removeAttribute("hidden");
+    }
+    setDrawerOpen(true);
+  }
+
+  function closeAccountDrawer() {
+    var drawer = el("account-drawer");
+    var backdrop = el("account-drawer-backdrop");
+    if (drawer) {
+      drawer.setAttribute("hidden", "");
+    }
+    if (backdrop) {
+      backdrop.setAttribute("hidden", "");
+    }
+    setDrawerOpen(false);
+  }
+
+  function persistSelectedIndex(index) {
+    var s = store();
+    if (!s) {
+      return;
+    }
+    s.loadVault()
+      .then(function (vault) {
+        if (!vault) {
+          return;
+        }
+        vault.selectedIndex = Number(index);
+        return s.saveVault(vault);
+      })
+      .catch(function () {
+        /* non-fatal: next unlock falls back to account 0 */
+      });
+  }
+
+  function switchAccount(index) {
+    if (!session.phrase) {
+      setWalletStatus("Unlock the wallet to switch accounts.");
+      return;
+    }
+    var idx = Number(index);
+    if (!isFinite(idx) || idx < 0) {
+      return;
+    }
+    revealAccount(session.phrase, idx);
+    persistSelectedIndex(idx);
+    closeAccountDrawer();
+  }
+
   function setAccount(address, label) {
     var dot = el("account-dot");
     var connected = Boolean(address);
@@ -486,7 +905,12 @@
     }
     var text =
       read.state === "unknown"
-        ? "Balances are unknown: " + (read.reason === "edge-unreachable" ? "the wallet edge could not be reached." : "the read failed.")
+        ? "Balances are unknown: " +
+          (read.reason === "edge-unreachable"
+            ? "the wallet edge could not be reached."
+            : read.reason === "edge-http"
+              ? "the wallet edge returned an error."
+              : "the read failed.")
         : "Some chains could not be read. " + chainProblems(read);
     setText(el("balances-notice-text"), text);
     var when = el("balances-checked");
@@ -609,6 +1033,30 @@
     });
   }
 
+  function mergeBalanceReads(evm, sol) {
+    var evmState = (evm && evm.state) || "unknown";
+    var solState = (sol && sol.state) || "unknown";
+    var balances = []
+      .concat((evm && evm.balances) || [])
+      .concat((sol && sol.balances) || []);
+    var chains = []
+      .concat((evm && evm.chains) || [])
+      .concat((sol && sol.chains) || []);
+    var stateOut = "ok";
+    if (evmState === "unknown" && solState === "unknown") {
+      stateOut = "unknown";
+    } else if (evmState !== "ok" || solState !== "ok") {
+      stateOut = "partial";
+    }
+    return {
+      state: stateOut,
+      balances: balances,
+      chains: chains,
+      reason: stateOut === "ok" ? null : "some-chains-failed",
+      as_of: (evm && evm.as_of) || (sol && sol.as_of) || null,
+    };
+  }
+
   /** Read balances for the unlocked account from the wallet edge, then price
    * what came back. Three outcomes are kept distinct:
    *   ok      — every chain was read; an empty list really means "none held"
@@ -628,6 +1076,14 @@
     });
     return wallet
       .getBalances(session.address, [1, 8453], null, extras)
+      .then(function (evm) {
+        if (!session.solAddress) {
+          return evm;
+        }
+        return wallet.getBalances(session.solAddress, [900001]).then(function (sol) {
+          return mergeBalanceReads(evm, sol);
+        });
+      })
       .then(function (res) {
         uiData.lastChecked = Date.now();
         uiData.lastBalances = res;
@@ -905,21 +1361,49 @@
 
   /* ---- wallet gate: unlock with password, or import a recovery phrase ----- */
 
-  var session = { vault: null, address: null, locked: false, index: 0, phrase: null };
+  var session = { vault: null, address: null, solAddress: null, locked: false, index: 0, phrase: null, accounts: [] };
   var pendingCreate = null;
+  var pendingSolQuote = null;
+
+  function chromeExtensionDocument() {
+    try {
+      return String(root.location && root.location.protocol ? root.location.protocol : "").indexOf("chrome-extension") === 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * PWA tab: sessionStorage (tab close locks).
+   * MV3 popup/side panel: localStorage. sessionStorage dies when the popup
+   * is destroyed, so a 15-minute auto-lock would otherwise re-prompt on every
+   * toolbar click. parseViewSession still expires the blob.
+   */
+  function viewSessionStore() {
+    try {
+      if (chromeExtensionDocument() && root.localStorage) {
+        return root.localStorage;
+      }
+      return root.sessionStorage || null;
+    } catch (e) {
+      return null;
+    }
+  }
 
   function saveViewSession() {
     if (!session.address) {
       return;
     }
     try {
-      if (!root.sessionStorage) {
+      var storeRef = viewSessionStore();
+      if (!storeRef) {
         return;
       }
-      root.sessionStorage.setItem(
+      storeRef.setItem(
         VIEW_SESSION_KEY,
         JSON.stringify({
           address: session.address,
+          solAddress: session.solAddress || null,
           lastActivity: state.lastActivity,
           autolockMinutes: state.autolockMinutes,
         })
@@ -934,6 +1418,9 @@
       if (root.sessionStorage) {
         root.sessionStorage.removeItem(VIEW_SESSION_KEY);
       }
+      if (root.localStorage) {
+        root.localStorage.removeItem(VIEW_SESSION_KEY);
+      }
     } catch (e) {
       /* non-fatal */
     }
@@ -941,7 +1428,8 @@
 
   function restoreViewSession() {
     try {
-      var raw = root.sessionStorage && root.sessionStorage.getItem(VIEW_SESSION_KEY);
+      var storeRef = viewSessionStore();
+      var raw = storeRef && storeRef.getItem(VIEW_SESSION_KEY);
       var parsed = parseViewSession(raw, Date.now());
       if (!parsed) {
         if (raw) {
@@ -1092,6 +1580,7 @@
     var c = crypto();
     var w = c.importMnemonic(phrase, index);
     session.address = w.evmAddress;
+    session.solAddress = w.solAddress;
     session.index = w.index;
     session.phrase = w.mnemonic;
     session.locked = false;
@@ -1107,6 +1596,8 @@
     scheduleLock();
     saveViewSession();
     refreshBalances();
+    renderReceive();
+    renderAccountDrawer();
     return w;
   }
 
@@ -1143,10 +1634,15 @@
     storeAutolock(state.autolockMinutes);
     renderAutolock();
     scheduleLock();
-    setWalletStatus(
-      "Auto-lock after " + state.autolockMinutes + " minute" + (state.autolockMinutes === 1 ? "" : "s") +
-        " of inactivity. It cannot be turned off."
-    );
+    saveViewSession();
+    var label =
+      "Auto-lock set to " +
+      state.autolockMinutes +
+      " minute" +
+      (state.autolockMinutes === 1 ? "" : "s") +
+      " of inactivity. Saved.";
+    setWalletStatus(label);
+    setText(el("autolock-feedback"), label);
   }
 
   function resetActivity() {
@@ -1189,9 +1685,11 @@
       state.lockTimer = null;
     }
     session.address = null;
+    session.solAddress = null;
     session.index = 0;
     session.phrase = null;
     session.vault = null;
+    session.accounts = [];
     session.locked = session.locked || wasUnlocked;
     clearViewSession();
     uiData.lastHoldings = null;
@@ -1199,6 +1697,7 @@
     uiData.lastBalances = null;
     uiData.lastChecked = null;
     closeGate();
+    closeAccountDrawer();
     setAccount(null, "Locked");
     setWalletStatus(
       reason === "auto"
@@ -1236,14 +1735,11 @@
       })
       .then(function (unlocked) {
         session.vault = null;
-        var idx = 0;
-        if (unlocked.vault && unlocked.vault.accounts && unlocked.vault.accounts.length) {
-          idx = c.nextAccountIndex(unlocked.vault.accounts) - 1;
-          if (idx < 0) {
-            idx = 0;
-          }
-        }
-        revealAccount(unlocked.phrase, idx);
+        session.accounts =
+          unlocked.vault && unlocked.vault.accounts && unlocked.vault.accounts.length
+            ? unlocked.vault.accounts.slice()
+            : c.accountsFromMnemonic(unlocked.phrase, 1);
+        revealAccount(unlocked.phrase, selectedIndexFromVault(unlocked.vault));
         closeGate();
       })
       .catch(function (err) {
@@ -1278,9 +1774,11 @@
     c.encryptVault(phrase, password)
       .then(function (vault) {
         vault.accounts = c.accountsFromMnemonic(phrase, 1);
+        vault.selectedIndex = 0;
         return s.saveVault(vault);
       })
       .then(function () {
+        session.accounts = c.accountsFromMnemonic(phrase, 1);
         revealAccount(phrase, 0);
         closeGate();
       })
@@ -1379,9 +1877,11 @@
       })
       .then(function (vault) {
         vault.accounts = c.accountsFromMnemonic(phrase, 1);
+        vault.selectedIndex = 0;
         return s.saveVault(vault);
       })
       .then(function () {
+        session.accounts = c.accountsFromMnemonic(phrase, 1);
         revealAccount(phrase, 0);
         wipeSecrets();
         closeGate();
@@ -1423,7 +1923,9 @@
           var w = c.importMnemonic(phrase, next);
           accounts.push({ i: w.index, path: w.path, evmAddress: w.evmAddress });
           vault.accounts = accounts;
+          vault.selectedIndex = w.index;
           return s.saveVault(vault).then(function () {
+            session.accounts = accounts.slice();
             revealAccount(phrase, w.index);
             var pw = el("add-account-password");
             if (pw) {
@@ -1520,6 +2022,7 @@
           chain_id: 1,
           nonce: issued.nonce,
           signature: signed.signature,
+          sol_address: session.solAddress,
         });
       })
       .then(function (sess) {
@@ -1531,6 +2034,145 @@
       })
       .catch(function () {
         setWalletStatus("Connect failed. Nothing was broadcast.");
+      });
+  }
+
+  function solSwapTokenValue(tok) {
+    return tok.address ? String(tok.address) : "native";
+  }
+
+  function fillSwapPairs() {
+    var from = el("swap-from");
+    var to = el("swap-to");
+    var wallet = root.tkrWalletData;
+    if (!from || !to || !wallet || !wallet.TOKENS || !wallet.TOKENS[900001]) {
+      return;
+    }
+    var keepFrom = from.value;
+    var keepTo = to.value;
+    from.textContent = "";
+    to.textContent = "";
+    wallet.TOKENS[900001].forEach(function (tok) {
+      var value = solSwapTokenValue(tok);
+      var label = tok.symbol + " · Solana";
+      [from, to].forEach(function (sel) {
+        var opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = label;
+        sel.appendChild(opt);
+      });
+    });
+    from.value = keepFrom || "native";
+    to.value = keepTo || (from.value === "native" ? (wallet.TOKENS[900001][1] ? solSwapTokenValue(wallet.TOKENS[900001][1]) : "") : "native");
+    if (from.value === to.value && wallet.TOKENS[900001][1]) {
+      to.value = solSwapTokenValue(wallet.TOKENS[900001][1]);
+    }
+  }
+
+  function selectedSwapToken(selectEl) {
+    var wallet = root.tkrWalletData;
+    var value = selectEl ? selectEl.value : "";
+    var list = (wallet && wallet.TOKENS && wallet.TOKENS[900001]) || [];
+    for (var i = 0; i < list.length; i++) {
+      if (solSwapTokenValue(list[i]) === value) {
+        return list[i];
+      }
+    }
+    return null;
+  }
+
+  function onSwapQuote() {
+    var wallet = root.tkrWalletData;
+    pendingSolQuote = null;
+    setText(el("swap-out"), "");
+    if (!session.phrase || !session.solAddress) {
+      setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
+      return;
+    }
+    if (!wallet || typeof wallet.quoteSwap !== "function") {
+      setText(el("swap-note"), "Swap is unavailable in this browser.");
+      return;
+    }
+    var fromTok = selectedSwapToken(el("swap-from"));
+    var toTok = selectedSwapToken(el("swap-to"));
+    var amount = wallet.toAtomicAmount((el("swap-amount") || {}).value, fromTok && fromTok.decimals != null ? fromTok.decimals : 9);
+    if (!fromTok || !toTok || fromTok === toTok || solSwapTokenValue(fromTok) === solSwapTokenValue(toTok)) {
+      setText(el("swap-note"), "Pick two different Solana assets.");
+      return;
+    }
+    if (!amount) {
+      setText(el("swap-note"), "Enter an amount greater than zero.");
+      return;
+    }
+    setText(el("swap-note"), "Asking Scratchpost for a quote\u2026");
+    wallet
+      .quoteSwap({
+        input_mint: solSwapTokenValue(fromTok),
+        output_mint: solSwapTokenValue(toTok),
+        amount: amount,
+      })
+      .then(function (body) {
+        if (!body || body.ok === false) {
+          throw new Error((body && body.error) || "quote-failed");
+        }
+        pendingSolQuote = body;
+        var outHuman = body.out_amount || "";
+        setText(
+          el("swap-out"),
+          "You send " +
+            ((el("swap-amount") || {}).value || "") +
+            " " +
+            fromTok.symbol +
+            " \u2192 receive at least the quoted " +
+            toTok.symbol +
+            (outHuman ? " (" + outHuman + " raw)" : "") +
+            "."
+        );
+        setText(el("swap-note"), "Connect, then Swap. The key stays on this device.");
+      })
+      .catch(function () {
+        setText(el("swap-note"), "No quote. Scratchpost did not publish one. Nothing was signed.");
+        setWalletStatus("SOL quote failed. Nothing was signed.");
+      });
+  }
+
+  function onSwapSubmit() {
+    var wallet = root.tkrWalletData;
+    var c = crypto();
+    if (!session.phrase || !session.solAddress) {
+      setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
+      return;
+    }
+    if (!pendingSolQuote || !pendingSolQuote.quote) {
+      setText(el("swap-note"), "Quote first. Nothing was signed.");
+      return;
+    }
+    if (!wallet || typeof wallet.buildSwap !== "function" || !c || typeof c.signSolanaVersionedTx !== "function") {
+      setText(el("swap-note"), "Swap signing is unavailable in this browser.");
+      return;
+    }
+    setText(el("swap-note"), "Building unsigned swap\u2026");
+    wallet
+      .buildSwap({ quote: pendingSolQuote.quote })
+      .then(function (built) {
+        if (!built || built.ok === false || !built.unsigned_tx) {
+          throw new Error((built && built.error) || "build-failed");
+        }
+        var signed = c.signSolanaVersionedTx(session.phrase, built.unsigned_tx);
+        return wallet.broadcastRaw({ raw: signed.raw, chain_id: signed.chainId });
+      })
+      .then(function (sent) {
+        if (!sent || sent.ok === false) {
+          throw new Error((sent && sent.error) || "broadcast");
+        }
+        pendingSolQuote = null;
+        setText(el("swap-note"), "Broadcast " + (sent.tx_hash || "") + ". Key stayed on this device.");
+        setWalletStatus("SOL swap broadcast. Key stayed on this device.");
+        refreshBalances();
+      })
+      .catch(function () {
+        setText(el("swap-note"), "Swap did not broadcast. The key did not leave this device.");
+        setWalletStatus("SOL swap failed. The key did not leave this device.");
       });
   }
 
@@ -1585,7 +2227,69 @@
     var accountBtn = el("account-btn");
     if (accountBtn) {
       accountBtn.addEventListener("click", function () {
+        if (session.address) {
+          var drawer = el("account-drawer");
+          if (drawer && !drawer.hasAttribute("hidden")) {
+            closeAccountDrawer();
+          } else {
+            openAccountDrawer();
+          }
+          return;
+        }
         openGate();
+      });
+    }
+    var drawerBackdrop = el("account-drawer-backdrop");
+    if (drawerBackdrop) {
+      drawerBackdrop.addEventListener("click", function () {
+        closeAccountDrawer();
+      });
+    }
+    var drawerAdd = el("account-drawer-add");
+    if (drawerAdd) {
+      drawerAdd.addEventListener("click", function () {
+        closeAccountDrawer();
+        go("settings");
+        var addBtn = document.querySelector("[data-add-account]");
+        if (addBtn) {
+          addBtn.click();
+        }
+      });
+    }
+    var receiveCopy = el("receive-copy");
+    if (receiveCopy) {
+      receiveCopy.addEventListener("click", function () {
+        var addr = session.address;
+        if (!addr) {
+          setWalletStatus("Unlock the wallet to copy an address.");
+          return;
+        }
+        if (root.navigator && root.navigator.clipboard && root.navigator.clipboard.writeText) {
+          root.navigator.clipboard.writeText(addr);
+        }
+        setWalletStatus("Address copied.");
+      });
+    }
+    var sendSubmit = el("send-submit");
+    if (sendSubmit) {
+      sendSubmit.addEventListener("click", function () {
+        setText(
+          el("send-note"),
+          "Scratchpost has not published unsigned send calldata. Nothing was signed."
+        );
+        setWalletStatus("Send is not built. Nothing was signed.");
+      });
+    }
+    var swapQuote = el("swap-quote");
+    if (swapQuote) {
+      swapQuote.addEventListener("click", function () {
+        onSwapQuote();
+      });
+    }
+    var swapSubmit = el("swap-submit");
+    if (swapSubmit) {
+      swapSubmit.addEventListener("click", function () {
+        onSwapSubmit();
       });
     }
 
@@ -1647,6 +2351,7 @@
     var search = el("header-search");
     if (search) {
       search.addEventListener("click", function () {
+        closeTerminal();
         go("search");
         var input = el("search-input");
         if (input) {
@@ -1655,9 +2360,55 @@
       });
     }
 
-    var settingsBtn = el("header-settings");
-    if (settingsBtn) {
-      settingsBtn.addEventListener("click", function () {
+    var terminalBtn = el("header-terminal");
+    if (terminalBtn) {
+      terminalBtn.addEventListener("click", function () {
+        openTerminal();
+      });
+    }
+    var terminalClose = el("terminal-close");
+    if (terminalClose) {
+      terminalClose.addEventListener("click", function () {
+        closeTerminal();
+      });
+    }
+    var terminalForm = el("terminal-form");
+    if (terminalForm) {
+      terminalForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        submitTerminal();
+      });
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("keydown", function (event) {
+        if (event.key !== "Escape") {
+          return;
+        }
+        var term = el("wallet-terminal");
+        if (term && !term.hasAttribute("hidden")) {
+          closeTerminal();
+        }
+      });
+    }
+
+    var dockBtn = el("header-dock");
+    if (dockBtn) {
+      dockBtn.addEventListener("click", function () {
+        dockWallet();
+      });
+    }
+
+    var drawerSettings = el("account-drawer-settings");
+    if (drawerSettings) {
+      drawerSettings.addEventListener("click", function () {
+        closeAccountDrawer();
+        go("settings");
+      });
+    }
+    var gateSettings = el("gate-settings");
+    if (gateSettings) {
+      gateSettings.addEventListener("click", function () {
+        closeGate();
         go("settings");
       });
     }
@@ -1713,8 +2464,15 @@
       actions[k].addEventListener("click", function (event) {
         var action = event.currentTarget.getAttribute("data-action");
         if (action === "swap") {
-          // The one honest route: the swap screen explains why it is empty.
           go("swap");
+          return;
+        }
+        if (action === "send") {
+          go("send");
+          return;
+        }
+        if (action === "receive") {
+          go("receive");
           return;
         }
         if (action === "lock") {
@@ -1810,6 +2568,9 @@
       // already elapsed (lock) or we re-arm for the remaining time.
       document.addEventListener("visibilitychange", function () {
         if (document.visibilityState !== "visible") {
+          if (session.address) {
+            saveViewSession();
+          }
           return;
         }
         if (!session.address) {
@@ -1820,6 +2581,11 @@
           lockNow("auto");
         } else {
           scheduleLock();
+        }
+      });
+      root.addEventListener("pagehide", function () {
+        if (session.address) {
+          saveViewSession();
         }
       });
     }
@@ -1834,6 +2600,7 @@
       var restored = restoreViewSession();
       if (restored) {
         session.address = restored.address;
+        session.solAddress = restored.solAddress || null;
         session.locked = false;
         state.lastActivity = restored.lastActivity;
         state.autolockMinutes = restored.autolockMinutes;
@@ -1910,13 +2677,17 @@
     SCREENS: SCREENS,
     parseRoute: parseRoute,
     parseTokenRoute: parseTokenRoute,
+    parseShellMode: parseShellMode,
     parseCurrency: parseCurrency,
+    runCliCommand: runCliCommand,
     parseAutolockMinutes: parseAutolockMinutes,
     parseViewSession: parseViewSession,
     typedCreateConfirm: typedCreateConfirm,
     CREATE_CONFIRM: CREATE_CONFIRM,
     AUTOLOCK_OPTIONS: AUTOLOCK_OPTIONS,
     AUTOLOCK_DEFAULT: AUTOLOCK_DEFAULT,
+    accountDotLabel: accountDotLabel,
+    selectedIndexFromVault: selectedIndexFromVault,
     shortAddress: shortAddress,
     formatFiat: formatFiat,
     formatAmount: formatAmount,
@@ -1954,17 +2725,9 @@
   } else {
     root.tkrWalletUI = api;
     if (typeof document !== "undefined") {
-      /* MV3 action popup: fixed shell size (see tools/src/app.css). PWA/tab stays 100vh. */
+      /* Popup vs side panel vs PWA: see parseShellMode / tools/src/app.css. */
       try {
-        if (
-          root.location &&
-          root.location.protocol === "chrome-extension:" &&
-          root.chrome &&
-          root.chrome.runtime &&
-          root.chrome.runtime.id
-        ) {
-          document.documentElement.classList.add("extension-popup");
-        }
+        applyShellClass();
       } catch (e) {
         /* preview / non-extension hosts ignore */
       }

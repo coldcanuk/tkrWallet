@@ -36,7 +36,7 @@ nginx -t && systemctl reload nginx
 curl -sI https://tkrwallet.scratchpost.ai/ | grep -iE 'strict-transport|content-security|x-content'
 # preflight for the extension origin (handled by the facade)
 curl -s -X OPTIONS https://tkrwallet.scratchpost.ai/api/wallet/session \
-  -H "Origin: chrome-extension://hkljagpgkenlmfemcddcnhoaddpndldn" \
+  -H "Origin: chrome-extension://kfgmpcgplemjepolfpdbodmakceacook" \
   -H "Access-Control-Request-Method: POST" -o /dev/null -w '%{http_code}\n'
 # healthz without auth
 curl -s https://tkrwallet.scratchpost.ai/healthz

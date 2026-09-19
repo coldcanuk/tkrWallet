@@ -67,13 +67,20 @@
     color-scheme: dark;
   }
 
-  /* PWA / full tab: 100vh fills the viewport (iOS standalone chin gap otherwise).
-   * MV3 action popup: Chromium caps at 800×600. Plan baseline was 360×560; Charles
-   * asked for ≥2× height and ~+20% width → 432×600 (width from 360×1.2, height at
-   * the Chrome max so the popup is never content-shrunk short). */
+  /* One page scroller only: #main (overlays own their own log/gate scroll).
+   * A document taller than Chromium's clamped popup created the outer+inner
+   * bars. Size the shell to the actual window and overflow:hidden. */
   html,
   body {
+    height: 100%;
     height: 100vh;
+    overflow: hidden;
+  }
+
+  #app {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
   }
 
   html.extension-popup,
@@ -81,18 +88,27 @@
     width: 432px;
     min-width: 432px;
     max-width: 432px;
-    /* 600×1.1 — Chromium may clamp near 600; request 660 for Charles. */
-    height: 660px;
-    min-height: 660px;
-    max-height: 660px;
-    /* Chromium may clamp the requested height below 660px. Keep that
-     * difference from turning html/body into a second scroll container. */
+    /* Chromium's traditional popup max. max-height: 100vh shrinks with clamp. */
+    height: 600px;
+    max-height: 100vh;
     overflow: hidden;
   }
 
-  html.extension-popup #app {
-    /* Use the clamped popup viewport; main and the gate own content scrolling. */
-    height: 100vh;
+  html.extension-popup #app,
+  html.extension-panel #app {
+    height: 100%;
+    max-height: 100%;
+  }
+
+  html.extension-panel,
+  html.extension-panel body {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    height: 100%;
+    min-height: 100%;
+    max-height: 100%;
+    overflow: hidden;
   }
 
   body {

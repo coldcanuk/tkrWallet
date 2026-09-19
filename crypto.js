@@ -40,6 +40,9 @@
 
   var B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   function base58Encode(bytes) {
+    if (!bytes.length) {
+      return "";
+    }
     var digits = [0];
     for (var i = 0; i < bytes.length; i++) {
       var carry = bytes[i];
@@ -54,7 +57,7 @@
       }
     }
     var out = "";
-    for (var k = 0; k < bytes.length && bytes[k] === 0; k++) {
+    for (var k = 0; bytes[k] === 0 && k < bytes.length - 1; k++) {
       out += "1";
     }
     for (var d = digits.length - 1; d >= 0; d--) {
@@ -437,6 +440,49 @@
     return { address: w.evmAddress, raw: "0x" + rawHex, chainId: Number(tx.chainId) };
   }
 
+  function readCompactU16(bytes, offset) {
+    var value = 0;
+    var size = 0;
+    var shift = 0;
+    while (size < 3) {
+      var b = bytes[offset + size];
+      if (b === undefined) {
+        throw new Error("bad-tx");
+      }
+      value |= (b & 0x7f) << shift;
+      size += 1;
+      if ((b & 0x80) === 0) {
+        return { value: value, size: size };
+      }
+      shift += 7;
+    }
+    throw new Error("bad-tx");
+  }
+
+  /* Overlay the wallet's ed25519 signature in slot 0 of a VersionedTransaction.
+   * Scratchpost built the unsigned bytes; the key never leaves this device. */
+  function signSolanaVersionedTx(mnemonic, txB64) {
+    var w = importMnemonic(mnemonic, 0);
+    var seed = noble.mnemonicToSeedSync(w.mnemonic);
+    var sol = deriveSolana(seed);
+    var tx = b64decode(String(txB64 || ""));
+    var n = readCompactU16(tx, 0);
+    if (!n.value) {
+      wipeBytes(sol.privateKey);
+      wipeBytes(seed);
+      throw new Error("bad-tx");
+    }
+    var sigOff = n.size;
+    var message = tx.subarray(sigOff + n.value * 64);
+    var sig = noble.ed25519.sign(message, sol.privateKey);
+    var out = new Uint8Array(tx.length);
+    out.set(tx);
+    out.set(sig, sigOff);
+    wipeBytes(sol.privateKey);
+    wipeBytes(seed);
+    return { address: sol.address, raw: b64encode(out), chainId: 900001 };
+  }
+
   /* Recover the signer's EIP-55 address from a 65-byte personal_sign hex. */
   function recoverSigner(sigHex, message) {
     var sig = hexToBytes(sigHex);
@@ -545,6 +591,8 @@
     signPersonal: signPersonal,
     signTransaction: signTransaction,
     signAndBroadcastPayload: signAndBroadcastPayload,
+    signSolanaVersionedTx: signSolanaVersionedTx,
+    readCompactU16: readCompactU16,
     recoverSigner: recoverSigner,
     recoverTxSigner: recoverTxSigner,
     rlpInt: rlpInt,

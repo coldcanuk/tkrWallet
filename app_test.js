@@ -77,7 +77,7 @@ function readFile(rel) {
 
 test("ui.js exports the shell API", function () {
   const ui = require("./ui.js");
-  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings", "detail"]);
+  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings", "detail", "send", "receive"]);
   assert.strictEqual(typeof ui.renderTokens, "function");
   assert.strictEqual(typeof ui.setWalletValue, "function");
   assert.strictEqual(typeof ui.renderDetail, "function");
@@ -87,11 +87,49 @@ test("ui.js exports the shell API", function () {
 test("route parsing is strict and never throws", function () {
   const ui = require("./ui.js");
   assert.strictEqual(ui.parseRoute("#/swap"), "swap");
+  assert.strictEqual(ui.parseRoute("#/send"), "send");
+  assert.strictEqual(ui.parseRoute("#/receive"), "receive");
   assert.strictEqual(ui.parseRoute(""), "home");
   assert.strictEqual(ui.parseRoute("#/nope"), "home");
   assert.strictEqual(ui.parseRoute(null), "home");
   assert.strictEqual(ui.parseRoute("#/ACTIVITY?x=1"), "activity");
   assert.strictEqual(ui.parseRoute("#/settings"), "settings");
+});
+
+test("account drawer labels and selectedIndex restore the last HD account", function () {
+  const ui = require("./ui.js");
+  assert.strictEqual(ui.accountDotLabel(0), "A1");
+  assert.strictEqual(ui.accountDotLabel(2), "A3");
+  assert.strictEqual(
+    ui.selectedIndexFromVault({
+      accounts: [
+        { i: 0, evmAddress: "0x1111111111111111111111111111111111111111" },
+        { i: 1, evmAddress: "0x2222222222222222222222222222222222222222" },
+      ],
+      selectedIndex: 1,
+    }),
+    1
+  );
+  assert.strictEqual(
+    ui.selectedIndexFromVault({
+      accounts: [{ i: 0, evmAddress: "0x1111111111111111111111111111111111111111" }],
+      selectedIndex: 9,
+    }),
+    0,
+    "unknown selectedIndex falls back to the first published account"
+  );
+});
+
+test("index.html ships the account drawer and receive/send screens", function () {
+  const html = readFile("index.html");
+  assert.match(html, /id="account-drawer"/);
+  assert.match(html, /id="account-list"/);
+  assert.match(html, /w-20/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /data-screen="receive"/);
+  assert.match(html, /data-screen="send"/);
+  assert.match(html, /id="receive-copy"/);
+  assert.match(html, /Scratchpost has not published unsigned send calldata/);
 });
 
 test("token routes parse to a detail screen, and malformed ones fall home", function () {
@@ -163,12 +201,29 @@ test("parseViewSession restores a fresh viewing session and rejects an expired o
     now
   );
   assert.strictEqual(snapped.autolockMinutes, 5, "viewing session snaps auto-lock the same way Settings does");
+  const withSol = ui.parseViewSession(
+    JSON.stringify({
+      address: addr,
+      solAddress: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+      lastActivity: now,
+      autolockMinutes: 15,
+    }),
+    now
+  );
+  assert.strictEqual(withSol.solAddress, "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM");
+  const badSol = ui.parseViewSession(
+    JSON.stringify({ address: addr, solAddress: "not-sol", lastActivity: now, autolockMinutes: 15 }),
+    now
+  );
+  assert.strictEqual(badSol.solAddress, null, "a junk Solana field must be dropped, not the whole session");
 });
 
 test("reload keeps the viewing session; lock and expiry do not; keys never land in it", function () {
   const ui = readFile("ui.js");
   assert.ok(ui.indexOf("tkrwallet.view-session") !== -1, "viewing session has a dedicated key");
-  assert.ok(ui.indexOf("sessionStorage") !== -1, "reload must use sessionStorage, not a second IndexedDB vault");
+  assert.ok(ui.indexOf("sessionStorage") !== -1, "PWA reload still uses sessionStorage, not a second IndexedDB vault");
+  assert.ok(ui.indexOf("function viewSessionStore") !== -1, "MV3 popup vs PWA must pick different stores");
+  assert.ok(ui.indexOf("chromeExtensionDocument") !== -1, "chrome-extension pages must not rely on popup sessionStorage");
   assert.ok(/function parseViewSession\(/.test(ui), "parseViewSession is the pure helper tests call");
   assert.ok(/function saveViewSession\(/.test(ui), "unlock must persist a viewing session");
   assert.ok(/function clearViewSession\(/.test(ui), "lock must drop the viewing session");
@@ -197,7 +252,8 @@ test("reload keeps the viewing session; lock and expiry do not; keys never land 
   assert.ok(save[0].indexOf("mnemonic") === -1, "the viewing session must never mention the recovery phrase");
   assert.ok(save[0].indexOf("privateKey") === -1, "the viewing session must never mention a private key");
   assert.ok(save[0].indexOf("session.address") !== -1, "only the public address is needed to re-read balances");
-  assert.ok(save[0].indexOf("sessionStorage") !== -1 && save[0].indexOf("localStorage") === -1, "tab-scoped, not durable across close");
+  assert.ok(save[0].indexOf("viewSessionStore") !== -1, "save goes through the store picker");
+  assert.ok(save[0].indexOf("mnemonic") === -1 && save[0].indexOf("phrase") === -1, "still no key material");
 });
 
 test("address shortening", function () {
@@ -222,7 +278,7 @@ test("amount formatting: unknown renders an em dash, zero renders 0", function (
 
 /* ── index.html: the shell ──────────────────────────────────────────────── */
 
-test("shell structure: five screens, four nav entries, and a settings gear", function () {
+test("shell structure: five screens, four nav entries, and drawer settings", function () {
   const html = readFile("index.html");
   assert.ok(html.indexOf('id="main"') !== -1, "missing main region");
   ["home", "swap", "activity", "search", "settings"].forEach(function (screen) {
@@ -231,8 +287,10 @@ test("shell structure: five screens, four nav entries, and a settings gear", fun
   ["home", "swap", "activity", "search"].forEach(function (screen) {
     assert.ok(html.indexOf('data-nav="' + screen + '"') !== -1, "missing nav entry " + screen);
   });
-  // Settings lives behind the header gear, not the bottom nav.
-  assert.ok(html.indexOf('id="header-settings"') !== -1, "missing settings gear");
+  // Settings lives in the account drawer, not the header trio or bottom nav.
+  assert.ok(html.indexOf('id="account-drawer-settings"') !== -1, "missing drawer settings");
+  assert.ok(html.indexOf('id="gate-settings"') !== -1, "locked gate must still reach settings");
+  assert.ok(html.indexOf('id="header-settings"') === -1, "settings gear must leave the header");
 });
 
 test("auto-lock settings: fixed options only, never off, longest is 1 hour", function () {
@@ -240,6 +298,7 @@ test("auto-lock settings: fixed options only, never off, longest is 1 hour", fun
   const options = Array.from(html.matchAll(/data-autolock="(\d+)"/g)).map((m) => Number(m[1]));
   assert.deepStrictEqual(options, [1, 5, 15, 30, 60], "exactly the five offered options");
   assert.ok(options.every((m) => m >= 1 && m <= 60), "no off option, nothing past an hour");
+  assert.ok(html.indexOf('id="autolock-feedback"') !== -1, "auto-lock must show visible save feedback");
   assert.ok(html.indexOf("cannot be turned off") !== -1, "settings must say auto-lock cannot be disabled");
   assert.ok(html.indexOf("1 hour") !== -1, "settings must state the one-hour cap");
   assert.ok(html.indexOf('data-action="lock"') !== -1, "settings must offer Lock now");
@@ -262,12 +321,20 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
     /html\.extension-popup,\s*html\.extension-popup body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
     "extension html/body must not create an outer scrollbar"
   );
+  assert.ok(!/660px/.test(css), "a 660px popup document overflows Chromium's clamp");
   assert.ok(
-    /html\.extension-popup #app\s*\{[^}]*height:\s*100vh;/s.test(css),
-    "the popup shell must fit Chromium's actual viewport"
+    /max-height:\s*100vh/.test(css),
+    "popup height must shrink with the clamped viewport"
+  );
+  assert.ok(
+    /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
+    "PWA/tab document must not scroll under #main"
   );
   const html = readFile("index.html");
-  assert.ok(html.indexOf('id="main"') !== -1 && html.indexOf("overflow-y-auto") !== -1, "main keeps the inner scroller");
+  assert.ok(/id="main"[^>]*min-h-0/.test(html), "main must be allowed to shrink in the flex shell");
+  assert.ok(/id="main"[^>]*overflow-y-auto/.test(html), "main keeps the only page scroller");
+  assert.ok(html.indexOf("pb-28") === -1, "fixed-nav spacer is gone; nav is in flow");
+  assert.ok(!/class="safe-b fixed inset-x-0 bottom-0/.test(html), "bottom nav must not be position fixed");
   assert.ok(
     /id="wallet-gate"[^>]*overflow-y-auto/.test(html),
     "the gate keeps its intentional inner scroller"
@@ -283,6 +350,55 @@ test("navigation uses real links, not an invalid tab pattern", function () {
   // selector has to be aria-[current=page]:, not aria-current: (which only
   // matches aria-current="true" — a bug the vision review caught).
   assert.ok(html.indexOf("aria-[current=page]:text-ember-400") !== -1, "active tab styling never matches");
+});
+
+test("header chrome is Terminal, Search, Dock with Heroicons", function () {
+  const html = readFile("index.html");
+  ["header-terminal", "header-search", "header-dock"].forEach(function (id) {
+    assert.ok(html.indexOf('id="' + id + '"') !== -1, "missing #" + id);
+  });
+  assert.ok(html.indexOf("m6.75 7.5 3 2.25-3 2.25") !== -1, "Terminal must use Heroicons CommandLine");
+  assert.ok(html.indexOf("m21 21-5.197-5.197") !== -1, "Search must use Heroicons MagnifyingGlass");
+  assert.ok(html.indexOf("M15.75 3.75v16.5") !== -1, "Dock must use the right-rail mark");
+  assert.ok(html.indexOf('id="wallet-terminal"') !== -1, "missing CLI overlay");
+  assert.ok(html.indexOf('id="terminal-input"') !== -1, "missing CLI input");
+});
+
+test("extension docks through the Side Panel API", function () {
+  const manifest = JSON.parse(readFile("manifest.json"));
+  assert.deepStrictEqual(manifest.permissions, ["sidePanel"]);
+  assert.strictEqual(manifest.side_panel && manifest.side_panel.default_path, "index.html?mode=panel");
+  const ui = require("./ui.js");
+  assert.strictEqual(ui.parseShellMode("?mode=panel", "chrome-extension:"), "panel");
+  assert.strictEqual(ui.parseShellMode("", "chrome-extension:"), "popup");
+  assert.strictEqual(ui.parseShellMode("", "https:"), "page");
+  const src = readFile("ui.js");
+  assert.ok(src.indexOf("sidePanel.open") !== -1, "dock must call chrome.sidePanel.open");
+  assert.ok(src.indexOf("applyShellClass") !== -1, "boot must distinguish popup from panel");
+});
+
+test("wallet CLI routes commands and refuses secrets", function () {
+  const ui = require("./ui.js");
+  const help = ui.runCliCommand("help");
+  assert.ok(help.lines.some(function (line) { return /status/.test(line); }));
+  assert.strictEqual(help.refuse, false);
+  const locked = ui.runCliCommand("status", { unlocked: false, address: "" });
+  assert.deepStrictEqual(locked.lines, ["locked.", "no account."]);
+  const open = ui.runCliCommand("status", {
+    unlocked: true,
+    address: "0x2222222222222222222222222222222222222222",
+  });
+  assert.strictEqual(open.lines[0], "unlocked.");
+  assert.ok(open.lines[1].indexOf("0x2222") === 0);
+  assert.ok(open.lines.join(" ").indexOf("22222222222222222222222222222222") === -1);
+  assert.strictEqual(ui.runCliCommand("settings").action.type, "go");
+  assert.strictEqual(ui.runCliCommand("search usdc").action.query, "usdc");
+  ["seed", "mnemonic", "password", "private", "export"].forEach(function (cmd) {
+    const refused = ui.runCliCommand(cmd);
+    assert.strictEqual(refused.refuse, true, cmd + " must be refused");
+    assert.ok(!/0x/.test(refused.lines.join(" ")));
+  });
+  assert.strictEqual(ui.runCliCommand("nonsense").lines[0], "unknown command. type help.");
 });
 
 test("safe-area padding uses classes, never inline styles", function () {
@@ -472,7 +588,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v8"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v9"') !== -1, "cache version must bump so the new worker activates");
 });
 
 test("service worker bypasses the HTTP cache and sweeps legacy caches", function () {
@@ -599,8 +715,26 @@ test("getBalances() failure is unknown — balances are never invented", functio
     return Promise.reject(new Error("edge down"));
   }).then(function (got) {
     assert.strictEqual(got.state, "unknown");
-    assert.ok(got.reason, "an unknown carries the reason it is unknown");
+    assert.strictEqual(got.reason, "edge-unreachable");
   });
+});
+
+test("getBalances() HTTP errors are edge-http, not unreachable", function () {
+  const wallet = require("./wallet.js");
+  return wallet
+    .getBalances("0x2222222222222222222222222222222222222222", [1], function () {
+      return Promise.resolve({
+        ok: false,
+        status: 502,
+        json: function () {
+          return Promise.resolve({ error: "upstream" });
+        },
+      });
+    })
+    .then(function (got) {
+      assert.strictEqual(got.state, "unknown");
+      assert.strictEqual(got.reason, "edge-http");
+    });
 });
 
 test("getBalances() never calls an unreadable chain an empty wallet", function () {
@@ -1198,6 +1332,60 @@ test("crypto: signAndBroadcastPayload signs an unsigned tx and recovers the sign
   assert.strictEqual(signed.address, "0x9858EfFD232B4033E47d90003D41EC34EcaEda94");
 });
 
+test("crypto: signSolanaVersionedTx overlays ed25519 on message bytes", function () {
+  const c = require("./crypto.js");
+  const noble = require("./vendor/noble.js");
+  const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  const w = c.importMnemonic(phrase);
+  const message = Buffer.from("sol-native-swap-message");
+  const unsigned = Buffer.concat([Buffer.from([1]), Buffer.alloc(64), message]);
+  const signed = c.signSolanaVersionedTx(phrase, unsigned.toString("base64"));
+  assert.strictEqual(signed.chainId, 900001);
+  assert.strictEqual(signed.address, w.solAddress);
+  const raw = Buffer.from(signed.raw, "base64");
+  const sig = raw.subarray(1, 65);
+  const seed = noble.HDKey.fromMasterSeed(noble.mnemonicToSeedSync(phrase)).derive("m/44'/501'/0'/0'").privateKey;
+  const pub = noble.ed25519.getPublicKey(seed);
+  assert.ok(noble.ed25519.verify(sig, message, pub));
+  assert.ok(!/^0x/.test(signed.raw));
+  assert.strictEqual(c.base58Encode(Buffer.alloc(32)), "1".repeat(32));
+});
+
+test("SOL catalogue supports native in and out; search stays Mainnet/Base", function () {
+  const wallet = require("./wallet.js");
+  const sol = wallet.TOKENS[900001];
+  assert.ok(sol, "Solana catalogue must exist");
+  assert.ok(sol.some((t) => t.symbol === "SOL" && !t.address));
+  assert.ok(sol.some((t) => t.symbol === "USDC" && t.address));
+  assert.ok(sol.some((t) => t.symbol === "USDT" && t.address));
+  assert.strictEqual(wallet.toAtomicAmount("1.5", 9), "1500000000");
+  assert.strictEqual(wallet.toAtomicAmount("0", 9), null);
+  wallet.searchCatalog("usdc").forEach(function (r) {
+    assert.ok(r.chain_id === 1 || r.chain_id === 8453);
+  });
+});
+
+test("swap screen quotes SOL through the wallet edge, never a vendor host", function () {
+  const html = readFile("index.html");
+  assert.match(html, /id="swap-from"/);
+  assert.match(html, /id="swap-quote"/);
+  assert.match(html, /id="swap-submit"/);
+  assert.ok(html.indexOf("Under construction") === -1 || html.indexOf("data-screen=\"swap\"") < html.indexOf("Under construction"));
+  const swapSection = html.split('data-screen="swap"')[1].split('data-screen="receive"')[0];
+  assert.ok(swapSection.indexOf("Under construction") === -1, "SOL swap is no longer a placeholder");
+  const ui = readFile("ui.js");
+  assert.ok(ui.indexOf("quoteSwap") !== -1);
+  assert.ok(ui.indexOf("signSolanaVersionedTx") !== -1);
+  assert.ok(ui.indexOf("sol_address") !== -1);
+  const wallet = readFile("wallet.js");
+  assert.ok(wallet.indexOf("/api/wallet/swap/quote") !== -1);
+  assert.ok(wallet.indexOf("/api/wallet/swap/build") !== -1);
+  CLIENT_SHIPPED.forEach(function (file) {
+    const src = readFile(file);
+    assert.ok(!/helius|jupiter|lite-api\.jup|mainnet\.helius/i.test(src), file + " must not name swap vendors");
+  });
+});
+
 test("crypto: signPersonal signs a connect statement and recovers the HD address", function () {
   const c = require("./crypto.js");
   const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -1461,9 +1649,15 @@ test("catalogue: every token address is well-formed and unique within its chain"
       if (!t.address) {
         return; // native gas token
       }
-      assert.ok(/^0x[0-9a-fA-F]{40}$/.test(t.address), "malformed address on chain " + chainId + ": " + t.address);
-      assert.ok(!seen[t.address.toLowerCase()], "duplicate address on chain " + chainId + ": " + t.address);
-      seen[t.address.toLowerCase()] = true;
+      if (Number(chainId) === 900001) {
+        assert.ok(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(t.address), "malformed address on chain " + chainId + ": " + t.address);
+        assert.ok(!seen[t.address], "duplicate address on chain " + chainId + ": " + t.address);
+        seen[t.address] = true;
+      } else {
+        assert.ok(/^0x[0-9a-fA-F]{40}$/.test(t.address), "malformed address on chain " + chainId + ": " + t.address);
+        assert.ok(!seen[t.address.toLowerCase()], "duplicate address on chain " + chainId + ": " + t.address);
+        seen[t.address.toLowerCase()] = true;
+      }
       assert.ok(t.symbol && t.name, "every token needs a symbol and a name");
       assert.ok(Number.isInteger(t.decimals) && t.decimals >= 0 && t.decimals <= 36, "bad decimals for " + t.symbol);
     });

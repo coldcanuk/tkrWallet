@@ -29,9 +29,8 @@
     return isExtension ? BASE_URL + path : path;
   }
 
-  /* Chain catalogue. Solana is catalogued-not-queried: there is no balance
-   * source until the edge provides reads (D10), so it has no TOKENS entry and
-   * produces no RPC calls. */
+  /* Chain catalogue. Solana native + SPL catalogue is queried through the
+   * wallet edge. The client never dials a Solana RPC. */
   var CHAINS = {
     1: { name: "Ethereum", native: "ETH" },
     8453: { name: "Base", native: "ETH" },
@@ -86,6 +85,11 @@
       { symbol: "wstETH", name: "Wrapped liquid staked Ether", address: "0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452", decimals: 18 },
     ],
     4663: [{ symbol: "ETH", name: "Ether" }],
+    900001: [
+      { symbol: "SOL", name: "Solana", decimals: 9 },
+      { symbol: "USDC", name: "USD Coin", address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", decimals: 6 },
+      { symbol: "USDT", name: "Tether USD", address: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", decimals: 6 },
+    ],
   };
 
   /* Local colour table. Never a wire-supplied colour (audit W8/S-7). */
@@ -330,7 +334,9 @@
     return fetchFn(apiUrl("/api/wallet/balances?" + q), { credentials: "include" })
       .then(function (res) {
         if (!res.ok) {
-          throw new Error("HTTP " + res.status);
+          var err = new Error("HTTP " + res.status);
+          err.name = "EdgeHttpError";
+          throw err;
         }
         return res.json();
       })
@@ -368,7 +374,10 @@
         }
         return { state: "unknown", balances: rows, chains: reported, reason: "all-chains-failed" };
       })
-      .catch(function () {
+      .catch(function (err) {
+        if (err && err.name === "EdgeHttpError") {
+          return { state: "unknown", reason: "edge-http" };
+        }
         return { state: "unknown", reason: "edge-unreachable" };
       });
   }
@@ -504,6 +513,68 @@
     return out.slice(0, max);
   }
 
+  function toAtomicAmount(human, decimals) {
+    var s = String(human || "").trim();
+    if (!/^\d+(\.\d+)?$/.test(s)) {
+      return null;
+    }
+    var dec = Number(decimals);
+    if (!Number.isInteger(dec) || dec < 0 || dec > 18) {
+      return null;
+    }
+    var parts = s.split(".");
+    var whole = parts[0];
+    var frac = (parts[1] || "").slice(0, dec);
+    while (frac.length < dec) {
+      frac += "0";
+    }
+    var raw = (whole + frac).replace(/^0+/, "") || "0";
+    if (raw === "0") {
+      return null;
+    }
+    return raw;
+  }
+
+  function quoteSwap(payload, fetchFn) {
+    fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
+    if (!fetchFn) {
+      return Promise.resolve({ ok: false, error: "no-fetch" });
+    }
+    return fetchFn(apiUrl("/api/wallet/swap/quote"), {
+      method: "POST",
+      credentials: "include",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    }).then(function (res) {
+      return res.json().then(function (body) {
+        if (!res.ok) {
+          return { ok: false, error: (body && body.error) || "quote-failed" };
+        }
+        return body;
+      });
+    });
+  }
+
+  function buildSwap(payload, fetchFn) {
+    fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
+    if (!fetchFn) {
+      return Promise.resolve({ ok: false, error: "no-fetch" });
+    }
+    return fetchFn(apiUrl("/api/wallet/swap/build"), {
+      method: "POST",
+      credentials: "include",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    }).then(function (res) {
+      return res.json().then(function (body) {
+        if (!res.ok) {
+          return { ok: false, error: (body && body.error) || "build-failed" };
+        }
+        return body;
+      });
+    });
+  }
+
   var api = {
     BASE_URL: BASE_URL,
     CHAINS: CHAINS,
@@ -522,6 +593,9 @@
     getTokenMeta: getTokenMeta,
     estimateValue: estimateValue,
     searchCatalog: searchCatalog,
+    toAtomicAmount: toAtomicAmount,
+    quoteSwap: quoteSwap,
+    buildSwap: buildSwap,
     PREVIEW_HOLDINGS: PREVIEW_HOLDINGS,
     PREVIEW_PRICES: PREVIEW_PRICES,
   };
