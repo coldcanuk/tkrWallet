@@ -117,8 +117,6 @@ resolve_packer
 umask 077
 rm -rf "$PACK"
 mkdir -p "$PACK"
-mkdir -p "$RUN_DIR/doc/by-app/com.brave.Browser"
-mkdir -p "$RUN_DIR/doc/by-app/com.google.Chrome"
 
 # TTY only for unseal (GPG may prompt). Checkout is -T so the PEM never hits the terminal.
 ssh -t "$ATHENA" python3 "$VAULT_OPS" unseal
@@ -210,6 +208,8 @@ chmod 644 "$CRX"
 
 echo
 echo "packed: $CRX"
+echo
+echo "Do not click Pack extension. The PEM is not a file you browse to."
 echo
 echo "Install in Chrome"
 echo "  1. Developer mode on"
