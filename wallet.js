@@ -39,9 +39,8 @@
     728126428: { name: "TRON", native: "TRX" },
   };
 
-  /* Built-in catalogue: Mainnet + Base tokens the wallet knows by name,
-   * symbol, address and decimals. Search runs against this list offline;
-   * balances for it are read by the edge (see /api/wallet/balances). Every
+  /* Built-in catalogue: Mainnet + Base for search; Robinhood ETH/WETH/USDG for
+   * holdings and same-chain swaps. Search stays Mainnet + Base. Every
    * address below is a well-known, documented contract. */
   var TOKENS = {
     1: [
@@ -85,7 +84,11 @@
       { symbol: "cbETH", name: "Coinbase Wrapped Staked ETH", address: "0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22", decimals: 18 },
       { symbol: "wstETH", name: "Wrapped liquid staked Ether", address: "0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452", decimals: 18 },
     ],
-    4663: [{ symbol: "ETH", name: "Ether" }],
+    4663: [
+      { symbol: "ETH", name: "Ether" },
+      { symbol: "WETH", name: "Wrapped Ether", address: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73", decimals: 18 },
+      { symbol: "USDG", name: "Global Dollar", address: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", decimals: 6 },
+    ],
     900001: [
       { symbol: "SOL", name: "Solana", decimals: 9 },
       { symbol: "USDC", name: "USD Coin", address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", decimals: 6 },
@@ -102,6 +105,7 @@
     ETH: "#a8a29e",
     WETH: "#a8a29e",
     USDC: "#4d9de0",
+    USDG: "#4d9de0",
     USDT: "#26a17b",
     DAI: "#f5ac37",
     WBTC: "#f7931a",
@@ -332,7 +336,7 @@
     if (!fetchFn) {
       return Promise.resolve({ state: "unknown", reason: "no-fetch" });
     }
-    var chains = (chainIds && chainIds.length ? chainIds : [1, 8453]).join(",");
+    var chains = (chainIds && chainIds.length ? chainIds : [1, 8453, 4663]).join(",");
     var q = "address=" + encodeURIComponent(String(address || "")) + "&chains=" + encodeURIComponent(chains);
     if (extraTokens && extraTokens.length) {
       q += "&tokens=" + encodeURIComponent(extraTokens.join(","));
