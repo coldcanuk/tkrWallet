@@ -299,6 +299,7 @@ test("auto-lock settings: fixed options only, never off, longest is 1 hour", fun
   assert.deepStrictEqual(options, [1, 5, 15, 30, 60], "exactly the five offered options");
   assert.ok(options.every((m) => m >= 1 && m <= 60), "no off option, nothing past an hour");
   assert.ok(html.indexOf('id="autolock-feedback"') !== -1, "auto-lock must show visible save feedback");
+  assert.ok(html.indexOf('id="app-version"') !== -1, "settings must show the running client version");
   assert.ok(html.indexOf("cannot be turned off") !== -1, "settings must say auto-lock cannot be disabled");
   assert.ok(html.indexOf("1 hour") !== -1, "settings must state the one-hour cap");
   assert.ok(html.indexOf('data-action="lock"') !== -1, "settings must offer Lock now");
@@ -588,7 +589,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v9"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v10"') !== -1, "cache version must bump so the new worker activates");
 });
 
 test("service worker bypasses the HTTP cache and sweeps legacy caches", function () {

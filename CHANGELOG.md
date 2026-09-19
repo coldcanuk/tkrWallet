@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.8 — 2026-09-19
+
+### Fixed
+- Production PWA at tkrwallet.scratchpost.ai was still the Sep 16 0.10.5
+  shell (wordmark + settings gear, dual scrollbars). Deploy the 0.10.7+
+  client and bust the service-worker cache (`tkrwallet-v10`). Settings
+  now shows the running version so a screenshot cannot lie about the build.
+
 ## 0.10.7 — 2026-09-19
 
 ### Fixed
