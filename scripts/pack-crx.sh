@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pack tkrWallet on kiff. Vault stays on ATHENA (headless).
+# Pack tkrWallet on kiff with Brave. Vault stays on ATHENA (headless).
 # Usage: ./scripts/pack-crx.sh
 # Writes /dev/shm/tkrwallet.crx on kiff and shreds the PEM.
 set -euo pipefail
@@ -11,28 +11,47 @@ VAULT_PATH="tkrwallet/crx/key.pem"
 STAGE="/dev/shm/tkrwallet-ext"
 KEY="/dev/shm/tkrwallet-crx-key.pem"
 CRX="/dev/shm/tkrwallet.crx"
-CHROME_PROFILE="/dev/shm/tkrwallet-chrome-pack"
-CHROME="/usr/bin/google-chrome-stable"
+BRAVE_PROFILE="/dev/shm/tkrwallet-brave-pack"
+PACK_CMD=()
 
 die() { echo "error: $*" >&2; exit 1; }
+
+resolve_brave() {
+  if [[ -x /usr/bin/brave-browser ]]; then
+    PACK_CMD=(/usr/bin/brave-browser)
+    return
+  fi
+  if [[ -x /usr/bin/brave-browser-stable ]]; then
+    PACK_CMD=(/usr/bin/brave-browser-stable)
+    return
+  fi
+  if [[ -x /opt/brave.com/brave/brave ]]; then
+    PACK_CMD=(/opt/brave.com/brave/brave)
+    return
+  fi
+  if command -v flatpak >/dev/null && flatpak info com.brave.Browser >/dev/null 2>&1; then
+    PACK_CMD=(flatpak run --filesystem=/dev/shm com.brave.Browser)
+    return
+  fi
+  die "Brave not found. Pop Shop installs /usr/bin/brave-browser or Flathub com.brave.Browser."
+}
 
 scrub() {
   shred -u "$KEY" "$STAGE.pem" 2>/dev/null || true
   rm -f "$KEY" "$STAGE.pem"
-  rm -rf "$CHROME_PROFILE"
+  rm -rf "$BRAVE_PROFILE"
 }
 trap scrub EXIT
 
 host="$(hostname -s)"
 [[ "${host,,}" == "kiff" ]] || die "run on kiff"
 [[ "$(id -un)" == "chuck" ]] || die "run as chuck"
-[[ -x "$CHROME" ]] || CHROME="/usr/bin/google-chrome"
-[[ -x "$CHROME" ]] || die "missing google-chrome on kiff"
 [[ -f "$ROOT/manifest.json" ]] || die "missing $ROOT/manifest.json"
+resolve_brave
 
 umask 077
 rm -f "$KEY" "$CRX" "$STAGE.crx" "$STAGE.pem"
-rm -rf "$STAGE" "$CHROME_PROFILE"
+rm -rf "$STAGE" "$BRAVE_PROFILE"
 
 # TTY only for unseal (GPG may prompt). Checkout is -T so the PEM never hits the terminal.
 ssh -t "$ATHENA" python3 "$VAULT_OPS" unseal
@@ -73,17 +92,17 @@ cp -a \
   "$ROOT/icons/icon.svg" \
   "$STAGE/icons/"
 
-"$CHROME" \
-  --user-data-dir="$CHROME_PROFILE" \
+"${PACK_CMD[@]}" \
+  --user-data-dir="$BRAVE_PROFILE" \
   --no-first-run \
   --disable-gpu \
   --pack-extension="$STAGE" \
   --pack-extension-key="$KEY"
 
-[[ -f "$STAGE.crx" ]] || die "Chrome did not write $STAGE.crx"
+[[ -f "$STAGE.crx" ]] || die "Brave did not write $STAGE.crx"
 mv -f "$STAGE.crx" "$CRX"
 chmod 644 "$CRX"
 
 echo
 echo "packed: $CRX"
-echo "next: chrome://extensions → Developer mode on → drag $CRX onto the page"
+echo "next: brave://extensions → Developer mode on → drag $CRX onto the page"

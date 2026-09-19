@@ -139,7 +139,7 @@ Pack the `.crx` on **kiff**. Vault stays on ATHENA.
 ./scripts/pack-crx.sh
 ```
 
-Then `chrome://extensions` → Developer mode on → drag `/dev/shm/tkrwallet.crx`.
+Then `brave://extensions` → Developer mode on → drag `/dev/shm/tkrwallet.crx`.
 
 ## Edge contract
 
