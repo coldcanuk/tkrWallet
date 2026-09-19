@@ -340,7 +340,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.14") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.15") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -615,7 +615,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v13"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v14"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -1032,6 +1032,53 @@ test("splitHoldings keeps desk tokens on home and hides unpriced airdrops", func
   assert.strictEqual(pinned.airdrops.length, 0);
 });
 
+test("mineHoldings drops zeros; tokenListRows fills Mainnet/Base zeros only when the chain read is ok", function () {
+  const wallet = require("./wallet.js");
+  const ethRh = { symbol: "ETH", address: null, chain_id: 4663, amount: 0.071, state: "ok" };
+  const usdc = {
+    symbol: "USDC",
+    address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    chain_id: 1,
+    amount: 2,
+    state: "ok",
+  };
+  const zeroNative = { symbol: "ETH", address: null, chain_id: 1, amount: 0, state: "ok" };
+  const mine = wallet.mineHoldings([ethRh, usdc, zeroNative]);
+  assert.deepStrictEqual(
+    mine.map((h) => h.symbol + "@" + h.chain_id),
+    ["ETH@4663", "USDC@1"],
+    "Mine is held amounts only"
+  );
+  const okChains = [
+    { chain_id: 1, state: "ok" },
+    { chain_id: 8453, state: "ok" },
+  ];
+  const tokens = wallet.tokenListRows([ethRh, usdc], okChains, []);
+  assert.ok(tokens.length > 10, "Tokens lists the Mainnet + Base catalogue");
+  assert.strictEqual(tokens[0].amount, 0, "verified zeros sort first");
+  assert.ok(
+    tokens.every((h) => h.chain_id === 1 || h.chain_id === 8453),
+    "Tokens is Mainnet and Base only"
+  );
+  assert.ok(
+    tokens.some((h) => h.symbol === "USDC" && h.chain_id === 1 && h.amount === 2),
+    "held Mainnet USDC stays on Tokens after the zeros"
+  );
+  assert.ok(
+    !tokens.some((h) => h.chain_id === 4663),
+    "Robinhood holdings do not belong on the Tokens list"
+  );
+  const unknown = wallet.tokenListRows([], [{ chain_id: 1, state: "unknown" }, { chain_id: 8453, state: "ok" }], []);
+  const mainnet = unknown.filter((h) => h.chain_id === 1);
+  assert.ok(mainnet.length, "Mainnet catalogue still lists when unread");
+  assert.ok(
+    mainnet.every((h) => h.amount === null && h.state === "unknown"),
+    "unread Mainnet must not be painted as zero"
+  );
+  const baseZero = unknown.filter((h) => h.chain_id === 8453 && h.amount === 0);
+  assert.ok(baseZero.length, "ok Base rows may be filled as zero");
+});
+
 test("preview mode ships the mockup numbers and is opt-in only", function () {
   const wallet = require("./wallet.js");
   assert.strictEqual(wallet.PREVIEW_HOLDINGS.length, 4);
@@ -1426,6 +1473,9 @@ test("holdings coverage is disclosed and a token can be added by address", funct
     "id=\"add-token-form\"",
     "id=\"add-token-address\"",
     "id=\"airdrops-open\"",
+    "data-desk-tab=\"mine\"",
+    "data-desk-tab=\"tokens\"",
+    "data-desk-tab=\"airdrop\"",
     "id=\"airdrop-list\"",
   ].forEach(function (n) {
     assert.ok(html.indexOf(n) !== -1, "index.html must include " + n);
@@ -1437,7 +1487,10 @@ test("holdings coverage is disclosed and a token can be added by address", funct
   assert.ok(ui.indexOf("holdingsScopeText") !== -1, "the scope of the list must be stated");
   assert.ok(ui.indexOf("built-in tokens") === -1, "holdings must not advertise a 40-token catalogue cap");
   assert.ok(ui.indexOf("renderAirdrops") !== -1, "unpriced airdrops must be reachable from home");
+  assert.ok(ui.indexOf("setDeskTab") !== -1, "Mine/Tokens/Airdrop must switch in place");
   assert.ok(wallet.indexOf("splitHoldings: splitHoldings") !== -1, "wallet.js must export splitHoldings");
+  assert.ok(wallet.indexOf("mineHoldings: mineHoldings") !== -1, "wallet.js must export mineHoldings");
+  assert.ok(wallet.indexOf("tokenListRows: tokenListRows") !== -1, "wallet.js must export tokenListRows");
   assert.ok(ui.indexOf("paintTokenBadge") !== -1, "rows must paint Scratchpost icons with a letter fallback");
   assert.ok(wallet.indexOf("tokenIconUrl") !== -1, "icon URLs stay on the wallet edge");
   assert.ok(ui.indexOf("getTokenMeta") !== -1, "adding a token must read its metadata from the edge");
@@ -1887,6 +1940,7 @@ test("desk UX: airdrops submenu, receive QR, send contacts, live quote estimate"
   const storeSrc = readFile("store.js");
   [
     "id=\"airdrops-open\"",
+    "data-desk-tab=\"mine\"",
     "data-screen=\"airdrops\"",
     "id=\"receive-qr\"",
     "id=\"send-recent\"",
@@ -1895,6 +1949,7 @@ test("desk UX: airdrops submenu, receive QR, send contacts, live quote estimate"
     "id=\"send-contacts\"",
     "id=\"send-contact-label\"",
     "id=\"swap-estimate\"",
+    "id=\"swap-estimate-timer\"",
     "id=\"swap-quote-dialog\"",
     "id=\"swap-quote-timer\"",
   ].forEach(function (n) {
@@ -1902,6 +1957,10 @@ test("desk UX: airdrops submenu, receive QR, send contacts, live quote estimate"
   });
   assert.ok(html.indexOf("Swap Now") !== -1);
   assert.ok(html.indexOf("This is an estimate from Scratchpost") !== -1);
+  assert.ok(html.indexOf("Tap the number for details and Swap Now") !== -1);
+  assert.ok(ui.indexOf("openQuoteDialog") !== -1);
+  assert.ok(/startQuoteTimer\(\);\s*openQuoteDialog\(\);/.test(ui), "a live quote must open the Swap Now modal");
+  assert.ok(ui.indexOf("quoteStillLive") !== -1);
   assert.ok(html.indexOf("media-src 'self' blob:") !== -1, "camera needs media-src");
   const nginx = readFile("deploy/nginx/tkrwallet-edge.conf.template");
   assert.ok(nginx.indexOf("media-src 'self' blob:") !== -1, "edge nginx must allow camera blobs");

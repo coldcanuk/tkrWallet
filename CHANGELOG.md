@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.15 — 2026-09-19
+
+### Changed
+- Home list chrome is **Mine / Tokens / Airdrop**. Mine is balances you
+  actually hold (no zeros). Tokens is the Ethereum + Base list with verified
+  zeros first. Airdrop stays unpriced inbound tokens, not a fifth nav tab.
+- Swap Quote still returns a live Scratchpost estimate. The number is the
+  result; tap it for an animated details modal with **Swap Now**, which greys
+  out when the quote expires.
+
 ## 0.10.14 — 2026-09-19
 
 ### Added
