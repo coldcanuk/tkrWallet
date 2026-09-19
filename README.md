@@ -131,7 +131,7 @@ Open `index.html` (or any static host). Install when the browser offers it.
 1. Chrome → Extensions → Load unpacked
 2. Select this directory
 3. `manifest.json` is Manifest V3, with a pinned `key` so the extension ID
-   (`hkljagpgkenlmfemcddcnhoaddpndldn`) is stable across unpacked loads.
+   (`kfgmpcgplemjepolfpdbodmakceacook`) is stable across unpacked loads.
 
 Pack the `.crx` on **kiff**. Vault stays on ATHENA.
 

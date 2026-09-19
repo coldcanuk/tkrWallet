@@ -37,8 +37,8 @@ resolve_brave() {
 }
 
 scrub() {
-  shred -u "$KEY" "$STAGE.pem" 2>/dev/null || true
-  rm -f "$KEY" "$STAGE.pem"
+  shred -u "$KEY" "$STAGE.pem" /dev/shm/tkrwallet-crx-pub.der 2>/dev/null || true
+  rm -f "$KEY" "$STAGE.pem" /dev/shm/tkrwallet-crx-pub.der
   rm -rf "$BRAVE_PROFILE"
 }
 trap scrub EXIT
@@ -58,17 +58,52 @@ ssh -t "$ATHENA" python3 "$VAULT_OPS" unseal
 ssh -T "$ATHENA" python3 "$VAULT_OPS" checkout --path "$VAULT_PATH" --stdout >"$KEY"
 chmod 600 "$KEY"
 
-python3 - "$KEY" <<'PY'
-from pathlib import Path
+# Same RSA key, not the same base64 spelling. kiff's openssl base64 wrap
+# (or a different SPKI DER) made a string compare fail on a matching PEM.
+python3 - "$KEY" "$ROOT/manifest.json" <<'PY'
+import base64
+import json
+import re
+import subprocess
 import sys
-raw = Path(sys.argv[1]).read_bytes()
-if b"BEGIN" not in raw or b"PRIVATE KEY" not in raw:
-    raise SystemExit("checkout is not a PEM private key")
-PY
+from pathlib import Path
 
-want="$(python3 -c 'import json; print(json.load(open("'"$ROOT"'/manifest.json"))["key"])')"
-got="$(openssl pkey -in "$KEY" -pubout -outform DER 2>/dev/null | openssl base64 -A)"
-[[ "$got" == "$want" ]] || die "Vault PEM does not match manifest.json key"
+pem_path = Path(sys.argv[1])
+raw = pem_path.read_bytes()
+match = re.search(
+    br"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
+    raw,
+    re.S,
+)
+if not match:
+    raise SystemExit("checkout is not a PEM private key")
+block = match.group(0)
+if not block.endswith(b"\n"):
+    block += b"\n"
+if block != raw:
+    pem_path.write_bytes(block)
+
+want = json.loads(Path(sys.argv[2]).read_text())["key"]
+pub = Path("/dev/shm/tkrwallet-crx-pub.der")
+try:
+    pub.write_bytes(base64.b64decode(want))
+    try:
+        pem_mod = subprocess.check_output(
+            ["openssl", "rsa", "-in", str(pem_path), "-noout", "-modulus"],
+            stderr=subprocess.DEVNULL,
+        )
+        pub_mod = subprocess.check_output(
+            ["openssl", "rsa", "-pubin", "-inform", "DER", "-in", str(pub), "-noout", "-modulus"],
+            stderr=subprocess.DEVNULL,
+        )
+    except (subprocess.CalledProcessError, ValueError):
+        raise SystemExit("Vault PEM does not match manifest.json key") from None
+finally:
+    if pub.exists():
+        pub.unlink()
+if pem_mod != pub_mod:
+    raise SystemExit("Vault PEM does not match manifest.json key")
+PY
 
 mkdir -p "$STAGE/icons" "$STAGE/vendor"
 cp -a \
