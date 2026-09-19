@@ -143,9 +143,13 @@ git pull
 ./scripts/pack-crx.sh
 ```
 
-The script writes `tkrwallet.crx` in this directory (gitignored) and opens
-`chrome://extensions` and `brave://extensions`. Developer mode on in each.
-Drag `/opt/repo/thePlatform/tkrWallet/tkrwallet.crx` onto both pages. Same file, same ID.
+The script writes the same gitignored file to:
+
+- `/opt/repo/thePlatform/tkrWallet/tkrwallet.crx`
+- `/home/chuck/tkrwallet.crx`
+
+It opens `chrome://extensions` and `brave://extensions`. Developer mode on in each.
+Drag `/home/chuck/tkrwallet.crx` onto both pages. Same file, same ID. Do not click Pack extension.
 
 ## Edge contract
 

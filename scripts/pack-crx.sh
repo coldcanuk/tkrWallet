@@ -1,32 +1,25 @@
 #!/usr/bin/env bash
 # Pack tkrWallet on kiff. Vault stays on ATHENA (headless).
 # Usage: ./scripts/pack-crx.sh
-# Writes tkrwallet.crx in this repo (gitignored) and shreds the PEM.
-# Opens Chrome + Brave extension pages so the same CRX is installed in both.
+# Writes tkrwallet.crx in the repo and in $HOME. Shreds the PEM.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ATHENA="chuck@athena.local"
 VAULT_OPS="/opt/repo/thePlatform/blockchain-infrastructure/host/vault/vault_ops.py"
 VAULT_PATH="theplatform/tkrwallet/chrome-crx-key"
-RUN_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-PACK="$RUN_DIR/tkrwallet-pack"
+PACK="$HOME/tkrwallet-pack"
 STAGE="$PACK/ext"
 KEY="$PACK/key.pem"
-CRX="$PACK/tkrwallet.crx"
-PACK_PROFILE="$PACK/pack-profile"
 PUB="$PACK/pub.der"
+PACK_PROFILE="$PACK/pack-profile"
+REPO_CRX="$ROOT/tkrwallet.crx"
+HOME_CRX="$HOME/tkrwallet.crx"
 PACK_CMD=()
 CHROME_UI=()
 BRAVE_UI=()
 
 die() { echo "error: $*" >&2; exit 1; }
-
-# Permission denied → sudo mkdir, then chuck:chuck. No debate.
-chuck_dir() {
-  mkdir -p "$1" 2>/dev/null || sudo mkdir -p "$1"
-  sudo chown chuck:chuck "$1"
-}
 
 resolve_chrome_ui() {
   if [[ -x /usr/bin/google-chrome-stable ]]; then
@@ -94,11 +87,11 @@ resolve_packer() {
     return
   fi
   if command -v flatpak >/dev/null && flatpak info com.google.Chrome >/dev/null 2>&1; then
-    PACK_CMD=(flatpak run --filesystem=xdg-run/tkrwallet-pack com.google.Chrome)
+    PACK_CMD=(flatpak run --filesystem=home com.google.Chrome)
     return
   fi
   if command -v flatpak >/dev/null && flatpak info com.brave.Browser >/dev/null 2>&1; then
-    PACK_CMD=(flatpak run --filesystem=xdg-run/tkrwallet-pack com.brave.Browser)
+    PACK_CMD=(flatpak run --filesystem=home com.brave.Browser)
     return
   fi
   die "No Chrome or Brave packer found."
@@ -115,26 +108,20 @@ host="$(hostname -s)"
 [[ "${host,,}" == "kiff" ]] || die "run on kiff"
 [[ "$(id -un)" == "chuck" ]] || die "run as chuck"
 [[ -f "$ROOT/manifest.json" ]] || die "missing $ROOT/manifest.json"
-[[ -d "$RUN_DIR" ]] || die "missing runtime dir $RUN_DIR"
+[[ -d "$HOME" ]] || die "missing $HOME"
 resolve_chrome_ui
 resolve_brave_ui
 resolve_packer
 
 umask 077
 rm -rf "$PACK"
-chuck_dir "$PACK"
-if ! mkdir -p "$RUN_DIR/doc/by-app/com.brave.Browser" "$RUN_DIR/doc/by-app/com.google.Chrome" 2>/dev/null; then
-  sudo mkdir -p "$RUN_DIR/doc/by-app/com.brave.Browser" "$RUN_DIR/doc/by-app/com.google.Chrome"
-  sudo chown -R chuck:chuck "$RUN_DIR/doc"
-fi
+mkdir -p "$PACK"
 
 # TTY only for unseal (GPG may prompt). Checkout is -T so the PEM never hits the terminal.
 ssh -t "$ATHENA" python3 "$VAULT_OPS" unseal
 ssh -T "$ATHENA" python3 "$VAULT_OPS" checkout --path "$VAULT_PATH" --stdout >"$KEY"
 chmod 600 "$KEY"
 
-# Same RSA key, not the same base64 spelling. kiff's openssl base64 wrap
-# (or a different SPKI DER) made a string compare fail on a matching PEM.
 python3 - "$KEY" "$ROOT/manifest.json" "$PUB" <<'PY'
 import base64
 import json
@@ -210,24 +197,27 @@ cp -a \
   --pack-extension-key="$KEY"
 
 [[ -f "$STAGE.crx" ]] || die "packer did not write $STAGE.crx"
-mv -f "$STAGE.crx" "$CRX"
-cp -f "$CRX" "$ROOT/tkrwallet.crx"
-chmod 644 "$CRX" "$ROOT/tkrwallet.crx"
+cp -f "$STAGE.crx" "$REPO_CRX"
+cp -f "$STAGE.crx" "$HOME_CRX"
+chmod 644 "$REPO_CRX" "$HOME_CRX"
+rm -f "$STAGE.crx"
 
 "${CHROME_UI[@]}" chrome://extensions >/dev/null 2>&1 &
 "${BRAVE_UI[@]}" brave://extensions >/dev/null 2>&1 &
 
 echo
-echo "packed: $ROOT/tkrwallet.crx"
+echo "packed:"
+echo "  $REPO_CRX"
+echo "  $HOME_CRX"
 echo
 echo "Do not click Pack extension. The PEM is not a file you browse to."
 echo
 echo "Install in Chrome"
 echo "  1. Developer mode on"
-echo "  2. Drag $ROOT/tkrwallet.crx onto chrome://extensions"
+echo "  2. Drag $HOME_CRX onto chrome://extensions"
 echo
 echo "Install in Brave"
 echo "  1. Developer mode on"
-echo "  2. Drag $ROOT/tkrwallet.crx onto brave://extensions"
+echo "  2. Drag $HOME_CRX onto brave://extensions"
 echo
 echo "Same file, both browsers. ID stays kfgmpcgplemjepolfpdbodmakceacook."
