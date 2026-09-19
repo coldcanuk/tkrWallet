@@ -339,7 +339,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.11") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.12") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -614,7 +614,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v11"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v12"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -1013,7 +1013,16 @@ test("searchCatalog is Mainnet + Base only — never Robinhood or Solana", funct
   });
   // Robinhood is in the holdings catalogue but must not be searchable.
   assert.ok(wallet.TOKENS[4663], "Robinhood stays in the holdings catalogue");
+  assert.ok(
+    wallet.TOKENS[4663].some((t) => t.symbol === "USDG" && t.decimals === 6 && t.address),
+    "catalogue USDG is Global Dollar, 6 decimals",
+  );
+  assert.ok(
+    wallet.TOKENS[4663].some((t) => t.symbol === "WETH" && t.decimals === 18),
+    "catalogue WETH is the Robinhood wrap",
+  );
   assert.ok(!wallet.searchCatalog("eth").some((r) => r.chain_id === 4663), "Robinhood must not appear in search");
+  assert.ok(!wallet.searchCatalog("usdg").length, "USDG is holdings/swap only, not search");
 });
 
 test("search is wired to the input and documented as catalogue-scoped", function () {
@@ -1373,8 +1382,8 @@ test("unlock fetches real balances from the edge and locks on expiry", function 
   const ui = readFile("ui.js");
   // Unlock -> getBalances -> render -> prices: the actual data path.
   assert.ok(
-    /getBalances\(session\.address, \[1, 8453\]/.test(ui),
-    "unlock must fetch Mainnet + Base balances"
+    /getBalances\(session\.address, \[1, 8453, 4663\]/.test(ui),
+    "unlock must fetch Mainnet + Base + Robinhood balances"
   );
   const reveal = ui.match(/function revealAccount\(phrase(?:, index)?\) \{[\s\S]*?\n  \}/);
   assert.ok(reveal && reveal[0].indexOf("refreshBalances()") !== -1, "revealAccount must start the balance fetch");
@@ -1470,9 +1479,10 @@ test("swap screen quotes same-chain swaps through the wallet edge, never a vendo
   assert.ok(html.indexOf("Under construction") === -1 || html.indexOf("data-screen=\"swap\"") < html.indexOf("Under construction"));
   const swapSection = html.split('data-screen="swap"')[1].split('data-screen="receive"')[0];
   assert.ok(swapSection.indexOf("Under construction") === -1, "swap is no longer a placeholder");
-  assert.match(swapSection, /Ethereum, Base, Solana, and TRON/);
+  assert.match(swapSection, /Ethereum, Base, Robinhood, Solana, and TRON/);
   const ui = readFile("ui.js");
   assert.ok(ui.indexOf("quoteSwap") !== -1);
+  assert.ok(ui.indexOf("[1, 8453, 4663, 900001, 728126428]") !== -1, "swap pairs include Robinhood");
   assert.ok(ui.indexOf("signSolanaVersionedTx") !== -1);
   assert.ok(ui.indexOf("signTronTransaction") !== -1);
   assert.ok(ui.indexOf("signAndBroadcastPayload") !== -1);
@@ -1483,7 +1493,7 @@ test("swap screen quotes same-chain swaps through the wallet edge, never a vendo
   assert.ok(wallet.indexOf("/api/wallet/swap/build") !== -1);
   CLIENT_SHIPPED.forEach(function (file) {
     const src = readFile(file);
-    assert.ok(!/helius|jupiter|lite-api\.jup|mainnet\.helius|trongrid|sunswap/i.test(src), file + " must not name swap vendors");
+    assert.ok(!/helius|jupiter|lite-api\.jup|mainnet\.helius|trongrid|sunswap|alchemy/i.test(src), file + " must not name swap vendors");
   });
 });
 
@@ -1522,6 +1532,8 @@ test("crypto: signTransaction recovers the signer on Ethereum and Base", functio
   assert.strictEqual(c.recoverTxSigner(c.signTransaction(priv, tx), 1), w.evmAddress);
   const base = Object.assign({}, tx, { nonce: 5, gasPrice: 1000000000n, gasLimit: 30000n, to: "0x" + "1".repeat(40), value: "1000000000000000000", chainId: 8453 });
   assert.strictEqual(c.recoverTxSigner(c.signTransaction(priv, base), 8453), w.evmAddress);
+  const rh = Object.assign({}, tx, { nonce: 2, gasPrice: 1000000000n, gasLimit: 30000n, to: "0x" + "2".repeat(40), value: "10000000000000000", chainId: 4663 });
+  assert.strictEqual(c.recoverTxSigner(c.signTransaction(priv, rh), 4663), w.evmAddress);
 });
 
 /* ---------------------------------------------------------------------------

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.12 — 2026-09-19
+
+### Added
+- Same-chain Uniswap v3 on Robinhood Chain (4663): native ETH, WETH, and
+  USDG (Global Dollar, 6 decimals). Scratchpost quotes and broadcasts via
+  Alchemy; this device signs. Search stays Mainnet + Base.
+
 ## 0.10.11 — 2026-09-19
 
 ### Added

@@ -1082,7 +1082,7 @@
       });
     }
     if (evm && evmState !== "ok" && !(evm.chains && evm.chains.length)) {
-      [1, 8453].forEach(function (id) {
+      [1, 8453, 4663].forEach(function (id) {
         if (!hasChain(id)) {
           chains.push({
             chain_id: id,
@@ -1140,7 +1140,7 @@
         return null;
       }
       return wallet
-      .getBalances(session.address, [1, 8453], null, extras)
+      .getBalances(session.address, [1, 8453, 4663], null, extras)
       .then(function (evm) {
         var next = Promise.resolve({ evm: evm, sol: null, tron: null });
         if (session.solAddress) {
@@ -1222,18 +1222,18 @@
 
   /** Say out loud what the holdings list covers. The old screen implied the
    * list was the whole wallet; it is a fixed catalogue plus whatever the user
-   * added, on two chains. */
+   * added, on Mainnet, Base, and Robinhood. */
   function holdingsScopeText() {
     var data = root.tkrWalletData;
     var count = 0;
     if (data && data.TOKENS) {
-      [1, 8453].forEach(function (chainId) {
+      [1, 8453, 4663].forEach(function (chainId) {
         count += (data.TOKENS[chainId] || []).length;
       });
     }
     var extra = readStoredTokens().length;
     return (
-      "Mainnet and Base. " +
+      "Mainnet, Base, and Robinhood. " +
       count +
       " built-in tokens" +
       (extra ? " plus " + extra + " you added" : "") +
@@ -2136,7 +2136,7 @@
     var keepTo = to.value;
     from.textContent = "";
     to.textContent = "";
-    [1, 8453, 900001, 728126428].forEach(function (chainId) {
+    [1, 8453, 4663, 900001, 728126428].forEach(function (chainId) {
       var list = wallet.TOKENS[chainId] || [];
       var chain = wallet.CHAINS[chainId];
       var chainName = chain ? chain.name : "chain " + chainId;
@@ -2188,7 +2188,7 @@
     var fromSel = selectedSwapToken(el("swap-from"));
     var toSel = selectedSwapToken(el("swap-to"));
     if (!fromSel || !toSel || fromSel.chainId !== toSel.chainId || fromSel.mint === toSel.mint) {
-      setText(el("swap-note"), "Pick two different assets on the same chain. Mainnet and Base are separate swaps, not a bridge.");
+      setText(el("swap-note"), "Pick two different assets on the same chain. Mainnet, Base, and Robinhood are separate swaps, not a bridge.");
       return;
     }
     if (fromSel.chainId === 900001 && !session.solAddress) {

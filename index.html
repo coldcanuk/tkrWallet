@@ -156,7 +156,7 @@
             <p id="wallet-value-note" class="mt-2 text-xs text-cream-500">
               Unlock with your password, or import / recover with a recovery phrase.
             </p>
-            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.11</p>
+            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.12</p>
           </div>
 
           <div class="mt-4 grid grid-cols-4 gap-2">
@@ -233,6 +233,7 @@
             >
               <option value="1">Ethereum</option>
               <option value="8453">Base</option>
+              <option value="4663">Robinhood</option>
             </select>
             <label for="add-token-address" class="mt-3 block text-xs font-medium text-cream-500">Token contract address</label>
             <input
@@ -267,9 +268,9 @@
         <section data-screen="swap" hidden aria-labelledby="swap-heading">
           <h1 id="swap-heading" class="text-lg font-semibold text-cream-50">Swap</h1>
           <p class="mt-2 text-sm leading-relaxed text-cream-500">
-            Same-chain swaps on Ethereum, Base, Solana, and TRON. Scratchpost
+            Same-chain swaps on Ethereum, Base, Robinhood, Solana, and TRON. Scratchpost
             builds the unsigned swap on the desk L1/L2 nodes and vendor faces;
-            this device signs it. Mainnet and Base are separate swaps, not a
+            this device signs it. Mainnet, Base, and Robinhood are separate swaps, not a
             bridge.
           </p>
           <div class="mt-4 rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
@@ -314,8 +315,8 @@
         <section data-screen="receive" hidden aria-labelledby="receive-heading">
           <h1 id="receive-heading" class="text-lg font-semibold text-cream-50">Receive</h1>
           <p class="mt-2 text-sm leading-relaxed text-cream-500">
-            This is the unlocked account. Anyone who pays this address on Ethereum
-            or Base is paying you. tkrWallet never asks Scratchpost to invent a
+            This is the unlocked account. Anyone who pays this address on Ethereum,
+            Base, or Robinhood Chain is paying you. tkrWallet never asks Scratchpost to invent a
             deposit.
           </p>
           <div class="mt-4 rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
@@ -389,7 +390,7 @@
         <section data-screen="settings" hidden aria-labelledby="settings-heading">
           <h1 id="settings-heading" class="sr-only">Settings</h1>
           <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
-            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.11</p>
+            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.12</p>
             <h2 class="mt-4 text-sm font-medium text-cream-500">Security</h2>
             <p class="mt-1 text-xs leading-relaxed text-cream-500">
               Auto-lock locks the wallet after inactivity. It cannot be turned off;
