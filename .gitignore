@@ -13,6 +13,7 @@ tools/.npm-cache
 !.env.example
 # CRX signing key (private half). The public key lives in manifest.json.
 key.pem
+*.crx
 .extension-id
 
 # ── Licensed Tailwind Plus reference kits (https://tailwindcss.com/plus/license)

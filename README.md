@@ -133,6 +133,14 @@ Open `index.html` (or any static host). Install when the browser offers it.
 3. `manifest.json` is Manifest V3, with a pinned `key` so the extension ID
    (`hkljagpgkenlmfemcddcnhoaddpndldn`) is stable across unpacked loads.
 
+Pack the `.crx` on **kiff**. Vault stays on ATHENA.
+
+```sh
+./scripts/pack-crx.sh
+```
+
+Then `chrome://extensions` → Developer mode on → drag `/dev/shm/tkrwallet.crx`.
+
 ## Edge contract
 
 The edge is specified in `docs/specs/edge-server.md` — built to fit, not
