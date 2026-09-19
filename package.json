@@ -1,6 +1,6 @@
 {
   "name": "tkrwallet",
-  "version": "0.10.14",
+  "version": "0.10.15",
   "private": true,
   "description": "Self-custody wallet for Scratchpost. PWA + MV3 Chrome extension, one tree.",
   "license": "GPL-3.0-or-later",

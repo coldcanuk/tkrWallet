@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "tkrWallet",
-  "version": "0.10.14",
+  "version": "0.10.15",
   "description": "Self-custody wallet for Scratchpost. You hold the keys.",
   "action": {
     "default_popup": "index.html",

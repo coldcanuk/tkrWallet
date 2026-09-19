@@ -959,25 +959,79 @@
     var box = el("airdrop-list");
     var count = airdrops && airdrops.length ? airdrops.length : 0;
     if (open) {
-      setText(open, count ? "Airdrops (" + count + ")" : "Airdrops");
+      setText(open, count ? "Airdrop (" + count + ")" : "Airdrop");
     }
     if (!box) {
       return;
     }
     box.textContent = "";
-    if (!count) {
+    appendHoldingRows(box, airdrops, prices, "No unpriced airdrops right now.");
+  }
+
+  function appendHoldingRows(box, rows, prices, emptyCopy) {
+    if (!box) {
+      return;
+    }
+    if (!rows || !rows.length) {
       var empty = document.createElement("p");
       empty.className = "px-4 py-6 text-center text-sm text-cream-300";
-      empty.textContent = "No unpriced airdrops right now.";
+      empty.textContent = emptyCopy;
       box.appendChild(empty);
       return;
     }
-    airdrops.forEach(function (holding) {
+    rows.forEach(function (holding) {
       var row = fillTokenRow(holding, prices);
       if (row) {
         box.appendChild(row);
       }
     });
+  }
+
+  function paintDeskTabs() {
+    var tabs = document.querySelectorAll("[data-desk-tab]");
+    var current = uiData.deskTab || "mine";
+    for (var i = 0; i < tabs.length; i++) {
+      var name = tabs[i].getAttribute("data-desk-tab");
+      tabs[i].setAttribute("aria-pressed", name === current ? "true" : "false");
+    }
+  }
+
+  function setDeskTab(name) {
+    var next = name === "tokens" || name === "airdrop" ? name : "mine";
+    uiData.deskTab = next;
+    paintDeskTabs();
+    setText(el("holdings-scope"), holdingsScopeText());
+    if (state.screen !== "home") {
+      go("home");
+    }
+    renderTokens(uiData.lastHoldings, uiData.lastPrices);
+  }
+
+  function rowsForDeskTab(holdings, prices) {
+    var wallet = root.tkrWalletData;
+    var split = splitCurrentHoldings(holdings, prices);
+    var tab = uiData.deskTab || "mine";
+    if (tab === "airdrop") {
+      return { rows: split.airdrops, empty: "No unpriced airdrops right now." };
+    }
+    if (tab === "tokens") {
+      var chains = uiData.lastBalances && uiData.lastBalances.chains;
+      var list =
+        wallet && typeof wallet.tokenListRows === "function"
+          ? wallet.tokenListRows(holdings || [], chains, readStoredTokens())
+          : [];
+      return {
+        rows: list,
+        empty: "Ethereum and Base tokens will list here after a successful read.",
+      };
+    }
+    var mine = wallet && typeof wallet.mineHoldings === "function" ? wallet.mineHoldings(split.desk) : split.desk;
+    return {
+      rows: mine,
+      empty: split.airdrops.length
+        ? "No balances on Mine. Open Airdrop for unpriced tokens."
+        : "No balances on this account. Tokens lists Ethereum and Base, including zeros.",
+    };
   }
 
   function renderTokens(holdings, prices) {
@@ -988,10 +1042,11 @@
     }
     box.textContent = "";
     renderBalancesNotice();
+    paintDeskTabs();
+    setText(el("holdings-scope"), holdingsScopeText());
     var split = splitCurrentHoldings(holdings, prices);
-    var desk = split.desk;
     renderAirdrops(split.airdrops, prices);
-    if (!holdings || !holdings.length) {
+    if (!session.address || holdings == null) {
       var tplEmpty = el("tpl-token-empty");
       if (tplEmpty) {
         var node = tplEmpty.content.firstElementChild.cloneNode(true);
@@ -1020,20 +1075,9 @@
       }
       return [];
     }
-    if (!desk.length && split.airdrops.length) {
-      var quiet = document.createElement("p");
-      quiet.className = "px-4 py-6 text-center text-sm text-cream-500";
-      quiet.textContent = "No priced tokens on the home list. Open Airdrops for unpriced tokens.";
-      box.appendChild(quiet);
-      return desk;
-    }
-    desk.forEach(function (holding) {
-      var row = fillTokenRow(holding, prices);
-      if (row) {
-        box.appendChild(row);
-      }
-    });
-    return desk;
+    var view = rowsForDeskTab(holdings, prices);
+    appendHoldingRows(box, view.rows, prices, view.empty);
+    return view.rows;
   }
 
   /** A visible, retryable notice when the read was not complete. Rows that did
@@ -1175,6 +1219,7 @@
     lastChecked: null, // when that read happened
     lastQuote: null,
     quoteTimer: null,
+    deskTab: "mine",
   };
 
   /** Re-render the list and value from whatever we last knew. */
@@ -1400,15 +1445,25 @@
     }
   }
 
-  /** Say out loud what the holdings list covers. The old screen implied the
-   * list was the whole wallet; it is discovered holdings on Mainnet, Base, and
-   * Robinhood, plus tokens you add by address. */
+  /** Copy under the Mine / Tokens / Airdrop control. */
   function holdingsScopeText() {
     var extra = readStoredTokens().length;
+    var extraBit = extra ? " · " + extra + " added by address" : "";
+    var tab = uiData.deskTab || "mine";
+    if (tab === "tokens") {
+      return (
+        "Ethereum and Base tokens. Verified zeros first, then what you hold on those chains" +
+        extraBit +
+        "."
+      );
+    }
+    if (tab === "airdrop") {
+      return "Unpriced tokens sent to this address. They are not in your total.";
+    }
     return (
-      "Tokens you hold on Ethereum, Base, and Robinhood, with prices when Scratchpost has them" +
-      (extra ? " · " + extra + " added by address" : "") +
-      ". Open Airdrops for unpriced tokens, not this list."
+      "Only crypto you hold. Zero balances are on Tokens, not here" +
+      extraBit +
+      "."
     );
   }
 
@@ -2591,18 +2646,17 @@
         btn.setAttribute("aria-disabled", "true");
       }
     }
-    var timer = el("swap-quote-timer");
-    if (!timer) {
-      return;
-    }
+    var remain = "";
     if (!pendingSwapQuote) {
-      setText(timer, "");
+      remain = "";
     } else if (!live) {
-      setText(timer, "Quote expired. Request a new quote.");
+      remain = "Quote expired. Request a new quote.";
     } else {
       var sec = Math.max(0, Math.ceil((pendingSwapQuote.expiresAt - Date.now()) / 1000));
-      setText(timer, "Expires in " + sec + "s");
+      remain = "Expires in " + sec + "s";
     }
+    setText(el("swap-quote-timer"), remain);
+    setText(el("swap-estimate-timer"), remain);
   }
 
   function startQuoteTimer() {
@@ -2622,6 +2676,7 @@
       btn.setAttribute("hidden", "");
     }
     setText(el("swap-estimate-value"), "\u2014");
+    setText(el("swap-estimate-timer"), "");
   }
 
   function showSwapEstimate(human, symbol) {
@@ -2673,8 +2728,23 @@
     );
     applyQuoteExpiryUi();
     var dlg = el("swap-quote-dialog");
-    if (dlg && typeof dlg.showModal === "function" && !dlg.open) {
-      dlg.showModal();
+    if (!dlg) {
+      return;
+    }
+    try {
+      if (typeof dlg.showModal === "function") {
+        if (!dlg.open) {
+          dlg.showModal();
+        }
+        return;
+      }
+    } catch (e) {
+      /* popup / overflow ancestors can reject showModal; fall through */
+    }
+    if (typeof dlg.show === "function" && !dlg.open) {
+      dlg.show();
+    } else {
+      dlg.setAttribute("open", "");
     }
   }
 
@@ -2763,9 +2833,10 @@
         setText(el("swap-out"), "");
         setText(
           el("swap-note"),
-          "Estimate from Scratchpost. The final amount may vary slightly. Tap the number for details."
+          "Estimate from Scratchpost. The final amount may vary slightly. Tap the number for details and Swap Now."
         );
         startQuoteTimer();
+        openQuoteDialog();
       })
       .catch(function (err) {
         pendingSwapQuote = null;
@@ -3226,10 +3297,10 @@
       });
     }
 
-    var airdropsOpen = el("airdrops-open");
-    if (airdropsOpen) {
-      airdropsOpen.addEventListener("click", function () {
-        go("airdrops");
+    var deskTabs = document.querySelectorAll("[data-desk-tab]");
+    for (var dt = 0; dt < deskTabs.length; dt++) {
+      deskTabs[dt].addEventListener("click", function (event) {
+        setDeskTab(event.currentTarget.getAttribute("data-desk-tab"));
       });
     }
     var airdropsBack = el("airdrops-back");

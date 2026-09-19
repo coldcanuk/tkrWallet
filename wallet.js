@@ -529,6 +529,114 @@
     return { desk: desk, airdrops: airdrops };
   }
 
+  var TOKEN_LIST_CHAINS = [1, 8453];
+
+  function holdingKey(holding) {
+    return Number(holding.chain_id) + ":" + String(holding.address || "native").toLowerCase();
+  }
+
+  function chainReadOk(chains, chainId) {
+    if (!Array.isArray(chains)) {
+      return false;
+    }
+    for (var i = 0; i < chains.length; i++) {
+      if (chains[i] && Number(chains[i].chain_id) === Number(chainId) && chains[i].state === "ok") {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Mine: crypto actually held. Unknown is not zero; 0 is not held. */
+  function mineHoldings(desk) {
+    return (desk || []).filter(function (h) {
+      return h && h.state === "ok" && typeof h.amount === "number" && Number.isFinite(h.amount) && h.amount > 0;
+    });
+  }
+
+  /**
+   * Tokens tab: Ethereum + Base catalogue (plus extras / held rows on those
+   * chains). Edge omits zeros; fill 0 only when that chain read is `ok`.
+   * Sort verified zeros first.
+   */
+  function tokenListRows(holdings, chains, extras) {
+    var index = Object.create(null);
+    (holdings || []).forEach(function (h) {
+      if (!h) {
+        return;
+      }
+      var cid = Number(h.chain_id);
+      if (cid !== 1 && cid !== 8453) {
+        return;
+      }
+      index[holdingKey(h)] = h;
+    });
+    var out = [];
+    var seen = Object.create(null);
+    function take(h) {
+      var k = holdingKey(h);
+      if (seen[k]) {
+        return;
+      }
+      seen[k] = true;
+      out.push(h);
+    }
+    function absentAmount(chainId) {
+      return chainReadOk(chains, chainId) ? 0 : null;
+    }
+    TOKEN_LIST_CHAINS.forEach(function (chainId) {
+      (TOKENS[chainId] || []).forEach(function (t) {
+        var key = holdingKey({ chain_id: chainId, address: t.address || null });
+        if (index[key]) {
+          take(index[key]);
+          return;
+        }
+        take(row(t.symbol, chainId, absentAmount(chainId), t.address || null, t.decimals || 18));
+      });
+    });
+    (extras || []).forEach(function (t) {
+      if (!t || !t.address) {
+        return;
+      }
+      var cid = Number(t.chain_id);
+      if (cid !== 1 && cid !== 8453) {
+        return;
+      }
+      var key = holdingKey({ chain_id: cid, address: t.address });
+      if (index[key]) {
+        take(index[key]);
+        return;
+      }
+      take(row(t.symbol || "Token", cid, absentAmount(cid), t.address, t.decimals || 18));
+    });
+    Object.keys(index).forEach(function (k) {
+      take(index[k]);
+    });
+    out.sort(function (a, b) {
+      function rank(h) {
+        if (h && h.state === "ok" && h.amount === 0) {
+          return 0;
+        }
+        if (!h || h.state !== "ok" || h.amount === null) {
+          return 1;
+        }
+        return 2;
+      }
+      var ra = rank(a);
+      var rb = rank(b);
+      if (ra !== rb) {
+        return ra - rb;
+      }
+      var as = String(a.symbol || "");
+      var bs = String(b.symbol || "");
+      if (as !== bs) {
+        return as < bs ? -1 : 1;
+      }
+      return Number(a.chain_id) - Number(b.chain_id);
+    });
+    return out;
+  }
+
   /* Search the built-in catalogue by symbol, name or address — the same
    * matching a server-side catalogue would do, applied to the list we already
    * hold. Pure and offline: no network call.
@@ -758,6 +866,8 @@
     getTokenMeta: getTokenMeta,
     estimateValue: estimateValue,
     splitHoldings: splitHoldings,
+    mineHoldings: mineHoldings,
+    tokenListRows: tokenListRows,
     searchCatalog: searchCatalog,
     searchTokens: searchTokens,
     toAtomicAmount: toAtomicAmount,
