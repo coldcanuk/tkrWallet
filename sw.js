@@ -13,8 +13,8 @@
  * Bump CACHE whenever the shell changes. skipWaiting + clients.claim make the
  * new worker take over immediately, so one reload picks up a new deploy.
  */
-const CACHE = "tkrwallet-v10";
-const SHELL = ["./", "./index.html", "./ui.js", "./wallet.js", "./crypto.js", "./store.js", "./vendor/noble.js", "./app.css", "./manifest.webmanifest"];
+const CACHE = "tkrwallet-v11";
+const SHELL = ["./", "./index.html", "./shell.js", "./ui.js", "./wallet.js", "./crypto.js", "./store.js", "./vendor/noble.js", "./app.css", "./manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));

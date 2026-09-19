@@ -11,10 +11,11 @@ const path = require("path");
 
 const ROOT = __dirname;
 const ALLOWED_ORIGIN = "https://tkrwallet.scratchpost.ai";
-const SHIPPED = ["index.html", "ui.js", "wallet.js", "crypto.js", "store.js", "sw.js", "manifest.json", "manifest.webmanifest", "README.md"];
+const SHIPPED = ["index.html", "shell.js", "ui.js", "wallet.js", "crypto.js", "store.js", "sw.js", "manifest.json", "manifest.webmanifest", "README.md"];
 /* Browser-loaded artifacts only. README/CHANGELOG/deploy/tools are not this list. */
 const CLIENT_SHIPPED = [
   "index.html",
+  "shell.js",
   "ui.js",
   "wallet.js",
   "crypto.js",
@@ -323,10 +324,10 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
     "extension html/body must not create an outer scrollbar"
   );
   assert.ok(!/660px/.test(css), "a 660px popup document overflows Chromium's clamp");
-  assert.ok(
-    /max-height:\s*100vh/.test(css),
-    "popup height must shrink with the clamped viewport"
-  );
+  assert.ok(!/100vh/.test(css), "100vh in a toolbar popup is the monitor and creates the outer scrollbar");
+  const htmlBoot = readFile("index.html");
+  assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
+  assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
     "PWA/tab document must not scroll under #main"
@@ -438,7 +439,7 @@ test("no inline <script>: MV3 blocks it and cannot be relaxed", function () {
 test("CSP meta tag is present and forbids foreign origins", function () {
   const html = readFile("index.html");
   assert.ok(html.indexOf("Content-Security-Policy") !== -1, "missing CSP meta tag");
-  assert.ok(html.indexOf("connect-src 'self'") !== -1, "connect-src must be 'self'");
+  assert.ok(html.indexOf("connect-src 'self' " + ALLOWED_ORIGIN) !== -1, "meta CSP must allow the wallet origin; 'self' alone is chrome-extension:// and blocks the edge");
 });
 
 test("Beaver Nickels stay removed from the shell", function () {
@@ -589,7 +590,8 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v10"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v11"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
 test("service worker bypasses the HTTP cache and sweeps legacy caches", function () {
@@ -718,6 +720,13 @@ test("getBalances() failure is unknown — balances are never invented", functio
     assert.strictEqual(got.state, "unknown");
     assert.strictEqual(got.reason, "edge-unreachable");
   });
+});
+
+test("getBalances() does not send cookies — public reads must not require CORS credentials", function () {
+  const src = readFile("wallet.js");
+  const fn = src.match(/function getBalances\([\s\S]*?\n  \}/);
+  assert.ok(fn, "getBalances must exist");
+  assert.ok(fn[0].indexOf('credentials: "include"') === -1, "credentialed GET balances dies when the CRX id is not pinned");
 });
 
 test("getBalances() HTTP errors are edge-http, not unreachable", function () {

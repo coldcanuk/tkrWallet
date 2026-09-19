@@ -67,13 +67,12 @@
     color-scheme: dark;
   }
 
-  /* One page scroller only: #main (overlays own their own log/gate scroll).
-   * A document taller than Chromium's clamped popup created the outer+inner
-   * bars. Size the shell to the actual window and overflow:hidden. */
+  /* One page scroller only: #main. Do not size the popup to the monitor
+   * viewport: that makes the document taller than the action window and
+   * Chromium paints a second scrollbar. */
   html,
   body {
     height: 100%;
-    height: 100vh;
     overflow: hidden;
   }
 
@@ -88,10 +87,16 @@
     width: 432px;
     min-width: 432px;
     max-width: 432px;
-    /* Chromium's traditional popup max. max-height: 100vh shrinks with clamp. */
     height: 600px;
-    max-height: 100vh;
+    max-height: 600px;
     overflow: hidden;
+  }
+
+  html.extension-popup::-webkit-scrollbar,
+  html.extension-popup body::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 
   html.extension-popup #app,

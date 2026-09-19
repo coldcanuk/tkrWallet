@@ -331,7 +331,7 @@
     if (extraTokens && extraTokens.length) {
       q += "&tokens=" + encodeURIComponent(extraTokens.join(","));
     }
-    return fetchFn(apiUrl("/api/wallet/balances?" + q), { credentials: "include" })
+    return fetchFn(apiUrl("/api/wallet/balances?" + q))
       .then(function (res) {
         if (!res.ok) {
           var err = new Error("HTTP " + res.status);
@@ -375,10 +375,11 @@
         return { state: "unknown", balances: rows, chains: reported, reason: "all-chains-failed" };
       })
       .catch(function (err) {
+        var detail = err && err.message ? String(err.message) : "fetch-failed";
         if (err && err.name === "EdgeHttpError") {
-          return { state: "unknown", reason: "edge-http" };
+          return { state: "unknown", reason: "edge-http", detail: detail };
         }
-        return { state: "unknown", reason: "edge-unreachable" };
+        return { state: "unknown", reason: "edge-unreachable", detail: detail };
       });
   }
 

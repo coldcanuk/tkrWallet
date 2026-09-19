@@ -18,10 +18,13 @@
          header-only directive and the origin sends it as a real HTTP header. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; worker-src 'self'"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://tkrwallet.scratchpost.ai; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; worker-src 'self'"
     />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" />
+    <!-- Class the shell before CSS so the popup is 432×600 on first paint.
+         100vh is the monitor, not the action window. MV3 forbids inline script. -->
+    <script src="./shell.js"></script>
     <!-- app.css is committed, built from tools/src/app.css. MV3 forbids remote
          code and cannot relax script-src, so there is no CDN fallback. -->
     <link rel="stylesheet" href="./app.css" />
@@ -194,6 +197,7 @@
             class="mb-3 rounded-card border border-warn-400/40 bg-warn-400/10 p-3"
           >
             <p id="balances-notice-text" class="text-xs leading-relaxed text-warn-400"></p>
+            <p id="balances-notice-detail" class="mt-1 break-all text-[11px] text-cream-500"></p>
             <p id="balances-checked" class="mt-1 text-[11px] text-cream-500"></p>
             <button
               type="button"
@@ -382,7 +386,7 @@
         <section data-screen="settings" hidden aria-labelledby="settings-heading">
           <h1 id="settings-heading" class="sr-only">Settings</h1>
           <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
-            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.8</p>
+            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.9</p>
             <h2 class="mt-4 text-sm font-medium text-cream-500">Security</h2>
             <p class="mt-1 text-xs leading-relaxed text-cream-500">
               Auto-lock locks the wallet after inactivity. It cannot be turned off;

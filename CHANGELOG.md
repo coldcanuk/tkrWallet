@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.9 — 2026-09-19
+
+### Fixed
+- Extension meta CSP was `connect-src 'self'`. In the popup that is
+  `chrome-extension://…`, so the browser blocked every edge fetch and the
+  banner said the edge was down. The wallet origin is now in the meta policy
+  as well as the manifest.
+- Dual scrollbars: `100vh` in a toolbar popup is the monitor height. The
+  document is sized 432×600 before CSS (`shell.js`); only `#main` scrolls.
+
 ## 0.10.8 — 2026-09-19
 
 ### Fixed

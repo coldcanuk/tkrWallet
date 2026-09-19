@@ -913,6 +913,18 @@
               : "the read failed.")
         : "Some chains could not be read. " + chainProblems(read);
     setText(el("balances-notice-text"), text);
+    var extra = [];
+    if (read.detail) {
+      extra.push(read.detail);
+    }
+    try {
+      if (root.chrome && chrome.runtime && chrome.runtime.id) {
+        extra.push("extension " + chrome.runtime.id);
+      }
+    } catch (e) {
+      /* non-extension */
+    }
+    setText(el("balances-notice-detail"), extra.join(" · "));
     var when = el("balances-checked");
     setText(when, uiData.lastChecked ? "Last checked " + new Date(uiData.lastChecked).toLocaleTimeString() : "");
     box.removeAttribute("hidden");
