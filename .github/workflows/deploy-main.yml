@@ -72,7 +72,14 @@ jobs:
         run: |
           cd /opt/repo/thePlatform/tkrWallet
           git fetch origin main && git merge --ff-only origin/main
-          WALLET_SRC=/opt/repo/thePlatform/tkrWallet \
-            /opt/repo/thePlatform/blockchain-infrastructure/wallet-edge/ship-root.sh
+          rsync -a --delete \
+            --exclude '.git/' \
+            --exclude 'node_modules/' \
+            --exclude 'actions-runner/' \
+            --exclude '.rdapq/' \
+            --exclude '.worktrees/' \
+            --exclude 'deploy/swarm/' \
+            --exclude 'tools/.npm-cache/' \
+            /opt/repo/thePlatform/tkrWallet/ chuck@caesar.local:/opt/repo/tkrwallet-pwa/
           ssh -o BatchMode=yes chuck@caesar.local \
             'cd /opt/repo/thePlatform/blockchain-infrastructure/wallet-edge && WALLET_ROOT=/opt/repo/tkrwallet-pwa ./apply.sh'
