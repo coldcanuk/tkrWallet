@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.13 — 2026-09-19
+
+### Added
+- Holdings are discovered ERC-20s you actually hold on Ethereum, Base, and
+  Robinhood (Scratchpost Alchemy index, verified on-chain). The old 40-token
+  built-in list is search/swap presets, not the wallet universe.
+- Contract prices via CoinGecko token_price when the token is not in the
+  short symbol map. Icons from Scratchpost first-party bytes, letter badge
+  if Scratchpost has no art yet.
+- Unpriced discovered tokens (airdrops, including Robinhood) sit behind an
+  Airdrops button on Home, not on the main list. Add-by-address pins one
+  to the desk; priced and catalogue tokens stay visible.
+
 ## 0.10.12 — 2026-09-19
 
 ### Added
