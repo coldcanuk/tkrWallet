@@ -7,7 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ATHENA="chuck@athena.local"
 VAULT_OPS="/opt/repo/thePlatform/blockchain-infrastructure/host/vault/vault_ops.py"
-VAULT_PATH="tkrwallet/crx/key.pem"
+VAULT_PATH="theplatform/tkrwallet/chrome-crx-key"
 STAGE="/dev/shm/tkrwallet-ext"
 KEY="/dev/shm/tkrwallet-crx-key.pem"
 CRX="/dev/shm/tkrwallet.crx"
