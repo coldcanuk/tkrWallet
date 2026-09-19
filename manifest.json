@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "tkrWallet",
-  "version": "0.10.13",
+  "version": "0.10.14",
   "description": "Self-custody wallet for Scratchpost. You hold the keys.",
   "action": {
     "default_popup": "index.html",
@@ -31,7 +31,7 @@
     "https://tkrwallet.scratchpost.ai/*"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://tkrwallet.scratchpost.ai; img-src 'self' data: https://tkrwallet.scratchpost.ai; style-src 'self'"
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://tkrwallet.scratchpost.ai; img-src 'self' data: https://tkrwallet.scratchpost.ai; style-src 'self'; media-src 'self' blob:"
   },
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzflS92wzy2rg4VBrWib5i+7SVsroqeG1/BuaFLfN7H6GalhTwA3aS0fRgqMGZ2Scm4/KsKUtE+aEOgFtroFtVqwbXuODwyvg/XrgYzRugT+ffxcosChBXTSdCKAafgxC2Qf2Syk0SOOUOFjiptnGEVW9E/uuge+6EQ6CwwdRekA7GloVptPox0lwL3WMuLXzBM9HbN0BEPIRhALDESbjrFXHwUp8LEh4a2/lLCSQTvOsKgyL2ybg3p0j2KDxpU2YI7uhA7qMLdv/+iUHtIgiBQK52xwa9LKUIb5mFQ1Rw7zZbLtIvnCOY+gMmbOlTKZDxdqC7khdcqgua5aiGc/TXwIDAQAB"
 }

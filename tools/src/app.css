@@ -153,4 +153,30 @@
   .tnum {
     font-variant-numeric: tabular-nums;
   }
+
+  dialog {
+    border: 0;
+    color: inherit;
+  }
+  dialog::backdrop {
+    background: rgba(18, 16, 14, 0.88);
+  }
+  dialog[open] {
+    animation: tkr-dialog-in 180ms ease-out;
+  }
+  @keyframes tkr-dialog-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  #swap-submit:disabled,
+  #swap-submit[aria-disabled="true"] {
+    opacity: 0.45;
+    pointer-events: none;
+  }
 }

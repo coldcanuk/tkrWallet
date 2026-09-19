@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.14 — 2026-09-19
+
+### Added
+- Airdrops is a Home submenu (not a fifth nav tab). The control stays visible
+  when the list is empty.
+- Token search queries Scratchpost’s Ethereum and Base catalogue. Solana and
+  TRON stay address-only so vendor API credits are not burned.
+- Receive paints a scannable QR of the unlocked EVM address.
+- Send keeps a local contacts list, shows the last 0–3 recipients when To is
+  focused, and can fill To from a webcam QR.
+- Swap Quote shows a live Scratchpost estimate. Tapping the number opens quote
+  details with Swap Now, which greys out when the quote expires.
+
 ## 0.10.13 — 2026-09-19
 
 ### Added
