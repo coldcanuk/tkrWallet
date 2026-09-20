@@ -30,6 +30,7 @@ permissions:
 jobs:
   deploy:
     runs-on: [self-hosted, Linux, X64, thePlatform]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -67,11 +68,13 @@ jobs:
           fi
           echo "gates ok: connect-src 'self', no key material"
 
-      # Fred Host deploy cite (LOCKED — wire ONLY this path, no secrets in YAML).
+      # Ship the triggering revision. Do not ff-only the Athena checkout —
+      # that tree is often dirty and was why Tokens stayed on an old PWA.
       - name: Fred-approved Host deploy (ship + apply only)
         run: |
-          cd /opt/repo/thePlatform/tkrWallet
-          git fetch origin main && git merge --ff-only origin/main
+          set -euo pipefail
+          SRC="${GITHUB_WORKSPACE}"
+          test -f "$SRC/wallet.js" && test -f "$SRC/index.html"
           rsync -a --delete \
             --exclude '.git/' \
             --exclude 'node_modules/' \
@@ -80,6 +83,6 @@ jobs:
             --exclude '.worktrees/' \
             --exclude 'deploy/swarm/' \
             --exclude 'tools/.npm-cache/' \
-            /opt/repo/thePlatform/tkrWallet/ chuck@caesar.local:/opt/repo/tkrwallet-pwa/
+            "$SRC/" chuck@caesar.local:/opt/repo/tkrwallet-pwa/
           ssh -o BatchMode=yes chuck@caesar.local \
             'cd /opt/repo/thePlatform/blockchain-infrastructure/wallet-edge && WALLET_ROOT=/opt/repo/tkrwallet-pwa ./apply.sh'
