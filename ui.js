@@ -805,6 +805,122 @@
     setText(el("wallet-status"), message);
   }
 
+  var busyCount = 0;
+  var BUSY_BUTTONS = [
+    "swap-quote",
+    "swap-submit",
+    "send-submit",
+    "pool-add",
+    "pool-search",
+    "pool-refresh",
+    "balances-retry",
+    "detail-buy",
+    "detail-send",
+    "detail-swap",
+    "add-token-btn",
+    "fx-live",
+  ];
+
+  function isBusy() {
+    return busyCount > 0;
+  }
+
+  function paintBusy(message) {
+    var on = busyCount > 0;
+    var bar = el("scratchpost-busy");
+    var app = el("app");
+    var card = el("wallet-value-card");
+    var label = el("scratchpost-busy-label");
+    var i;
+    var extras;
+    if (app) {
+      if (on) {
+        app.setAttribute("aria-busy", "true");
+      } else {
+        app.removeAttribute("aria-busy");
+      }
+    }
+    if (bar) {
+      if (on) {
+        bar.removeAttribute("hidden");
+      } else {
+        bar.setAttribute("hidden", "");
+      }
+    }
+    if (label && on && message) {
+      setText(label, message);
+    }
+    if (card && card.classList) {
+      if (on) {
+        card.classList.add("tkr-busy-pulse");
+      } else {
+        card.classList.remove("tkr-busy-pulse");
+      }
+    }
+    if (typeof document !== "undefined" && document.documentElement && document.documentElement.classList) {
+      document.documentElement.classList.toggle("tkr-busy", on);
+    }
+    for (i = 0; i < BUSY_BUTTONS.length; i++) {
+      var btn = el(BUSY_BUTTONS[i]);
+      if (!btn) {
+        continue;
+      }
+      btn.disabled = on;
+      if (on) {
+        btn.setAttribute("aria-disabled", "true");
+      } else {
+        btn.removeAttribute("aria-disabled");
+      }
+    }
+    if (typeof document !== "undefined" && document.querySelectorAll) {
+      extras = document.querySelectorAll("[data-currency]");
+      for (i = 0; i < extras.length; i++) {
+        extras[i].disabled = on;
+        if (on) {
+          extras[i].setAttribute("aria-disabled", "true");
+        } else {
+          extras[i].removeAttribute("aria-disabled");
+        }
+      }
+    }
+  }
+
+  function setBusy(message) {
+    var first = busyCount === 0;
+    busyCount += 1;
+    if (message && first) {
+      setWalletStatus(message);
+    }
+    paintBusy(message);
+  }
+
+  function clearBusy() {
+    if (busyCount > 0) {
+      busyCount -= 1;
+    }
+    paintBusy();
+  }
+
+  /** Refcount Scratchpost waits so overlapping fetches keep one indicator
+   * and Quote / Retry / Send stay inert until the last wait settles. */
+  function withBusy(work, message) {
+    setBusy(message || "Talking to Scratchpost\u2026");
+    return Promise.resolve()
+      .then(function () {
+        return typeof work === "function" ? work() : work;
+      })
+      .then(
+        function (value) {
+          clearBusy();
+          return value;
+        },
+        function (err) {
+          clearBusy();
+          throw err;
+        }
+      );
+  }
+
   function setWalletValue(value, currency, note) {
     var box = el("wallet-value");
     var unknown = value === null || value === undefined || value === "" || isNaN(Number(value));
@@ -1088,7 +1204,10 @@
       box.textContent = "Unlock to see positions.";
       return;
     }
-    wallet.listPositions(poolChainId(), session.address).then(function (body) {
+    box.textContent = "Reading positions\u2026";
+    return withBusy(function () {
+      return wallet.listPositions(poolChainId(), session.address);
+    }, "Reading pool positions from Scratchpost\u2026").then(function (body) {
       box.textContent = "";
       var rows = (body && body.positions) || [];
       if (!rows.length) {
@@ -1147,19 +1266,21 @@
       openGate("unlock");
       return;
     }
-    setPoolNote("Building…");
-    wallet.buildPool(payload).then(function (body) {
-      if (!body || body.ok === false || !body.tx) {
-        throw new Error((body && body.error) || "build");
-      }
-      return signBuiltTx(body.tx, body.chain_id).then(function (sent) {
-        if (!sent || sent.ok === false) {
-          throw new Error("broadcast");
+    setPoolNote("Building\u2026");
+    withBusy(function () {
+      return wallet.buildPool(payload).then(function (body) {
+        if (!body || body.ok === false || !body.tx) {
+          throw new Error((body && body.error) || "build");
         }
-        setPoolNote("Broadcast " + (sent.tx_hash || "") + ". If Scratchpost asked for wrap or approve, tap Add again.");
-        refreshPoolPositions();
+        return signBuiltTx(body.tx, body.chain_id).then(function (sent) {
+          if (!sent || sent.ok === false) {
+            throw new Error("broadcast");
+          }
+          setPoolNote("Broadcast " + (sent.tx_hash || "") + ". If Scratchpost asked for wrap or approve, tap Add again.");
+          return refreshPoolPositions();
+        });
       });
-    }).catch(function () {
+    }, "Building pool transaction\u2026").catch(function () {
       setPoolNote("Pool tx failed. The key did not leave this device.");
     });
   }
@@ -1172,12 +1293,15 @@
     }
     var a = String((el("pool-token-a") || {}).value || "native");
     var b = String((el("pool-token-b") || {}).value || "");
-    wallet.searchPools({
-      chain_id: poolChainId(),
-      token_a: a,
-      token_b: b,
-      fee: Number((el("pool-fee") || {}).value || 3000),
-    }).then(function (body) {
+    box.textContent = "Searching\u2026";
+    withBusy(function () {
+      return wallet.searchPools({
+        chain_id: poolChainId(),
+        token_a: a,
+        token_b: b,
+        fee: Number((el("pool-fee") || {}).value || 3000),
+      });
+    }, "Searching pools on Scratchpost\u2026").then(function (body) {
       box.textContent = "";
       var pools = (body && body.pools) || [];
       if (!pools.length) {
@@ -1218,28 +1342,29 @@
     var token = String((el("send-token") || {}).value || "native");
     var atomic = wallet.toAtomicAmount(amountHuman, chainId === 900001 ? 9 : 18);
     var from = chainId === 900001 ? session.solAddress : session.address;
-    setText(el("send-note"), "Building send…");
-    wallet
-      .buildSend({ chain_id: chainId, from: from, to: to, amount: atomic, token: token })
-      .then(function (body) {
-        if (!body || body.ok === false) {
-          throw new Error((body && body.error) || "build");
-        }
-        if (chainId === 900001) {
-          return signBuiltTx({ tx_b64: body.tx_b64 }, 900001);
-        }
-        return signBuiltTx(body.tx, body.chain_id);
-      })
-      .then(function (sent) {
-        if (!sent || sent.ok === false) {
-          throw new Error("broadcast");
-        }
-        setText(el("send-note"), "Broadcast " + (sent.tx_hash || "") + ".");
-        setWalletStatus("Sent. Key stayed on this device.");
-      })
-      .catch(function () {
-        setText(el("send-note"), "Send failed. Nothing was signed off-device.");
-      });
+    setText(el("send-note"), "Building send\u2026");
+    withBusy(function () {
+      return wallet
+        .buildSend({ chain_id: chainId, from: from, to: to, amount: atomic, token: token })
+        .then(function (body) {
+          if (!body || body.ok === false) {
+            throw new Error((body && body.error) || "build");
+          }
+          if (chainId === 900001) {
+            return signBuiltTx({ tx_b64: body.tx_b64 }, 900001);
+          }
+          return signBuiltTx(body.tx, body.chain_id);
+        })
+        .then(function (sent) {
+          if (!sent || sent.ok === false) {
+            throw new Error("broadcast");
+          }
+          setText(el("send-note"), "Broadcast " + (sent.tx_hash || "") + ".");
+          setWalletStatus("Sent. Key stayed on this device.");
+        });
+    }, "Building send on Scratchpost\u2026").catch(function () {
+      setText(el("send-note"), "Send failed. Nothing was signed off-device.");
+    });
   }
 
   function onPoolAdd() {
@@ -1470,7 +1595,9 @@
     if (!root.tkrWalletData || typeof root.tkrWalletData.searchTokens !== "function") {
       return local;
     }
-    root.tkrWalletData.searchTokens(q, readStoredTokens()).then(function (remote) {
+    withBusy(function () {
+      return root.tkrWalletData.searchTokens(q, readStoredTokens());
+    }, "Searching Scratchpost\u2026").then(function (remote) {
       if (seq !== searchSeq) {
         return;
       }
@@ -1619,10 +1746,16 @@
     }
     var vs = CURRENCIES.slice();
     paintFxButton();
-    return wallet.getPrices(assets, vs, null, uiData.fxSource).then(function (prices) {
-      uiData.lastPrices = prices;
+    return withBusy(function () {
+      return wallet.getPrices(assets, vs, null, uiData.fxSource).then(function (prices) {
+        uiData.lastPrices = prices;
+        renderAll();
+        return prices;
+      });
+    }, "Fetching prices from Scratchpost\u2026").catch(function () {
+      setWalletStatus("Prices unavailable from the wallet edge.");
       renderAll();
-      return prices;
+      return null;
     });
   }
 
@@ -1704,7 +1837,8 @@
     var extras = readStoredTokens().map(function (t) {
       return t.chain_id + ":" + t.address;
     });
-    return ensureEdgeAccess().then(function (allowed) {
+    return withBusy(function () {
+      return ensureEdgeAccess().then(function (allowed) {
       if (!allowed) {
         uiData.lastChecked = Date.now();
         uiData.lastBalances = {
@@ -1761,6 +1895,18 @@
         setWalletValue(null, state.currency, "Balances unavailable until the wallet edge responds.");
         return null;
       });
+    });
+    }, "Reading balances from Scratchpost\u2026").catch(function () {
+      uiData.lastChecked = Date.now();
+      uiData.lastBalances = {
+        state: "unknown",
+        reason: "edge-unreachable",
+        detail: "The wallet edge did not answer.",
+      };
+      renderBalancesNotice();
+      setWalletStatus("Balances unknown: the wallet edge did not answer. Nothing was signed.");
+      setWalletValue(null, state.currency, "Balances unavailable until the wallet edge responds.");
+      return null;
     });
   }
 
@@ -1847,7 +1993,9 @@
     }
     showAddTokenError(null);
     setWalletStatus("Looking up the token at " + shortAddress(addr, 6, 4) + "\u2026");
-    return wallet.getTokenMeta(chainId, addr).then(function (res) {
+    return withBusy(function () {
+      return wallet.getTokenMeta(chainId, addr);
+    }, "Looking up the token on Scratchpost\u2026").then(function (res) {
       if (res.state !== "ok") {
         showAddTokenError(
           res.reason === "not-a-token"
@@ -3279,13 +3427,14 @@
       return;
     }
     setText(el("swap-note"), "Asking Scratchpost for a quote\u2026");
-    wallet
-      .quoteSwap({
+    withBusy(function () {
+      return wallet.quoteSwap({
         chain_id: fromSel.chainId,
         input_mint: fromSel.mint,
         output_mint: toSel.mint,
         amount: amount,
-      })
+      });
+    }, "Asking Scratchpost for a quote\u2026")
       .then(function (body) {
         if (!body || body.ok === false) {
           throw new Error((body && body.error) || "quote-failed");
@@ -3389,25 +3538,26 @@
       }
       return wallet.broadcastRaw({ raw: signed.raw, chain_id: signed.chainId });
     }
-    wallet
-      .buildSwap({ chain_id: chainId, quote: pendingSwapQuote.body.quote })
-      .then(signBuilt)
-      .then(function (sent) {
-        if (!sent || sent.ok === false) {
-          throw new Error((sent && sent.error) || "broadcast");
-        }
-        pendingSwapQuote = null;
-        clearQuoteTimer();
-        hideSwapEstimate();
-        closeQuoteDialog();
-        setText(el("swap-note"), "Broadcast " + (sent.tx_hash || "") + ". Key stayed on this device.");
-        setWalletStatus("Swap broadcast. Key stayed on this device.");
-        refreshBalances();
-      })
-      .catch(function () {
-        setText(el("swap-note"), "Swap did not broadcast. The key did not leave this device.");
-        setWalletStatus("Swap failed. The key did not leave this device.");
-      });
+    withBusy(function () {
+      return wallet
+        .buildSwap({ chain_id: chainId, quote: pendingSwapQuote.body.quote })
+        .then(signBuilt)
+        .then(function (sent) {
+          if (!sent || sent.ok === false) {
+            throw new Error((sent && sent.error) || "broadcast");
+          }
+          pendingSwapQuote = null;
+          clearQuoteTimer();
+          hideSwapEstimate();
+          closeQuoteDialog();
+          setText(el("swap-note"), "Broadcast " + (sent.tx_hash || "") + ". Key stayed on this device.");
+          setWalletStatus("Swap broadcast. Key stayed on this device.");
+          return refreshBalances();
+        });
+    }, "Building unsigned swap\u2026").catch(function () {
+      setText(el("swap-note"), "Swap did not broadcast. The key did not leave this device.");
+      setWalletStatus("Swap failed. The key did not leave this device.");
+    });
   }
 
   function onDisconnect() {
@@ -3416,8 +3566,9 @@
       setWalletStatus("Disconnect is unavailable in this browser.");
       return;
     }
-    data
-      .closeSession()
+    withBusy(function () {
+      return data.closeSession();
+    }, "Disconnecting from Scratchpost\u2026")
       .then(function (out) {
         if (!out || out.ok === false) {
           throw new Error((out && out.error) || "logout-failed");
@@ -4063,6 +4214,9 @@
     setAccount: setAccount,
     setStatus: setStatus,
     setWalletStatus: setWalletStatus,
+    withBusy: withBusy,
+    isBusy: isBusy,
+    BUSY_BUTTONS: BUSY_BUTTONS,
     setWalletValue: setWalletValue,
     setCurrency: setCurrency,
     renderTokens: renderTokens,

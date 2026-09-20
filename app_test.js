@@ -382,7 +382,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.16") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.17") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -2051,6 +2051,122 @@ test("catalogue: a token is never listed on a chain it is not deployed on (the O
     0,
     "OP has no Ethereum mainnet deployment"
   );
+});
+
+test("Scratchpost waits show a busy strip and disable hammer buttons", function () {
+  const html = readFile("index.html");
+  const src = readFile("tools/src/app.css");
+  const uiSrc = readFile("ui.js");
+  const ui = require("./ui.js");
+  ["scratchpost-busy", "scratchpost-busy-label", "wallet-value-card"].forEach(function (id) {
+    assert.ok(html.indexOf('id="' + id + '"') !== -1, "missing #" + id);
+  });
+  assert.ok(/Talking to Scratchpost/.test(html), "busy strip must tell the operator we are waiting");
+  assert.ok(src.indexOf("@keyframes tkr-spin") !== -1, "spinner keyframes");
+  assert.ok(src.indexOf("@keyframes tkr-pulse") !== -1, "card pulse keyframes");
+  assert.ok(src.indexOf("prefers-reduced-motion") !== -1, "reduced motion must still show the strip");
+  assert.ok(src.indexOf("html.tkr-busy #swap-quote") !== -1, "Quote must not be clickable while busy");
+  assert.ok(uiSrc.indexOf("function withBusy") !== -1, "refcount wrapper");
+  [
+    "refreshBalances",
+    "refreshPrices",
+    "onSwapQuote",
+    "onSwapSubmit",
+    "onSendSubmit",
+    "onPoolBuild",
+    "onPoolSearch",
+    "addToken",
+  ].forEach(function (name) {
+    const idx = uiSrc.indexOf("function " + name + "(");
+    assert.ok(idx !== -1, "missing " + name);
+    const next = uiSrc.indexOf("\n  function ", idx + 10);
+    const slice = uiSrc.slice(idx, next === -1 ? idx + 5000 : next);
+    assert.ok(slice.indexOf("withBusy") !== -1, name + " must wrap the Scratchpost wait");
+  });
+  ui.BUSY_BUTTONS.forEach(function (id) {
+    assert.ok(html.indexOf('id="' + id + '"') !== -1, "busy target #" + id + " missing from the shell");
+  });
+});
+
+test("busy refcount stays on until overlapping Scratchpost waits finish", function () {
+  const ui = require("./ui.js");
+  const nodes = Object.create(null);
+  function makeNode() {
+    const attrs = { hidden: "" };
+    const classes = new Set();
+    return {
+      disabled: false,
+      textContent: "",
+      classList: {
+        add: function (c) { classes.add(c); },
+        remove: function (c) { classes.delete(c); },
+        contains: function (c) { return classes.has(c); },
+      },
+      setAttribute: function (k, v) { attrs[k] = String(v); },
+      removeAttribute: function (k) { delete attrs[k]; },
+      hasAttribute: function (k) { return Object.prototype.hasOwnProperty.call(attrs, k); },
+      getAttribute: function (k) {
+        return Object.prototype.hasOwnProperty.call(attrs, k) ? attrs[k] : null;
+      },
+    };
+  }
+  const htmlClasses = new Set();
+  const prev = global.document;
+  global.document = {
+    getElementById: function (id) {
+      if (!nodes[id]) {
+        nodes[id] = makeNode();
+      }
+      return nodes[id];
+    },
+    querySelectorAll: function () { return []; },
+    documentElement: {
+      classList: {
+        add: function (c) { htmlClasses.add(c); },
+        remove: function (c) { htmlClasses.delete(c); },
+        contains: function (c) { return htmlClasses.has(c); },
+        toggle: function (c, force) {
+          if (force === true) htmlClasses.add(c);
+          else if (force === false) htmlClasses.delete(c);
+          else if (htmlClasses.has(c)) htmlClasses.delete(c);
+          else htmlClasses.add(c);
+        },
+      },
+    },
+  };
+  assert.strictEqual(ui.isBusy(), false);
+  let resolveA;
+  let resolveB;
+  const a = ui.withBusy(new Promise(function (resolve) { resolveA = resolve; }), "one");
+  assert.strictEqual(ui.isBusy(), true);
+  assert.ok(htmlClasses.has("tkr-busy"));
+  assert.strictEqual(nodes.app.getAttribute("aria-busy"), "true");
+  assert.strictEqual(nodes["scratchpost-busy"].hasAttribute("hidden"), false);
+  assert.ok(nodes["wallet-value-card"].classList.contains("tkr-busy-pulse"));
+  assert.strictEqual(nodes["swap-quote"].disabled, true);
+  const b = ui.withBusy(new Promise(function (resolve) { resolveB = resolve; }), "two");
+  resolveA(1);
+  return a.then(function () {
+    assert.strictEqual(ui.isBusy(), true, "second wait still in flight");
+    assert.strictEqual(nodes["swap-quote"].disabled, true);
+    resolveB(2);
+    return b;
+  }).then(function () {
+    assert.strictEqual(ui.isBusy(), false);
+    assert.strictEqual(htmlClasses.has("tkr-busy"), false);
+    assert.strictEqual(nodes.app.hasAttribute("aria-busy"), false);
+    assert.strictEqual(nodes["scratchpost-busy"].hasAttribute("hidden"), true);
+    assert.strictEqual(nodes["swap-quote"].disabled, false);
+  }).then(function () {
+    return ui.withBusy(Promise.reject(new Error("nope")), "fail").then(
+      function () { throw new Error("withBusy must rethrow"); },
+      function () {
+        assert.strictEqual(ui.isBusy(), false, "a rejected wait still clears busy");
+      }
+    );
+  }).finally(function () {
+    global.document = prev;
+  });
 });
 
 test("every element ui.js reaches for actually exists in index.html", function () {
