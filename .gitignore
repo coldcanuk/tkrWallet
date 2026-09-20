@@ -25,6 +25,13 @@ key.pem
 application-ui-v4/
 catalyst-ui-kit/
 
+# ── Live GitHub Actions runner (on-disk only; never pack into the PWA) ──
+# Contains .credentials. Leave the runner where it is; do not git add it.
+actions-runner/
+
+# ── Local RDAP-Q session state ─────────────────────────────────────────────
+.rdapq/
+
 # ── Local tooling ───────────────────────────────────────────────────────────
 # Headless-Chromium screenshots and probe scripts (Playwright).
 .ui-shots/

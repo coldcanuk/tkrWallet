@@ -1,0 +1,21 @@
+# tkrWallet / wallet-edge Swarm stub — Phase A.
+# wallet-edge compose remains on caesar until caesar is a Swarm worker.
+# CF bind secrets ae__bi__scratchpost__cf__* are seeded on athena (manager).
+# After worker join: deploy this stack with placement node.labels.role==caesar.
+version: "3.8"
+services:
+  wallet-edge:
+    image: alpine:3.20
+    command: ["sh", "-c", "echo wallet-edge stub — replace with real image when caesar worker joins; sleep infinity"]
+    secrets:
+      - source: ae__bi__scratchpost__cf__api_token_1
+        target: cf_api_token
+      - source: ae__bi__scratchpost__cf__account_id
+        target: cf_account_id
+    deploy:
+      replicas: 0
+      placement:
+        constraints: [node.labels.role == caesar]
+secrets:
+  ae__bi__scratchpost__cf__api_token_1: { external: true }
+  ae__bi__scratchpost__cf__account_id: { external: true }

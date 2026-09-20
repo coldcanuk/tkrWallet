@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.20 — 2026-09-20
+
+### Fixed
+- Scan QR from the toolbar popup or side panel opens Send in a tab so Chrome
+  can show the camera prompt. Desk webcam uses a plain video constraint.
+  Camera errors no longer claim a signature happened.
+
+### Added
+- `AGENTS.md` Prime Directive: never write or commit on `main`. New worktree,
+  commit there, push, open a PR, merge the PR.
+
 ## 0.10.19 — 2026-09-20
 
 ### Added

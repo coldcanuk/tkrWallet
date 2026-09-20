@@ -64,6 +64,42 @@
     return "page";
   }
 
+  /** Toolbar popup and side panel cannot show a getUserMedia permission prompt. */
+  function cameraShellCannotPrompt(search, protocol, innerWidth) {
+    if (String(protocol || "") !== "chrome-extension:") {
+      return false;
+    }
+    if (parseShellMode(search, protocol) === "panel") {
+      return true;
+    }
+    var w = Number(innerWidth);
+    return isFinite(w) && w > 0 && w <= 520;
+  }
+
+  function wantsAutoScan(search) {
+    return /(^|[?&])scan=1([&#]|$)/.test(String(search || ""));
+  }
+
+  function sendCameraErrorText(err) {
+    var name = err && err.name ? String(err.name) : "";
+    if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+      return "No camera was found on this desk.";
+    }
+    if (name === "NotReadableError" || name === "TrackStartError") {
+      return "The camera is already in use.";
+    }
+    if (name === "OverconstrainedError" || name === "ConstraintNotSatisfiedError") {
+      return "This desk camera cannot be opened with the requested settings.";
+    }
+    if (name === "SecurityError") {
+      return "This page is not allowed to use the camera.";
+    }
+    if (name === "NotAllowedError" || name === "PermissionDeniedError" || name === "PermissionDismissedError") {
+      return "Camera permission was denied. Allow the camera for tkrWallet and try Scan QR again.";
+    }
+    return "The camera could not be opened.";
+  }
+
   var CLI_HELP = [
     "tkrWallet CLI. Secrets are never printed.",
     "help              this list",
@@ -3586,7 +3622,37 @@
     });
   }
 
+  function openSendCameraTab() {
+    try {
+      if (
+        root.chrome &&
+        chrome.tabs &&
+        typeof chrome.tabs.create === "function" &&
+        chrome.runtime &&
+        typeof chrome.runtime.getURL === "function"
+      ) {
+        chrome.tabs.create({ url: chrome.runtime.getURL("index.html") + "?scan=1#/send" });
+        setText(el("send-note"), "Opened Send in a tab so the camera prompt can appear.");
+        return true;
+      }
+    } catch (e) {
+      /* PWA / tests */
+    }
+    setText(
+      el("send-note"),
+      "Open tkrWallet in a browser tab to scan a QR. The toolbar popup cannot ask for the camera."
+    );
+    return false;
+  }
+
   function startSendCamera() {
+    var search = root.location && root.location.search;
+    var protocol = root.location && root.location.protocol;
+    var width = root.innerWidth;
+    if (cameraShellCannotPrompt(search, protocol, width)) {
+      openSendCameraTab();
+      return;
+    }
     var video = el("send-camera");
     if (!video || !root.navigator || !root.navigator.mediaDevices || !root.navigator.mediaDevices.getUserMedia) {
       setText(el("send-note"), "Camera is unavailable in this browser.");
@@ -3594,7 +3660,7 @@
     }
     stopSendCamera();
     root.navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: "environment" }, audio: false })
+      .getUserMedia({ video: true, audio: false })
       .then(function (stream) {
         sendCameraStream = stream;
         video.srcObject = stream;
@@ -3609,8 +3675,8 @@
         setText(el("send-note"), "Hold a QR code to the camera.");
         tickSendScan();
       })
-      .catch(function () {
-        setText(el("send-note"), "Camera permission was denied. Nothing was signed.");
+      .catch(function (err) {
+        setText(el("send-note"), sendCameraErrorText(err));
       });
   }
 
@@ -4433,6 +4499,10 @@
     state.currency = readStoredCurrency();
     renderCurrency();
     showScreen(parseRoute(root.location && root.location.hash));
+    if (wantsAutoScan(root.location && root.location.search)) {
+      showScreen("send");
+      startSendCamera();
+    }
     maybePreview();
     if (!uiData.lastHoldings) {
       var restored = restoreViewSession();
@@ -4547,6 +4617,9 @@
     parseRoute: parseRoute,
     parseTokenRoute: parseTokenRoute,
     parseShellMode: parseShellMode,
+    cameraShellCannotPrompt: cameraShellCannotPrompt,
+    wantsAutoScan: wantsAutoScan,
+    sendCameraErrorText: sendCameraErrorText,
     parseCurrency: parseCurrency,
     formatHeld: formatHeld,
     formatAsOf: formatAsOf,
