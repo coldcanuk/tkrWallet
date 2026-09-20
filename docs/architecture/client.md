@@ -78,7 +78,7 @@ retry. This is the client half of the edge contract in
 | `#/activity` | device-local placeholder |
 | `#/search` | catalogue search |
 | `#/settings` | auto-lock, currency, lock now |
-| `#/accounts` | extra HD accounts + Watch (not Home, not Settings) |
+| `#/accounts` | Wallets: New / Remove / Import + Watch (not Home, not Settings) |
 | `#/token/<chain_id>:<native\|0xaddress>` | **token detail** (reachable from a holding row and a search row) |
 
 ## Chain catalog

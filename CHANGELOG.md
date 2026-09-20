@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.21 — 2026-09-20
+
+### Removed
+- **Derive next account.** Extra HD addresses from one phrase are no longer
+  offered. The Wallets screen (`#/accounts`) has **+ New Wallet**,
+  **− Remove Wallet**, and **Import Wallet**, which reuse the existing
+  create and import gates. Create and import refuse while a vault is already
+  on this device — remove it first. Remove requires typing `remove this
+  wallet`. Watch is unchanged.
+
 ## 0.10.20 — 2026-09-20
 
 ### Fixed

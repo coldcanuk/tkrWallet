@@ -185,7 +185,7 @@
             <p id="wallet-value-note" class="mt-2 text-xs text-cream-500">
               Unlock with your password, or import / recover with a recovery phrase.
             </p>
-            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.20</p>
+            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.21</p>
           </div>
 
           <div class="mt-4 grid grid-cols-4 gap-2">
@@ -556,7 +556,7 @@
         <section data-screen="settings" hidden aria-labelledby="settings-heading">
           <h1 id="settings-heading" class="sr-only">Settings</h1>
           <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
-            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.20</p>
+            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.21</p>
             <h2 class="mt-4 text-sm font-medium text-cream-500">Security</h2>
             <p class="mt-1 text-xs leading-relaxed text-cream-500">
               Auto-lock locks the wallet after inactivity. It cannot be turned off;
@@ -585,7 +585,7 @@
           </div>
         </section>
 
-        <!-- Extra accounts. Own form — not Home, not Settings. -->
+        <!-- Wallets. Own screen — not Home, not Settings. -->
         <section data-screen="accounts" hidden aria-labelledby="accounts-heading">
           <button
             type="button"
@@ -595,26 +595,48 @@
             <svg viewBox="0 0 24 24" fill="none" class="size-4" aria-hidden="true"><path d="m15 6-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Back
           </button>
-          <h1 id="accounts-heading" class="text-lg font-semibold text-cream-50">Extra accounts</h1>
+          <h1 id="accounts-heading" class="text-lg font-semibold text-cream-50">Wallets</h1>
           <p class="mt-2 text-sm leading-relaxed text-cream-500">
-            One recovery phrase. Derive next account is the next Ethereum
-            address from that phrase. Watch adds an address this phrase
-            does not control. This form is the only place extra accounts
-            are added. The home desk shows the unlocked account.
+            This device holds one wallet. New Wallet and Import Wallet reuse
+            the setup you already have. Remove it first to put another on
+            this device. Watch adds an address this wallet does not control.
           </p>
           <div class="mt-4 rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
             <h2 class="text-sm font-medium text-cream-500">On this device</h2>
             <div id="accounts-manage-list" class="mt-3"></div>
-            <form id="add-account-form" class="mt-5">
+            <div class="mt-5 flex flex-col gap-2">
+              <button
+                type="button"
+                id="wallet-new"
+                class="min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50"
+              >
+                + New Wallet
+              </button>
+              <button
+                type="button"
+                id="wallet-remove"
+                class="min-h-11 w-full rounded-full bg-ink-950 text-sm font-medium text-cream-100 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+              >
+                − Remove Wallet
+              </button>
+              <button
+                type="button"
+                id="wallet-import"
+                class="min-h-11 w-full rounded-full bg-ink-950 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+              >
+                Import Wallet
+              </button>
+            </div>
+            <p id="wallet-action-error" class="mt-2 text-xs text-down-400" hidden></p>
+            <form id="wallet-remove-form" hidden class="mt-3">
               <p class="text-xs leading-relaxed text-cream-500">
-                Adding an extra account asks for your password and never
-                stores the phrase in the clear.
+                This deletes the encrypted wallet on this device. The recovery
+                phrase is the only backup. Type exactly: remove this wallet
               </p>
-              <label for="add-account-password" class="mt-3 block text-xs text-cream-500">Password</label>
-              <input id="add-account-password" type="password" autocomplete="current-password" class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none" />
-              <p id="add-account-error" class="mt-2 text-xs text-down-400" hidden></p>
-              <button type="submit" data-add-account id="add-account-submit" class="mt-3 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">
-                Derive next account
+              <label for="wallet-remove-confirm" class="mt-3 block text-xs text-cream-500">Confirm</label>
+              <input id="wallet-remove-confirm" type="text" autocomplete="off" spellcheck="false" class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none" />
+              <button type="submit" id="wallet-remove-submit" class="mt-3 min-h-11 w-full rounded-full bg-ink-950 text-sm font-medium text-down-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
+                Remove
               </button>
             </form>
             <div class="relative mt-4">
