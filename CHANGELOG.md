@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.22 — 2026-09-20
+
+### Added
+- Several wallets on one device. IndexedDB `tkrwallet` / `vault` now keys
+  each encrypted blob by wallet id (`default` still loads). **+ New Wallet**
+  and **Import Wallet** add another; they no longer refuse because one
+  already exists. Unlock is per wallet (its own password). Remove deletes
+  only the current wallet. Cap 20. This is the browser vault, not HashiCorp
+  Vault.
+
 ## 0.10.21 — 2026-09-20
 
 ### Removed

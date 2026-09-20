@@ -47,11 +47,12 @@ and remediations): [`docs/reviews/2026-09-14-technical-review.md`](docs/reviews/
   Derives Ethereum accounts at `m/44'/60'/0'/0/{i}` in the same vault and a
   Solana address at `m/44'/501'/0'/0'`, and signs EIP-191 messages and legacy
   EIP-155 transactions locally with audited `@noble`/`@scure` primitives —
-  never a server. **Wallets** (`#/accounts`) offers + New Wallet, − Remove
-  Wallet, and Import Wallet — the same create/import gates as first setup,
-  not extra HD addresses from one phrase. **Watch** adds a public address
-  this wallet does not control (balances only, no send). Only public
-  addresses sit next to the ciphertext.
+  never a server. **Wallets** (`#/accounts`) holds several encrypted vaults
+  in IndexedDB on this device (not HashiCorp Vault). + New Wallet and
+  Import Wallet add another recovery phrase; − Remove Wallet deletes only
+  the current one. **Watch** adds a public address the current wallet does
+  not control (balances only, no send). Only public addresses sit next to
+  the ciphertext.
   **Connect** (Settings)
   proves the address with an EIP-191 challenge–response on the wallet origin;
   the key never leaves the device and nothing is broadcast.
@@ -149,7 +150,7 @@ Then chrome://extensions and brave://extensions → Remove tkrWallet →
 Load unpacked → `/home/chuck/tkrWallet-unpacked`. Do not pick `/opt/repo`
 in the file dialog.
 
-The home card must read **tkrWallet 0.10.21**. If it does not, the browser
+The home card must read **tkrWallet 0.10.22**. If it does not, the browser
 is not this tree. Site access for `tkrwallet.scratchpost.ai` must not be
 “On click”.
 
