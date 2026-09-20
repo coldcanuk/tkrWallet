@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.26 — 2026-09-20
+
+### Changed
+- Swap quotes **Ethereum ↔ Base** and **Robinhood ↔ Ethereum/Base** through
+  Scratchpost, not only same-chain or Ethereum/Base ↔ Solana/Sui/TRON/Stellar.
+  Same-chain Ethereum and Base still use desk Uniswap first. Scratchpost does
+  not hold inventory; this device still signs.
+
 ## 0.10.25 — 2026-09-20
 
 ### Changed
