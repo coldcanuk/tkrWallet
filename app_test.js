@@ -578,7 +578,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.27") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.28") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -955,7 +955,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v24"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v25"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -2023,6 +2023,7 @@ test("swap screen quotes same-chain swaps through the wallet edge, never a vendo
   assert.ok(html.indexOf("Under construction") === -1 || html.indexOf("data-screen=\"swap\"") < html.indexOf("Under construction"));
   const swapSection = html.split('data-screen="swap"')[1].split('data-screen="receive"')[0];
   assert.ok(swapSection.indexOf("Under construction") === -1, "swap is no longer a placeholder");
+  assert.ok(swapSection.indexOf('id="swap-submit"') !== -1, "Swap Now must sit on the Swap screen, not only in a dialog");
   assert.match(swapSection, /Ethereum ↔ Base/);
   assert.match(swapSection, /Robinhood/);
   assert.ok(swapSection.indexOf("Pick two assets on the same chain, or Ethereum/Base to or from Solana") === -1);
@@ -2032,6 +2033,10 @@ test("swap screen quotes same-chain swaps through the wallet edge, never a vendo
   assert.ok(ui.indexOf("from_chain_id") !== -1);
   assert.ok(ui.indexOf("to_chain_id") !== -1);
   assert.ok(ui.indexOf("isScratchpostSwapPair") !== -1);
+  assert.ok(ui.indexOf('mode !== "popup"') !== -1, "extension popup must not showModal the quote dialog");
+  const activity = html.split('data-screen="activity"')[1].split('data-screen="search"')[0];
+  assert.ok(activity.indexOf("No activity yet") === -1);
+  assert.ok(activity.indexOf("not listed here yet") !== -1);
   assert.ok(ui.indexOf("isEthBaseForeignPair") !== -1);
   assert.ok(
     ui.indexOf("Pick two assets on the same chain, or Ethereum/Base to or from Solana, Sui, TRON, or Stellar.") === -1,

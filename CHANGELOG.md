@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.28 — 2026-09-20
+
+### Fixed
+- **Swap Now** lives on the Swap screen after Quote. The extension popup no
+  longer opens a native `<dialog>` in the browser top layer (that sat behind
+  the popup with no way back). Activity no longer claims “nothing happened”;
+  it does not list chain transactions yet.
+
 ## 0.10.27 — 2026-09-20
 
 ### Changed

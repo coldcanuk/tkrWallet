@@ -196,7 +196,7 @@
             <p id="wallet-value-note" class="mt-2 text-xs text-cream-500">
               Unlock with your password, or import / recover with a recovery phrase.
             </p>
-            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.27</p>
+            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.28</p>
           </div>
 
           <div class="mt-4 grid grid-cols-4 gap-2">
@@ -503,6 +503,14 @@
           >
             Quote
           </button>
+          <button
+            type="button"
+            id="swap-submit"
+            disabled
+            class="mt-3 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50 disabled:cursor-not-allowed"
+          >
+            Swap Now
+          </button>
           <p id="swap-note" class="mt-3 text-xs leading-relaxed text-cream-500"></p>
         </section>
 
@@ -599,11 +607,11 @@
         <section data-screen="activity" hidden aria-labelledby="activity-heading">
           <h1 id="activity-heading" class="sr-only">Activity</h1>
           <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
-            <p class="text-sm text-cream-300">No activity yet.</p>
+            <p class="text-sm text-cream-300">Chain transactions are not listed here yet.</p>
             <p class="mt-2 text-xs text-cream-500">
-              History is stored on this device only. The chain nodes are pruned,
-              so older receipts cannot be recovered &mdash; this list will not
-              claim to be complete.
+              A swap can succeed on-chain and still not appear on this screen.
+              tkrWallet does not read history from the pruned nodes. Check the
+              explorer for this address until Activity is built.
             </p>
           </div>
         </section>
@@ -626,7 +634,7 @@
         <section data-screen="settings" hidden aria-labelledby="settings-heading">
           <h1 id="settings-heading" class="sr-only">Settings</h1>
           <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
-            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.27</p>
+            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.28</p>
             <h2 class="mt-4 text-sm font-medium text-cream-500">Security</h2>
             <p class="mt-1 text-xs leading-relaxed text-cream-500">
               Auto-lock locks the wallet after inactivity. It cannot be turned off;
@@ -908,7 +916,7 @@
       <p id="swap-quote-timer" class="mt-2 text-xs text-cream-500"></p>
       <button
         type="button"
-        id="swap-submit"
+        data-swap-now
         class="mt-4 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50 disabled:cursor-not-allowed"
       >
         Swap Now

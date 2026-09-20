@@ -4217,13 +4217,14 @@
 
   function applyQuoteExpiryUi() {
     var live = quoteStillLive();
-    var btn = el("swap-submit");
-    if (btn) {
-      btn.disabled = !live;
+    var buttons = document.querySelectorAll("#swap-submit, [data-swap-now]");
+    var i;
+    for (i = 0; i < buttons.length; i++) {
+      buttons[i].disabled = !live;
       if (live) {
-        btn.removeAttribute("aria-disabled");
+        buttons[i].removeAttribute("aria-disabled");
       } else {
-        btn.setAttribute("aria-disabled", "true");
+        buttons[i].setAttribute("aria-disabled", "true");
       }
     }
     var remain = "";
@@ -4307,6 +4308,12 @@
         "."
     );
     applyQuoteExpiryUi();
+    var mode = parseShellMode(root.location && root.location.search, root.location && root.location.protocol);
+    if (mode === "popup") {
+      /* Native <dialog>.showModal() paints in the browser top layer, outside
+       * the 432×600 popup. Swap Now stays on the Swap screen. */
+      return;
+    }
     var dlg = el("swap-quote-dialog");
     if (!dlg) {
       return;
@@ -4692,7 +4699,10 @@
         startQuoteTimer();
         paintSwapPanel();
         if (openDialog) {
-          openQuoteDialog();
+          var mode = parseShellMode(root.location && root.location.search, root.location && root.location.protocol);
+          if (mode !== "popup") {
+            openQuoteDialog();
+          }
         }
         return pendingSwapQuote;
       })
@@ -5034,9 +5044,10 @@
         closeQuoteDialog();
       });
     }
-    var swapSubmit = el("swap-submit");
-    if (swapSubmit) {
-      swapSubmit.addEventListener("click", function () {
+    var swapNowBtns = document.querySelectorAll("#swap-submit, [data-swap-now]");
+    var sn;
+    for (sn = 0; sn < swapNowBtns.length; sn++) {
+      swapNowBtns[sn].addEventListener("click", function () {
         onSwapSubmit();
       });
     }
