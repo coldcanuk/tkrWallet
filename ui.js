@@ -26,6 +26,7 @@
   var AUTOLOCK_DEFAULT = 5;
   var AUTOLOCK_MAX = 60;
   var CREATE_CONFIRM = "I saved my recovery phrase";
+  var REMOVE_WALLET_CONFIRM = "remove this wallet";
   var WATCH_HELP_MS = 2000;
 
   /* ---- pure helpers (unit-testable without a DOM) ---------------------- */
@@ -263,6 +264,10 @@
   /** Typed backup confirm: exact sentence, trimmed. Not a checkbox. */
   function typedCreateConfirm(typed) {
     return String(typed || "").trim() === CREATE_CONFIRM;
+  }
+
+  function typedRemoveWallet(typed) {
+    return String(typed || "").trim() === REMOVE_WALLET_CONFIRM;
   }
 
   /** "0x2222...2222" — short enough for a 360px header. */
@@ -599,10 +604,6 @@
     }
     if (next === "accounts") {
       renderAccountsManage();
-      var pw = el("add-account-password");
-      if (pw && document.activeElement !== pw) {
-        pw.focus();
-      }
     }
     return next;
   }
@@ -797,12 +798,8 @@
       list.removeChild(list.firstChild);
     }
     var accounts = session.accounts || [];
-    var submit = el("add-account-submit");
     var watchSubmit = el("watch-account-submit");
     var c = crypto();
-    var next =
-      c && typeof c.nextAccountIndex === "function" ? c.nextAccountIndex(accounts) : accounts.length;
-    var atCap = c && typeof c.MAX_ACCOUNTS === "number" ? next >= c.MAX_ACCOUNTS : false;
     var watchN = 0;
     var w;
     for (w = 0; w < accounts.length; w++) {
@@ -812,9 +809,6 @@
     }
     var watchCap =
       c && typeof c.MAX_WATCH_ACCOUNTS === "number" ? watchN >= c.MAX_WATCH_ACCOUNTS : false;
-    if (submit) {
-      submit.disabled = !!atCap;
-    }
     if (watchSubmit) {
       watchSubmit.disabled = !!watchCap;
     }
@@ -822,8 +816,8 @@
       var empty = document.createElement("p");
       empty.className = "text-xs leading-relaxed text-cream-500";
       empty.textContent = session.address
-        ? "No extra accounts yet. Derive the next address from this phrase."
-        : "Unlock the wallet to manage extra accounts.";
+        ? "This wallet is on this device."
+        : "Unlock the wallet to manage it, or create / import one.";
       list.appendChild(empty);
       return;
     }
@@ -859,9 +853,6 @@
       });
       list.appendChild(btn);
     });
-    if (atCap) {
-      showGateError("add-account-error", "This vault already has the maximum of 20 accounts.");
-    }
     if (watchCap) {
       showGateError("watch-account-error", "This vault already has the maximum of 20 watch addresses.");
     }
@@ -2683,7 +2674,7 @@
       "create-password",
       "create-password-confirm",
       "create-confirm",
-      "add-account-password",
+      "wallet-remove-confirm",
     ];
     for (var i = 0; i < ids.length; i++) {
       var node = el(ids[i]);
@@ -2962,7 +2953,14 @@
       showGateError("gate-import-error", "That phrase is not a valid recovery phrase.");
       return;
     }
-    c.encryptVault(phrase, password)
+    s.loadVault()
+      .then(function (existing) {
+        if (existing) {
+          showGateError("gate-import-error", "A wallet already exists on this device. Remove it first, then import.");
+          throw new Error("vault-exists");
+        }
+        return c.encryptVault(phrase, password);
+      })
       .then(function (vault) {
         vault.accounts = c.accountsFromMnemonic(phrase, 1);
         vault.selectedIndex = 0;
@@ -2973,7 +2971,10 @@
         revealAccount(phrase, 0);
         closeGate();
       })
-      .catch(function () {
+      .catch(function (err) {
+        if (err && err.message === "vault-exists") {
+          return;
+        }
         showGateError("gate-import-error", "Could not store the wallet on this device.");
       });
   }
@@ -3061,7 +3062,7 @@
     s.loadVault()
       .then(function (existing) {
         if (existing) {
-          showGateError("gate-create-error", "A wallet already exists on this device. Unlock it, or add an extra account from Extra accounts.");
+          showGateError("gate-create-error", "A wallet already exists on this device. Remove it first, then create a new one.");
           throw new Error("vault-exists");
         }
         return c.encryptVault(phrase, password);
@@ -3085,81 +3086,63 @@
       });
   }
 
-  function onAddAccount() {
-    var password = ((el("add-account-password") || {}).value || "");
-    if (!password) {
-      showGateError("add-account-error", "Enter your password.");
+  function hideWalletRemoveForm() {
+    var form = el("wallet-remove-form");
+    if (form) {
+      form.setAttribute("hidden", "");
+    }
+    var typed = el("wallet-remove-confirm");
+    if (typed) {
+      typed.value = "";
+    }
+    showGateError("wallet-action-error", null);
+  }
+
+  function onWalletNew() {
+    hideWalletRemoveForm();
+    openGate("create");
+  }
+
+  function onWalletImport() {
+    hideWalletRemoveForm();
+    openGate("import");
+  }
+
+  function onWalletRemove() {
+    var form = el("wallet-remove-form");
+    if (!form) {
       return;
     }
-    var c = crypto();
+    if (!form.hasAttribute("hidden")) {
+      hideWalletRemoveForm();
+      return;
+    }
+    form.removeAttribute("hidden");
+    var typed = el("wallet-remove-confirm");
+    if (typed) {
+      typed.focus();
+    }
+  }
+
+  function onWalletRemoveConfirm() {
+    if (!typedRemoveWallet((el("wallet-remove-confirm") || {}).value || "")) {
+      showGateError("wallet-action-error", "Type exactly: " + REMOVE_WALLET_CONFIRM);
+      return;
+    }
     var s = store();
-    if (!c || !s) {
-      showGateError("add-account-error", "Wallet storage unavailable in this browser.");
+    if (!s || typeof s.clearVault !== "function") {
+      showGateError("wallet-action-error", "Wallet storage unavailable in this browser.");
       return;
     }
-    s.loadVault()
-      .then(function (vault) {
-        if (!vault) {
-          throw new Error("no vault");
-        }
-        return c.decryptVault(vault, password).then(function (phrase) {
-          var next = c.nextAccountIndex(vault.accounts);
-          var accounts =
-            vault.accounts && vault.accounts.length
-              ? vault.accounts.slice()
-              : c.accountsFromMnemonic(phrase, Math.max(next, 1));
-          if (next < accounts.length) {
-            next = c.nextAccountIndex(accounts);
-          }
-          if (typeof c.MAX_ACCOUNTS === "number" && next >= c.MAX_ACCOUNTS) {
-            showGateError("add-account-error", "This vault already has the maximum of 20 accounts.");
-            return;
-          }
-          var w = c.importMnemonic(phrase, next);
-          var existing =
-            typeof c.findAccountByAddress === "function"
-              ? c.findAccountByAddress(accounts, w.evmAddress)
-              : null;
-          if (existing && !isWatchRow(existing)) {
-            showGateError("add-account-error", "That account is already listed.");
-            return;
-          }
-          var kept = [];
-          var ai;
-          for (ai = 0; ai < accounts.length; ai++) {
-            if (
-              isWatchRow(accounts[ai]) &&
-              String(accounts[ai].evmAddress || "").toLowerCase() === String(w.evmAddress).toLowerCase()
-            ) {
-              continue;
-            }
-            kept.push(accounts[ai]);
-          }
-          kept.push({ i: w.index, path: w.path, evmAddress: w.evmAddress });
-          accounts = kept;
-          vault.accounts = accounts;
-          vault.selectedIndex = w.index;
-          vault.selectedKind = "hd";
-          vault.selectedWatch = null;
-          return s.saveVault(vault).then(function () {
-            session.accounts = accounts.slice();
-            revealAccount(phrase, w.index);
-            var pw = el("add-account-password");
-            if (pw) {
-              pw.value = "";
-            }
-            showGateError("add-account-error", null);
-            setWalletStatus("Account " + w.index + " \u00b7 " + w.path);
-            renderAccountsManage();
-          });
-        });
+    s.clearVault()
+      .then(function () {
+        hideWalletRemoveForm();
+        lockNow("removed");
+        setWalletStatus("Wallet removed from this device. The recovery phrase is the only backup.");
+        go("home");
       })
-      .catch(function (err) {
-        if (err && err.message === "wrong-password") {
-          showGateError("add-account-error", "Wrong password.");
-        } else {
-          showGateError("add-account-error", "Could not add an account.");
-        }
+      .catch(function () {
+        showGateError("wallet-action-error", "Could not remove the wallet from this device.");
       });
   }
 
@@ -4290,11 +4273,29 @@
       });
     }
 
-    var addAccountForm = el("add-account-form");
-    if (addAccountForm) {
-      addAccountForm.addEventListener("submit", function (event) {
+    var walletNew = el("wallet-new");
+    if (walletNew) {
+      walletNew.addEventListener("click", function () {
+        onWalletNew();
+      });
+    }
+    var walletImport = el("wallet-import");
+    if (walletImport) {
+      walletImport.addEventListener("click", function () {
+        onWalletImport();
+      });
+    }
+    var walletRemove = el("wallet-remove");
+    if (walletRemove) {
+      walletRemove.addEventListener("click", function () {
+        onWalletRemove();
+      });
+    }
+    var walletRemoveForm = el("wallet-remove-form");
+    if (walletRemoveForm) {
+      walletRemoveForm.addEventListener("submit", function (event) {
         event.preventDefault();
-        onAddAccount();
+        onWalletRemoveConfirm();
       });
     }
     bindWatchHelp(el("watch-account-open"));
@@ -4630,6 +4631,8 @@
     parseViewSession: parseViewSession,
     typedCreateConfirm: typedCreateConfirm,
     CREATE_CONFIRM: CREATE_CONFIRM,
+    REMOVE_WALLET_CONFIRM: REMOVE_WALLET_CONFIRM,
+    typedRemoveWallet: typedRemoveWallet,
     WATCH_HELP_MS: WATCH_HELP_MS,
     sessionCanSign: sessionCanSign,
     AUTOLOCK_OPTIONS: AUTOLOCK_OPTIONS,

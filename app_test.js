@@ -136,7 +136,7 @@ test("index.html ships the account drawer and receive/send screens", function ()
   assert.match(html, /id="receive-chain"/);
 });
 
-test("extra accounts are managed on their own form, not Home or Settings", function () {
+test("wallets screen reuses create/import and has no Derive", function () {
   const html = readFile("index.html");
   const section = function (name) {
     const re = new RegExp('<section[^>]*data-screen="' + name + '"[\\s\\S]*?<\\/section>');
@@ -147,17 +147,41 @@ test("extra accounts are managed on their own form, not Home or Settings", funct
   const accounts = section("accounts");
   const home = section("home");
   const settings = section("settings");
-  assert.ok(accounts.indexOf('id="add-account-form"') !== -1, "add-account form must live on Extra accounts");
-  assert.ok(accounts.indexOf("data-add-account") !== -1, "accounts form must offer derive");
-  assert.ok(home.indexOf('id="add-account-form"') === -1, "Home must not host extra-account management");
-  assert.ok(settings.indexOf('id="add-account-form"') === -1, "Settings must not host extra-account management");
-  assert.ok(settings.indexOf("data-add-account") === -1, "Settings must not offer add-account");
+  assert.ok(accounts.indexOf('id="wallet-new"') !== -1, "Wallets must offer New Wallet");
+  assert.ok(accounts.indexOf("+ New Wallet") !== -1, "New Wallet label");
+  assert.ok(accounts.indexOf('id="wallet-remove"') !== -1, "Wallets must offer Remove Wallet");
+  assert.ok(accounts.indexOf("Remove Wallet") !== -1, "Remove Wallet label");
+  assert.ok(accounts.indexOf('id="wallet-import"') !== -1, "Wallets must offer Import Wallet");
+  assert.ok(accounts.indexOf("Import Wallet") !== -1, "Import Wallet label");
+  assert.ok(accounts.indexOf("Derive") === -1, "Derive must be gone from Wallets");
+  assert.ok(accounts.indexOf('id="add-account-form"') === -1, "derive form must be gone");
+  assert.ok(accounts.indexOf("data-add-account") === -1, "derive submit must be gone");
+  assert.ok(home.indexOf('id="wallet-new"') === -1, "Home must not host wallet manager");
+  assert.ok(settings.indexOf('id="wallet-new"') === -1, "Settings must not host wallet manager");
   const ui = readFile("ui.js");
+  assert.ok(ui.indexOf("function onAddAccount") === -1, "onAddAccount must be gone");
+  assert.ok(ui.indexOf("function onWalletNew") !== -1, "ui.js must wire New Wallet");
+  assert.ok(ui.indexOf("function onWalletRemove") !== -1, "ui.js must wire Remove Wallet");
+  assert.ok(ui.indexOf("function onWalletImport") !== -1, "ui.js must wire Import Wallet");
+  const newStart = ui.indexOf("function onWalletNew");
+  const newChunk = ui.slice(newStart, newStart + 250);
+  assert.ok(newChunk.indexOf('openGate("create")') !== -1, "New Wallet reuses the create gate");
+  const importStart = ui.indexOf("function onWalletImport");
+  const importChunk = ui.slice(importStart, importStart + 250);
+  assert.ok(importChunk.indexOf('openGate("import")') !== -1, "Import Wallet reuses the import gate");
+  assert.ok(ui.indexOf("clearVault") !== -1, "Remove Wallet must wipe the local vault");
+  assert.ok(ui.indexOf("Remove it first, then create") !== -1, "create must not add extra HD accounts");
+  assert.ok(ui.indexOf("Remove it first, then import") !== -1, "import must not silently overwrite");
   const addStart = ui.indexOf('el("account-drawer-add")');
   assert.ok(addStart !== -1, "drawer + must be bound");
   const addChunk = ui.slice(addStart, addStart + 400);
-  assert.ok(addChunk.indexOf('go("accounts")') !== -1, "drawer + opens Extra accounts");
-  assert.ok(addChunk.indexOf('go("settings")') === -1, "drawer + must not dump extra accounts into Settings");
+  assert.ok(addChunk.indexOf('go("accounts")') !== -1, "drawer + opens Wallets");
+  assert.ok(addChunk.indexOf('go("settings")') === -1, "drawer + must not dump wallets into Settings");
+  const uiMod = require("./ui.js");
+  assert.strictEqual(uiMod.REMOVE_WALLET_CONFIRM, "remove this wallet");
+  assert.ok(uiMod.typedRemoveWallet("remove this wallet"));
+  assert.ok(uiMod.typedRemoveWallet("  remove this wallet  "));
+  assert.ok(!uiMod.typedRemoveWallet("Remove this wallet"), "confirm is exact, not case-folded");
 });
 
 test("Extra accounts Watch is one word with a 2s help bubble", function () {
@@ -469,7 +493,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.20") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.21") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -768,7 +792,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v17"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v18"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -1466,7 +1490,7 @@ test("create gate: generate, typed confirm, wipe; empty state offers Create", fu
   assert.ok(html.indexOf('id="create-priv"') !== -1, "Phantom-parity: EVM priv shown once");
   assert.ok(html.indexOf('id="create-confirm"') !== -1, "typed confirm input");
   assert.ok(html.indexOf("data-create") !== -1, "empty state must offer Create wallet");
-  assert.ok(html.indexOf('data-add-account') !== -1, "accounts form must offer add-account for HD index i");
+  assert.ok(html.indexOf('id="wallet-new"') !== -1, "Wallets must offer New Wallet");
   const ui = require("./ui.js");
   assert.strictEqual(typeof ui.typedCreateConfirm, "function");
   assert.strictEqual(ui.CREATE_CONFIRM, "I saved my recovery phrase");
@@ -1476,7 +1500,7 @@ test("create gate: generate, typed confirm, wipe; empty state offers Create", fu
   assert.ok(!ui.typedCreateConfirm(""));
   assert.ok(!ui.typedCreateConfirm("i saved my recovery phrase"), "confirm is exact, not case-folded");
   const src = readFile("ui.js");
-  ["onCreateStart", "onCreateConfirm", "wipeSecrets", "generateWallet", "onAddAccount"].forEach(function (fn) {
+  ["onCreateStart", "onCreateConfirm", "wipeSecrets", "generateWallet", "onWalletNew"].forEach(function (fn) {
     assert.ok(src.indexOf(fn) !== -1, "ui.js must wire " + fn);
   });
   const wipe = src.match(/function wipeSecrets\(\) \{[\s\S]*?\n  \}/);
