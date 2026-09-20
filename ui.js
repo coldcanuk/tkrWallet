@@ -26,6 +26,7 @@
   var AUTOLOCK_DEFAULT = 5;
   var AUTOLOCK_MAX = 60;
   var CREATE_CONFIRM = "I saved my recovery phrase";
+  var WATCH_HELP_MS = 2000;
 
   /* ---- pure helpers (unit-testable without a DOM) ---------------------- */
 
@@ -602,6 +603,25 @@
     return "A" + String(n + 1);
   }
 
+  function isWatchRow(acc) {
+    var c = crypto();
+    if (c && typeof c.isWatchAccount === "function") {
+      return c.isWatchAccount(acc);
+    }
+    return Boolean(acc && acc.kind === "watch");
+  }
+
+  function sessionCanSign() {
+    return Boolean(
+      session.phrase &&
+        session.watch !== true &&
+        session.index != null &&
+        session.index !== "" &&
+        Number.isInteger(Number(session.index)) &&
+        Number(session.index) >= 0
+    );
+  }
+
   function selectedIndexFromVault(vault) {
     if (!vault || !vault.accounts || !vault.accounts.length) {
       return 0;
@@ -695,10 +715,15 @@
     if (!session.address || !accounts.length) {
       return;
     }
+    var watchN = 0;
     accounts.forEach(function (acc, n) {
       var wrap = document.createElement("div");
       var btn = document.createElement("button");
       var cap = document.createElement("span");
+      var watch = isWatchRow(acc);
+      if (watch) {
+        watchN += 1;
+      }
       var idx = acc && acc.i != null ? Number(acc.i) : n;
       var mine =
         acc &&
@@ -713,14 +738,14 @@
         btn.className += " ring-2";
       }
       btn.style.backgroundColor = ACCOUNT_COLORS[n % ACCOUNT_COLORS.length];
-      btn.textContent = accountDotLabel(idx);
-      btn.setAttribute("aria-label", "Account " + (idx + 1));
+      btn.textContent = watch ? "W" + watchN : accountDotLabel(idx);
+      btn.setAttribute("aria-label", watch ? "Watch " + watchN : "Account " + (idx + 1));
       btn.setAttribute("aria-current", mine ? "true" : "false");
       btn.addEventListener("click", function () {
-        switchAccount(idx);
+        switchToAccount(acc);
       });
       cap.className = "max-w-14 truncate text-center text-[10px] leading-tight text-cream-500";
-      cap.textContent = "Account " + (idx + 1);
+      cap.textContent = watch ? "Watch " + watchN : "Account " + (idx + 1);
       wrap.appendChild(btn);
       wrap.appendChild(cap);
       list.appendChild(wrap);
@@ -737,12 +762,25 @@
     }
     var accounts = session.accounts || [];
     var submit = el("add-account-submit");
+    var watchSubmit = el("watch-account-submit");
     var c = crypto();
     var next =
       c && typeof c.nextAccountIndex === "function" ? c.nextAccountIndex(accounts) : accounts.length;
     var atCap = c && typeof c.MAX_ACCOUNTS === "number" ? next >= c.MAX_ACCOUNTS : false;
+    var watchN = 0;
+    var w;
+    for (w = 0; w < accounts.length; w++) {
+      if (isWatchRow(accounts[w])) {
+        watchN += 1;
+      }
+    }
+    var watchCap =
+      c && typeof c.MAX_WATCH_ACCOUNTS === "number" ? watchN >= c.MAX_WATCH_ACCOUNTS : false;
     if (submit) {
       submit.disabled = !!atCap;
+    }
+    if (watchSubmit) {
+      watchSubmit.disabled = !!watchCap;
     }
     if (!session.address || !accounts.length) {
       var empty = document.createElement("p");
@@ -753,10 +791,15 @@
       list.appendChild(empty);
       return;
     }
+    var watchShown = 0;
     accounts.forEach(function (acc, n) {
       var btn = document.createElement("button");
       var label = document.createElement("span");
       var meta = document.createElement("span");
+      var watch = isWatchRow(acc);
+      if (watch) {
+        watchShown += 1;
+      }
       var idx = acc && acc.i != null ? Number(acc.i) : n;
       var mine =
         acc &&
@@ -767,20 +810,24 @@
       btn.className =
         "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-card bg-ink-950 px-4 text-left ring-1 ring-inset ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400";
       label.className = "text-sm text-cream-100";
-      label.textContent =
-        "Account " + (idx + 1) + (mine ? " (current)" : "");
+      label.textContent = watch
+        ? "Watch " + watchShown + (mine ? " (current)" : "")
+        : "Account " + (idx + 1) + (mine ? " (current)" : "");
       meta.className = "tnum truncate text-xs text-cream-500";
       meta.textContent = acc && acc.evmAddress ? shortAddress(acc.evmAddress) : "";
       btn.appendChild(label);
       btn.appendChild(meta);
       btn.setAttribute("aria-current", mine ? "true" : "false");
       btn.addEventListener("click", function () {
-        switchAccount(idx);
+        switchToAccount(acc);
       });
       list.appendChild(btn);
     });
     if (atCap) {
       showGateError("add-account-error", "This vault already has the maximum of 20 accounts.");
+    }
+    if (watchCap) {
+      showGateError("watch-account-error", "This vault already has the maximum of 20 watch addresses.");
     }
   }
 
@@ -827,6 +874,8 @@
           return;
         }
         vault.selectedIndex = Number(index);
+        vault.selectedKind = "hd";
+        vault.selectedWatch = null;
         return s.saveVault(vault);
       })
       .catch(function () {
@@ -834,18 +883,58 @@
       });
   }
 
-  function switchAccount(index) {
+  function persistSelectedWatch(address) {
+    var s = store();
+    if (!s) {
+      return;
+    }
+    s.loadVault()
+      .then(function (vault) {
+        if (!vault) {
+          return;
+        }
+        vault.selectedKind = "watch";
+        vault.selectedWatch = address;
+        return s.saveVault(vault);
+      })
+      .catch(function () {
+        /* non-fatal: next unlock falls back to the last HD account */
+      });
+  }
+
+  function switchToAccount(acc) {
     if (!session.phrase) {
       setWalletStatus("Unlock the wallet to switch accounts.");
       return;
     }
-    var idx = Number(index);
+    if (!acc) {
+      return;
+    }
+    if (isWatchRow(acc)) {
+      revealWatchAccount(acc.evmAddress);
+      persistSelectedWatch(acc.evmAddress);
+      closeAccountDrawer();
+      return;
+    }
+    var idx = Number(acc.i);
     if (!isFinite(idx) || idx < 0) {
       return;
     }
+    session.watch = false;
     revealAccount(session.phrase, idx);
     persistSelectedIndex(idx);
     closeAccountDrawer();
+  }
+
+  function switchAccount(index) {
+    var accounts = session.accounts || [];
+    var i;
+    for (i = 0; i < accounts.length; i++) {
+      if (!isWatchRow(accounts[i]) && Number(accounts[i].i) === Number(index)) {
+        switchToAccount(accounts[i]);
+        return;
+      }
+    }
   }
 
   function setAccount(address, label) {
@@ -1239,8 +1328,8 @@
   function signBuiltTx(tx, chainId) {
     var c = crypto();
     var data = root.tkrWalletData;
-    if (!session.phrase || !c || !data) {
-      return Promise.reject(new Error("locked"));
+    if (!sessionCanSign() || !c || !data) {
+      return Promise.reject(new Error(session.watch ? "watch" : "locked"));
     }
     if (Number(chainId) === 900001) {
       var signedSol = c.signSolanaVersionedTx(session.phrase, tx.tx_b64 || tx);
@@ -1326,7 +1415,11 @@
       setPoolNote("Pools are unavailable.");
       return;
     }
-    if (!session.phrase) {
+    if (!sessionCanSign()) {
+      if (session.watch) {
+        setPoolNote("This is a watch address. tkrWallet does not hold its key. Nothing was signed.");
+        return;
+      }
       openGate("unlock");
       return;
     }
@@ -1396,7 +1489,11 @@
       setText(el("send-note"), "Send is unavailable.");
       return;
     }
-    if (!session.phrase) {
+    if (!sessionCanSign()) {
+      if (session.watch) {
+        setText(el("send-note"), "This is a watch address. tkrWallet does not hold its key. Nothing was signed.");
+        return;
+      }
       openGate("unlock");
       return;
     }
@@ -2361,8 +2458,9 @@
 
   /* ---- wallet gate: unlock with password, or import a recovery phrase ----- */
 
-  var session = { vault: null, address: null, solAddress: null, tronAddress: null, locked: false, index: 0, phrase: null, accounts: [] };
+  var session = { vault: null, address: null, solAddress: null, tronAddress: null, locked: false, index: 0, phrase: null, accounts: [], watch: false };
   var pendingCreate = null;
+  var watchHelpTimer = null;
   var pendingSwapQuote = null;
   var sendCameraStream = null;
   var sendScanTimer = null;
@@ -2588,6 +2686,7 @@
     session.tronAddress = w.tronAddress;
     session.index = w.index;
     session.phrase = w.mnemonic;
+    session.watch = false;
     session.locked = false;
     uiData.lastBalances = null; // never show a previous wallet's read
     uiData.lastChecked = null;
@@ -2605,6 +2704,36 @@
     renderAccountDrawer();
     renderAccountsManage();
     return w;
+  }
+
+  function revealWatchAccount(address) {
+    var c = crypto();
+    var checksum;
+    try {
+      checksum = c && typeof c.parseEvmAddress === "function" ? c.parseEvmAddress(address) : String(address || "");
+    } catch (e) {
+      setWalletStatus("That is not a wallet address.");
+      return;
+    }
+    session.address = checksum;
+    session.solAddress = null;
+    session.tronAddress = null;
+    session.index = null;
+    session.watch = true;
+    session.locked = false;
+    uiData.lastBalances = null;
+    uiData.lastChecked = null;
+    setAccount(checksum);
+    setWalletStatus("Watch " + checksum + ". Reading balances\u2026 This address cannot send.");
+    setWalletValue(null, state.currency, "Reading balances from the wallet edge\u2026");
+    renderTokens(null);
+    state.lastActivity = Date.now();
+    scheduleLock();
+    saveViewSession();
+    refreshBalances();
+    renderReceive();
+    renderAccountDrawer();
+    renderAccountsManage();
   }
 
   /* ---- auto-lock: a security floor, not a preference --------------------- */
@@ -2695,6 +2824,7 @@
     session.tronAddress = null;
     session.index = 0;
     session.phrase = null;
+    session.watch = false;
     session.vault = null;
     session.accounts = [];
     session.locked = session.locked || wasUnlocked;
@@ -2752,7 +2882,19 @@
           unlocked.vault && unlocked.vault.accounts && unlocked.vault.accounts.length
             ? unlocked.vault.accounts.slice()
             : c.accountsFromMnemonic(unlocked.phrase, 1);
-        revealAccount(unlocked.phrase, selectedIndexFromVault(unlocked.vault));
+        if (
+          unlocked.vault &&
+          unlocked.vault.selectedKind === "watch" &&
+          unlocked.vault.selectedWatch &&
+          typeof c.findAccountByAddress === "function" &&
+          c.findAccountByAddress(session.accounts, unlocked.vault.selectedWatch)
+        ) {
+          session.phrase = unlocked.phrase;
+          session.locked = false;
+          revealWatchAccount(unlocked.vault.selectedWatch);
+        } else {
+          revealAccount(unlocked.phrase, selectedIndexFromVault(unlocked.vault));
+        }
         closeGate();
       })
       .catch(function (err) {
@@ -2938,9 +3080,31 @@
             return;
           }
           var w = c.importMnemonic(phrase, next);
-          accounts.push({ i: w.index, path: w.path, evmAddress: w.evmAddress });
+          var existing =
+            typeof c.findAccountByAddress === "function"
+              ? c.findAccountByAddress(accounts, w.evmAddress)
+              : null;
+          if (existing && !isWatchRow(existing)) {
+            showGateError("add-account-error", "That account is already listed.");
+            return;
+          }
+          var kept = [];
+          var ai;
+          for (ai = 0; ai < accounts.length; ai++) {
+            if (
+              isWatchRow(accounts[ai]) &&
+              String(accounts[ai].evmAddress || "").toLowerCase() === String(w.evmAddress).toLowerCase()
+            ) {
+              continue;
+            }
+            kept.push(accounts[ai]);
+          }
+          kept.push({ i: w.index, path: w.path, evmAddress: w.evmAddress });
+          accounts = kept;
           vault.accounts = accounts;
           vault.selectedIndex = w.index;
+          vault.selectedKind = "hd";
+          vault.selectedWatch = null;
           return s.saveVault(vault).then(function () {
             session.accounts = accounts.slice();
             revealAccount(phrase, w.index);
@@ -2960,6 +3124,123 @@
         } else {
           showGateError("add-account-error", "Could not add an account.");
         }
+      });
+  }
+
+  function hideWatchHelp() {
+    if (watchHelpTimer) {
+      clearTimeout(watchHelpTimer);
+      watchHelpTimer = null;
+    }
+    var tip = el("watch-account-tip");
+    if (tip) {
+      tip.setAttribute("hidden", "");
+    }
+  }
+
+  function bindWatchHelp(btn) {
+    if (!btn) {
+      return;
+    }
+    function arm() {
+      hideWatchHelp();
+      watchHelpTimer = setTimeout(function () {
+        watchHelpTimer = null;
+        var tip = el("watch-account-tip");
+        if (tip) {
+          tip.removeAttribute("hidden");
+        }
+      }, WATCH_HELP_MS);
+    }
+    btn.addEventListener("mouseenter", arm);
+    btn.addEventListener("mouseleave", hideWatchHelp);
+    btn.addEventListener("focus", arm);
+    btn.addEventListener("blur", hideWatchHelp);
+    btn.addEventListener("click", function () {
+      hideWatchHelp();
+      var form = el("watch-account-form");
+      var open = form && form.hasAttribute("hidden");
+      if (form) {
+        if (open) {
+          form.removeAttribute("hidden");
+        } else {
+          form.setAttribute("hidden", "");
+        }
+      }
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) {
+        var input = el("watch-account-address");
+        if (input) {
+          input.focus();
+        }
+      }
+    });
+  }
+
+  function onAddWatchAccount() {
+    var c = crypto();
+    var s = store();
+    if (!session.phrase) {
+      showGateError("watch-account-error", "Unlock the wallet to add a watch address.");
+      return;
+    }
+    if (!c || !s || typeof c.watchAccount !== "function") {
+      showGateError("watch-account-error", "Wallet storage unavailable in this browser.");
+      return;
+    }
+    var raw = (el("watch-account-address") || {}).value || "";
+    var row;
+    try {
+      row = c.watchAccount(raw);
+    } catch (err) {
+      showGateError(
+        "watch-account-error",
+        err && err.message === "invalid-checksum"
+          ? "That address checksum does not match."
+          : "Enter a wallet address starting with 0x."
+      );
+      return;
+    }
+    s.loadVault()
+      .then(function (vault) {
+        if (!vault) {
+          throw new Error("no vault");
+        }
+        var accounts =
+          vault.accounts && vault.accounts.length
+            ? vault.accounts.slice()
+            : (session.accounts || []).slice();
+        if (c.findAccountByAddress(accounts, row.evmAddress)) {
+          showGateError("watch-account-error", "That address is already listed.");
+          return;
+        }
+        var nWatch = 0;
+        var i;
+        for (i = 0; i < accounts.length; i++) {
+          if (isWatchRow(accounts[i])) {
+            nWatch += 1;
+          }
+        }
+        if (typeof c.MAX_WATCH_ACCOUNTS === "number" && nWatch >= c.MAX_WATCH_ACCOUNTS) {
+          showGateError("watch-account-error", "This vault already has the maximum of 20 watch addresses.");
+          return;
+        }
+        accounts.push(row);
+        vault.accounts = accounts;
+        vault.selectedKind = "watch";
+        vault.selectedWatch = row.evmAddress;
+        return s.saveVault(vault).then(function () {
+          session.accounts = accounts.slice();
+          var input = el("watch-account-address");
+          if (input) {
+            input.value = "";
+          }
+          showGateError("watch-account-error", null);
+          revealWatchAccount(row.evmAddress);
+        });
+      })
+      .catch(function () {
+        showGateError("watch-account-error", "Could not add a watch address.");
       });
   }
 
@@ -2989,7 +3270,11 @@
   function onConfirmSign() {
     var data = root.tkrWalletData;
     var c = crypto();
-    if (!session.phrase || !data || !c || typeof data.broadcastRaw !== "function") {
+    if (!sessionCanSign() || !data || !c || typeof data.broadcastRaw !== "function") {
+      if (session.watch) {
+        setWalletStatus("This is a watch address. tkrWallet does not hold its key. Nothing was signed.");
+        return;
+      }
       setWalletStatus("Unlock and Connect first.");
       openGate("unlock");
       return;
@@ -3019,7 +3304,11 @@
   function onConnect() {
     var data = root.tkrWalletData;
     var c = crypto();
-    if (!session.phrase || !session.address) {
+    if (!sessionCanSign() || !session.address) {
+      if (session.watch) {
+        setWalletStatus("This is a watch address. Connect needs a key this phrase does not hold.");
+        return;
+      }
       setWalletStatus("Unlock with your password to connect. The recovery phrase is not in this tab.");
       openGate("unlock");
       return;
@@ -3566,8 +3855,13 @@
       setText(el("swap-note"), "Quote expired. Request a new quote. Nothing was signed.");
       return;
     }
-    if (!session.phrase) {
-      setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
+    if (!sessionCanSign()) {
+      setText(
+        el("swap-note"),
+        session.watch
+          ? "This is a watch address. tkrWallet does not hold its key. Nothing was signed."
+          : "Unlock the wallet first. Nothing was signed."
+      );
       return;
     }
     if (!wallet || typeof wallet.buildSwap !== "function") {
@@ -3937,6 +4231,14 @@
         onAddAccount();
       });
     }
+    bindWatchHelp(el("watch-account-open"));
+    var watchAccountForm = el("watch-account-form");
+    if (watchAccountForm) {
+      watchAccountForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        onAddWatchAccount();
+      });
+    }
     var connectBtn = document.querySelector("[data-connect]");
     if (connectBtn) {
       connectBtn.addEventListener("click", function () {
@@ -4255,6 +4557,8 @@
     parseViewSession: parseViewSession,
     typedCreateConfirm: typedCreateConfirm,
     CREATE_CONFIRM: CREATE_CONFIRM,
+    WATCH_HELP_MS: WATCH_HELP_MS,
+    sessionCanSign: sessionCanSign,
     AUTOLOCK_OPTIONS: AUTOLOCK_OPTIONS,
     AUTOLOCK_DEFAULT: AUTOLOCK_DEFAULT,
     accountDotLabel: accountDotLabel,

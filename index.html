@@ -185,7 +185,7 @@
             <p id="wallet-value-note" class="mt-2 text-xs text-cream-500">
               Unlock with your password, or import / recover with a recovery phrase.
             </p>
-            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.18</p>
+            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.19</p>
           </div>
 
           <div class="mt-4 grid grid-cols-4 gap-2">
@@ -556,7 +556,7 @@
         <section data-screen="settings" hidden aria-labelledby="settings-heading">
           <h1 id="settings-heading" class="sr-only">Settings</h1>
           <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
-            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.18</p>
+            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.19</p>
             <h2 class="mt-4 text-sm font-medium text-cream-500">Security</h2>
             <p class="mt-1 text-xs leading-relaxed text-cream-500">
               Auto-lock locks the wallet after inactivity. It cannot be turned off;
@@ -597,9 +597,10 @@
           </button>
           <h1 id="accounts-heading" class="text-lg font-semibold text-cream-50">Extra accounts</h1>
           <p class="mt-2 text-sm leading-relaxed text-cream-500">
-            One recovery phrase. Each extra account is the next Ethereum
-            address from that phrase. This form is the only place extra
-            accounts are added. The home desk shows the unlocked account.
+            One recovery phrase. Derive next account is the next Ethereum
+            address from that phrase. Watch adds an address this phrase
+            does not control. This form is the only place extra accounts
+            are added. The home desk shows the unlocked account.
           </p>
           <div class="mt-4 rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
             <h2 class="text-sm font-medium text-cream-500">On this device</h2>
@@ -614,6 +615,37 @@
               <p id="add-account-error" class="mt-2 text-xs text-down-400" hidden></p>
               <button type="submit" data-add-account id="add-account-submit" class="mt-3 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">
                 Derive next account
+              </button>
+            </form>
+            <div class="relative mt-4">
+              <button
+                type="button"
+                id="watch-account-open"
+                aria-expanded="false"
+                aria-controls="watch-account-form"
+                aria-describedby="watch-account-tip"
+                aria-label="Watch. Add an account from a wallet address. tkrWallet can show that address's balances but cannot send from it."
+                class="min-h-11 w-full rounded-full bg-ink-950 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+              >
+                Watch
+              </button>
+              <p
+                id="watch-account-tip"
+                role="tooltip"
+                hidden
+                class="mt-2 rounded-card bg-ink-950 p-3 text-xs leading-relaxed text-cream-300 ring-1 ring-inset ring-white/10"
+              >
+                Add an account from a wallet address. tkrWallet can show
+                that address's balances. It cannot send from it, because
+                this recovery phrase does not hold that key.
+              </p>
+            </div>
+            <form id="watch-account-form" hidden class="mt-3">
+              <label for="watch-account-address" class="block text-xs text-cream-500">Wallet address</label>
+              <input id="watch-account-address" type="text" autocomplete="off" spellcheck="false" placeholder="0x…" class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none" />
+              <p id="watch-account-error" class="mt-2 text-xs text-down-400" hidden></p>
+              <button type="submit" id="watch-account-submit" class="mt-3 min-h-11 w-full rounded-full bg-ink-950 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
+                Add
               </button>
             </form>
           </div>

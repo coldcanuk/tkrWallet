@@ -27,6 +27,7 @@
   var TRON_CHAIN_ID = 728126428;
   var KDF_ITERATIONS = 600000;
   var MAX_ACCOUNTS = 20;
+  var MAX_WATCH_ACCOUNTS = 20;
 
   var te = typeof TextEncoder === "function" ? new TextEncoder() : null;
   var td = typeof TextDecoder === "function" ? new TextDecoder() : null;
@@ -106,6 +107,54 @@
       out += parseInt(hashHex[i], 16) >= 8 ? lower[i].toUpperCase() : lower[i];
     }
     return out;
+  }
+
+  function parseEvmAddress(input) {
+    var s = String(input || "").trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(s)) {
+      throw new Error("invalid-address");
+    }
+    var bytes = new Uint8Array(20);
+    var i;
+    for (i = 0; i < 20; i++) {
+      bytes[i] = parseInt(s.slice(2 + i * 2, 4 + i * 2), 16);
+    }
+    var checksummed = toEip55(bytes);
+    var body = s.slice(2);
+    if (body !== body.toLowerCase() && body !== body.toUpperCase() && s !== checksummed) {
+      throw new Error("invalid-checksum");
+    }
+    return checksummed;
+  }
+
+  function isWatchAccount(acc) {
+    return Boolean(acc && acc.kind === "watch");
+  }
+
+  function watchAccount(address) {
+    return { kind: "watch", evmAddress: parseEvmAddress(address) };
+  }
+
+  function findAccountByAddress(accounts, address) {
+    if (!accounts || !accounts.length) {
+      return null;
+    }
+    var want;
+    try {
+      want = parseEvmAddress(address).toLowerCase();
+    } catch (e) {
+      return null;
+    }
+    var i;
+    for (i = 0; i < accounts.length; i++) {
+      var have = String(
+        accounts[i] && accounts[i].evmAddress ? accounts[i].evmAddress : ""
+      ).toLowerCase();
+      if (have === want) {
+        return accounts[i];
+      }
+    }
+    return null;
   }
 
   /* ---- derivation -------------------------------------------------------- */
@@ -643,6 +692,11 @@
   var api = {
     KDF_ITERATIONS: KDF_ITERATIONS,
     MAX_ACCOUNTS: MAX_ACCOUNTS,
+    MAX_WATCH_ACCOUNTS: MAX_WATCH_ACCOUNTS,
+    parseEvmAddress: parseEvmAddress,
+    isWatchAccount: isWatchAccount,
+    watchAccount: watchAccount,
+    findAccountByAddress: findAccountByAddress,
     importMnemonic: importMnemonic,
     generateWallet: generateWallet,
     accountsFromMnemonic: accountsFromMnemonic,

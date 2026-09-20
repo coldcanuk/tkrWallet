@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.19 — 2026-09-20
+
+### Added
+- Extra accounts **Watch** adds a public Ethereum address this recovery
+  phrase does not control. Hover the one-word button for two seconds for
+  the help bubble. tkrWallet can show that address's balances and cannot
+  send, swap, connect, or sign as it. Derive next account is unchanged:
+  password, then the next `m/44'/60'/0'/0/{i}` on this phrase. Neither
+  path reads a JSON file; both write public rows next to the IndexedDB
+  vault ciphertext.
+
 ## 0.10.18 — 2026-09-20
 
 ### Changed

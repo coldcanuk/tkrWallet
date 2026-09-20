@@ -49,7 +49,9 @@ and remediations): [`docs/reviews/2026-09-14-technical-review.md`](docs/reviews/
   EIP-155 transactions locally with audited `@noble`/`@scure` primitives —
   never a server. Extra accounts are derived on the Extra accounts form
   (`#/accounts`, password required), not on the home desk and not in
-  Settings; only public addresses sit next to the ciphertext. **Connect** (Settings)
+  Settings; **Watch** adds a public address this phrase does not control
+  (balances only, no send). Only public addresses sit next to the ciphertext.
+  **Connect** (Settings)
   proves the address with an EIP-191 challenge–response on the wallet origin;
   the key never leaves the device and nothing is broadcast.
 - **Auto-lock**: the wallet locks itself after inactivity — 5 minutes by
@@ -146,7 +148,7 @@ Then chrome://extensions and brave://extensions → Remove tkrWallet →
 Load unpacked → `/home/chuck/tkrWallet-unpacked`. Do not pick `/opt/repo`
 in the file dialog.
 
-The home card must read **tkrWallet 0.10.18**. If it does not, the browser
+The home card must read **tkrWallet 0.10.19**. If it does not, the browser
 is not this tree. Site access for `tkrwallet.scratchpost.ai` must not be
 “On click”.
 

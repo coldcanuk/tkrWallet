@@ -15,7 +15,8 @@ recovery phrase (BIP-39, 12/24 words)
 
 at rest (IndexedDB):
    vault = AES-GCM( PBKDF2-SHA256(password, salt, 600000), mnemonic )
-           + public accounts: [{ i, path, evmAddress }]  (never keys)
+           + public accounts: [{ i, path, evmAddress } | { kind: "watch", evmAddress }]
+             (never keys; watch rows cannot sign)
 ```
 
 ## Invariants (asserted where testable)

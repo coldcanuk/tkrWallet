@@ -160,6 +160,68 @@ test("extra accounts are managed on their own form, not Home or Settings", funct
   assert.ok(addChunk.indexOf('go("settings")') === -1, "drawer + must not dump extra accounts into Settings");
 });
 
+test("Extra accounts Watch is one word with a 2s help bubble", function () {
+  const html = readFile("index.html");
+  const section = function (name) {
+    const re = new RegExp('<section[^>]*data-screen="' + name + '"[\\s\\S]*?<\\/section>');
+    const m = html.match(re);
+    assert.ok(m, "missing data-screen=" + name);
+    return m[0];
+  };
+  const accounts = section("accounts");
+  const home = section("home");
+  const settings = section("settings");
+  assert.ok(accounts.indexOf('id="watch-account-open"') !== -1, "Watch lives on Extra accounts");
+  assert.ok(
+    /id="watch-account-open"[^>]*>\s*Watch\s*</.test(accounts),
+    "visible label must be the single word Watch"
+  );
+  assert.ok(accounts.indexOf('id="watch-account-tip"') !== -1, "missing 2s help bubble");
+  assert.ok(accounts.indexOf('role="tooltip"') !== -1, "help bubble must be a tooltip");
+  assert.ok(
+    accounts.indexOf("wallet address") !== -1 && accounts.indexOf("cannot send") !== -1,
+    "bubble must explain paste-an-address and that it cannot send"
+  );
+  assert.ok(accounts.indexOf('id="watch-account-form"') !== -1, "Watch must reveal an address form");
+  assert.ok(accounts.indexOf('id="watch-account-address"') !== -1, "missing address field");
+  assert.ok(home.indexOf("watch-account-open") === -1, "Home must not host Watch");
+  assert.ok(settings.indexOf("watch-account-open") === -1, "Settings must not host Watch");
+  const uiMod = require("./ui.js");
+  assert.strictEqual(uiMod.WATCH_HELP_MS, 2000, "hover help waits 2 seconds");
+  assert.strictEqual(typeof uiMod.sessionCanSign, "function");
+  const prev = {
+    phrase: uiMod.session.phrase,
+    watch: uiMod.session.watch,
+    index: uiMod.session.index,
+  };
+  try {
+    uiMod.session.phrase = "x";
+    uiMod.session.watch = true;
+    uiMod.session.index = 0;
+    assert.strictEqual(uiMod.sessionCanSign(), false, "watch address must not sign");
+    uiMod.session.watch = false;
+    uiMod.session.index = 0;
+    assert.strictEqual(uiMod.sessionCanSign(), true, "HD account with a phrase may sign");
+    uiMod.session.phrase = null;
+    assert.strictEqual(uiMod.sessionCanSign(), false, "locked session must not sign");
+  } finally {
+    uiMod.session.phrase = prev.phrase;
+    uiMod.session.watch = prev.watch;
+    uiMod.session.index = prev.index;
+  }
+  const ui = readFile("ui.js");
+  assert.ok(ui.indexOf("function onAddWatchAccount") !== -1, "ui.js must wire watch add");
+  assert.ok(ui.indexOf("function bindWatchHelp") !== -1, "ui.js must delay the help bubble");
+  assert.ok(ui.indexOf("WATCH_HELP_MS") !== -1);
+  ["onSendSubmit", "onSwapSubmit", "onConnect", "onConfirmSign", "signBuiltTx"].forEach(function (name) {
+    const start = ui.indexOf("function " + name + "(");
+    assert.ok(start !== -1, "missing " + name);
+    const next = ui.indexOf("\n  function ", start + 10);
+    const body = ui.slice(start, next === -1 ? start + 2500 : next);
+    assert.ok(body.indexOf("sessionCanSign") !== -1, name + " must refuse a watch address");
+  });
+});
+
 test("token routes parse to a detail screen, and malformed ones fall home", function () {
   const ui = require("./ui.js");
   assert.strictEqual(ui.parseRoute("#/token/1:native"), "detail");
@@ -407,7 +469,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.18") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.19") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -683,7 +745,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v15"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v16"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -1272,6 +1334,40 @@ test("crypto: accountsFromMnemonic lists public addresses only", function () {
   assert.strictEqual(c.nextAccountIndex([]), 0);
   assert.strictEqual(c.MAX_ACCOUNTS, 20);
   assert.throws(function () { c.accountsFromMnemonic(phrase, 21); }, /invalid-count/);
+});
+
+test("crypto: parseEvmAddress checksums; watch rows are public and skipped by next index", function () {
+  const c = require("./crypto.js");
+  const hd0 = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94";
+  const hd1 = "0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0";
+  const other = "0x1111111111111111111111111111111111111111";
+  assert.strictEqual(c.parseEvmAddress(hd0.toLowerCase()), hd0);
+  assert.strictEqual(c.parseEvmAddress(hd0), hd0);
+  assert.throws(function () { c.parseEvmAddress("not-an-address"); }, /invalid-address/);
+  assert.throws(function () { c.parseEvmAddress("0x123"); }, /invalid-address/);
+  assert.throws(function () {
+    c.parseEvmAddress("0x9858EFFD232B4033E47d90003D41EC34EcaEda94");
+  }, /invalid-checksum/);
+  const watch = c.watchAccount(other.toLowerCase());
+  assert.strictEqual(watch.kind, "watch");
+  assert.strictEqual(watch.evmAddress, c.parseEvmAddress(other));
+  assert.strictEqual("i" in watch, false, "watch rows must not carry an HD index");
+  assert.strictEqual("path" in watch, false);
+  assert.ok(c.isWatchAccount(watch));
+  assert.ok(!c.isWatchAccount({ i: 0, path: "m/44'/60'/0'/0/0", evmAddress: hd0 }));
+  const mixed = [
+    { i: 0, path: "m/44'/60'/0'/0/0", evmAddress: hd0 },
+    watch,
+    { i: 2, path: "m/44'/60'/0'/0/2", evmAddress: hd1 },
+  ];
+  assert.strictEqual(c.nextAccountIndex(mixed), 3, "watch rows must not steal the next HD index");
+  assert.strictEqual(c.findAccountByAddress(mixed, other).kind, "watch");
+  assert.strictEqual(c.findAccountByAddress(mixed, hd0).i, 0);
+  assert.strictEqual(c.findAccountByAddress(mixed, "0x2222222222222222222222222222222222222222"), null);
+  assert.strictEqual(c.MAX_WATCH_ACCOUNTS, 20);
+  const blob = JSON.stringify(watch);
+  assert.ok(blob.indexOf("privateKey") === -1);
+  assert.ok(blob.indexOf("mnemonic") === -1);
 });
 
 test("crypto: wipeBytes zeros key material in place", function () {
