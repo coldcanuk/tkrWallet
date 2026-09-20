@@ -185,7 +185,7 @@
             <p id="wallet-value-note" class="mt-2 text-xs text-cream-500">
               Unlock with your password, or import / recover with a recovery phrase.
             </p>
-            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.24</p>
+            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.25</p>
           </div>
 
           <div class="mt-4 grid grid-cols-4 gap-2">
@@ -389,68 +389,109 @@
           ></div>
         </section>
 
-        <!-- Swap: native SOL in and out through Scratchpost. Keys stay here. -->
+        <!-- Swap: You Pay / You Receive. Quote first, then Swap Now. -->
         <section data-screen="swap" hidden aria-labelledby="swap-heading">
-          <h1 id="swap-heading" class="text-lg font-semibold text-cream-50">Swap</h1>
+          <div class="flex items-start justify-between gap-3">
+            <h1 id="swap-heading" class="text-lg font-semibold text-cream-50">Swap</h1>
+            <div role="group" aria-label="Display currency" class="flex shrink-0 rounded-full bg-ink-950 ring-1 ring-inset ring-white/10 p-0.5">
+              <button type="button" data-currency="usd" aria-pressed="true" title="US dollar" class="min-h-8 rounded-full px-2.5 text-xs font-medium text-cream-500 aria-pressed:bg-ember-400 aria-pressed:text-ink-950">USD</button>
+              <button type="button" data-currency="cad" aria-pressed="false" title="Canadian dollar" class="min-h-8 rounded-full px-2.5 text-xs font-medium text-cream-500 aria-pressed:bg-ember-400 aria-pressed:text-ink-950">CAD</button>
+              <button type="button" data-currency="mxn" aria-pressed="false" title="Mexican peso" class="min-h-8 rounded-full px-2.5 text-xs font-medium text-cream-500 aria-pressed:bg-ember-400 aria-pressed:text-ink-950">MXN</button>
+            </div>
+          </div>
           <p class="mt-2 text-sm leading-relaxed text-cream-500">
             Same-chain swaps on Ethereum, Base, Robinhood, Solana, and TRON. Ethereum and
             Base also swap to and from Solana, Sui, TRON, and Stellar through Scratchpost.
             Scratchpost builds the unsigned swap on the desk L1/L2 nodes; this device signs it.
           </p>
+
           <div class="mt-4 rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
-            <label for="swap-from" class="block text-xs text-cream-500">From</label>
-            <select
-              id="swap-from"
-              class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none"
-            ></select>
-            <label for="swap-to" class="mt-3 block text-xs text-cream-500">To</label>
-            <select
-              id="swap-to"
-              class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none"
-            ></select>
-            <div id="swap-dest-wrap" hidden>
-              <label for="swap-dest" class="mt-3 block text-xs text-cream-500">Destination address</label>
-              <input
-                id="swap-dest"
-                type="text"
-                autocomplete="off"
-                spellcheck="false"
-                class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none"
-                placeholder="Sui or Stellar receive address"
-              />
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-xs font-medium text-cream-300">You Pay</p>
+              <p id="swap-pay-balance" class="tnum text-xs text-cream-500">Balance &mdash;</p>
             </div>
-            <label for="swap-amount" class="mt-3 block text-xs text-cream-500">Amount</label>
-            <input
-              id="swap-amount"
-              type="text"
-              inputmode="decimal"
-              autocomplete="off"
-              class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none"
-              placeholder="0.0"
-            />
-            <p id="swap-out" class="mt-3 text-sm text-cream-300"></p>
-            <button
-              type="button"
-              id="swap-estimate"
-              hidden
-              aria-haspopup="dialog"
-              aria-controls="swap-quote-dialog"
-              class="mt-3 w-full cursor-pointer rounded-card bg-ink-950 px-4 py-3 text-left ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
-            >
-              <span class="block text-xs text-cream-500">Estimate</span>
-              <span id="swap-estimate-value" class="tnum mt-1 block text-lg font-semibold text-cream-50 underline decoration-ember-400/50 underline-offset-4">—</span>
-              <span id="swap-estimate-timer" class="mt-1 block text-xs text-cream-500"></span>
-              <span class="mt-2 block text-xs text-ember-400">Tap the number for details and Swap Now</span>
-            </button>
-            <button
-              type="button"
-              id="swap-quote"
-              class="mt-4 min-h-11 w-full rounded-full bg-ink-950 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
-            >
-              Quote
-            </button>
-            <p id="swap-note" class="mt-3 text-xs leading-relaxed text-cream-500"></p>
+            <div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="Spendable fraction">
+              <button type="button" data-swap-pct="25" class="min-h-8 rounded-full px-2.5 text-xs font-medium text-cream-300 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">25%</button>
+              <button type="button" data-swap-pct="50" class="min-h-8 rounded-full px-2.5 text-xs font-medium text-cream-300 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">50%</button>
+              <button type="button" data-swap-pct="75" class="min-h-8 rounded-full px-2.5 text-xs font-medium text-cream-300 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">75%</button>
+              <button type="button" data-swap-pct="100" class="min-h-8 rounded-full px-2.5 text-xs font-medium text-cream-300 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">Max</button>
+            </div>
+            <div class="mt-3 flex items-center gap-2">
+              <label for="swap-amount" class="sr-only">You Pay amount</label>
+              <input
+                id="swap-amount"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                class="tnum min-h-11 min-w-0 flex-1 rounded-full bg-ink-950 px-4 text-lg font-semibold text-cream-50 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none"
+                placeholder="0.0"
+              />
+              <label for="swap-from" class="sr-only">You Pay token</label>
+              <select
+                id="swap-from"
+                class="min-h-11 max-w-36 shrink-0 rounded-full bg-ink-950 px-3 text-xs text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none"
+              ></select>
+            </div>
+            <p id="swap-pay-fiat" class="tnum mt-2 text-xs text-cream-500">&mdash;</p>
           </div>
+
+          <div class="mt-2 flex justify-center">
+            <button
+              type="button"
+              id="swap-flip"
+              aria-label="Flip You Pay and You Receive"
+              class="flex size-9 items-center justify-center rounded-full bg-ink-950 text-cream-300 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+            >
+              <svg viewBox="0 0 24 24" fill="none" class="size-4" aria-hidden="true"><path d="M8 8h11m0 0-3-3m3 3-3 3M16 16H5m0 0 3-3m-3 3 3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+
+          <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
+            <p class="text-xs font-medium text-cream-300">You Receive</p>
+            <div class="mt-3 flex items-center gap-2">
+              <p id="swap-receive-amount" class="tnum min-h-11 min-w-0 flex-1 px-2 text-lg font-semibold leading-none text-cream-50">&mdash;</p>
+              <label for="swap-to" class="sr-only">You Receive token</label>
+              <select
+                id="swap-to"
+                class="min-h-11 max-w-36 shrink-0 rounded-full bg-ink-950 px-3 text-xs text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none"
+              ></select>
+            </div>
+            <p id="swap-receive-fiat" class="tnum mt-2 text-xs text-cream-500">&mdash;</p>
+          </div>
+
+          <div id="swap-dest-wrap" hidden class="mt-3">
+            <label for="swap-dest" class="block text-xs text-cream-500">Destination address</label>
+            <input
+              id="swap-dest"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none"
+              placeholder="Sui or Stellar receive address"
+            />
+          </div>
+          <p id="swap-out" hidden class="mt-3 text-sm text-cream-300"></p>
+          <button
+            type="button"
+            id="swap-estimate"
+            hidden
+            aria-haspopup="dialog"
+            aria-controls="swap-quote-dialog"
+            class="mt-3 w-full cursor-pointer rounded-card bg-ink-950 px-4 py-3 text-left ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+          >
+            <span class="block text-xs text-cream-500">Estimate</span>
+            <span id="swap-estimate-value" class="tnum mt-1 block text-lg font-semibold text-cream-50 underline decoration-ember-400/50 underline-offset-4">—</span>
+            <span id="swap-estimate-timer" class="mt-1 block text-xs text-cream-500"></span>
+            <span class="mt-2 block text-xs text-ember-400">Tap the number for details and Swap Now</span>
+          </button>
+          <button
+            type="button"
+            id="swap-quote"
+            class="mt-4 min-h-11 w-full rounded-full bg-ink-950 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+          >
+            Quote
+          </button>
+          <p id="swap-note" class="mt-3 text-xs leading-relaxed text-cream-500"></p>
         </section>
 
         <section data-screen="receive" hidden aria-labelledby="receive-heading">
@@ -573,7 +614,7 @@
         <section data-screen="settings" hidden aria-labelledby="settings-heading">
           <h1 id="settings-heading" class="sr-only">Settings</h1>
           <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
-            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.24</p>
+            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.25</p>
             <h2 class="mt-4 text-sm font-medium text-cream-500">Security</h2>
             <p class="mt-1 text-xs leading-relaxed text-cream-500">
               Auto-lock locks the wallet after inactivity. It cannot be turned off;
