@@ -47,6 +47,8 @@
     4663: { name: "Robinhood", native: "ETH" },
     900001: { name: "Solana", native: "SOL" },
     728126428: { name: "TRON", native: "TRX" },
+    900002: { name: "Sui", native: "SUI" },
+    900003: { name: "Stellar", native: "XLM" },
   };
 
   /* Built-in catalogue: search + swap presets. Holdings are discovered by
@@ -108,6 +110,8 @@
       { symbol: "TRX", name: "TRON", decimals: 6 },
       { symbol: "USDT", name: "Tether USD", address: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", decimals: 6 },
     ],
+    900002: [{ symbol: "SUI", name: "Sui", decimals: 9 }],
+    900003: [{ symbol: "XLM", name: "Stellar", decimals: 7 }],
   };
 
   /* Local colour table. Never a wire-supplied colour (audit W8/S-7). */
@@ -148,6 +152,8 @@
     wstETH: "#00a3ff",
     SOL: "#e8a33d",
     TRX: "#eb0029",
+    SUI: "#4da2ff",
+    XLM: "#6b8cff",
   };
 
   /* Preview mode (?preview=1): the operator's mockup numbers, clearly labelled

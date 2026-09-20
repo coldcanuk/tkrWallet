@@ -74,7 +74,7 @@ retry. This is the client half of the edge contract in
 | Hash | Screen |
 |---|---|
 | `#/home` | wallet value, actions, holdings |
-| `#/swap` | under-construction placeholder |
+| `#/swap` | same-chain plus Ethereum/Base ↔ Solana, Sui, TRON, Stellar |
 | `#/activity` | device-local placeholder |
 | `#/search` | catalogue search |
 | `#/settings` | auto-lock, currency, lock now |
@@ -88,7 +88,10 @@ retry. This is the client half of the edge contract in
 | 1 | Ethereum | ETH | wallet edge | active |
 | 8453 | Base | ETH | wallet edge | active |
 | 4663 | Robinhood | ETH | wallet edge | active |
-| 900001 | Solana | SOL | — | **catalogued-not-queried** (D10: no balance RPC; edge reads pending) |
+| 900001 | Solana | SOL | wallet edge | active |
+| 728126428 | TRON | TRX | wallet edge | active |
+| 900002 | Sui | SUI | swap dest via Li.Fi | dest-only |
+| 900003 | Stellar | XLM | swap dest via Li.Fi | dest-only |
 
 Balances for an unlocked wallet arrive from the wallet edge, never from an
 injected provider. There is no EIP-1193 connect path.

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.24 — 2026-09-20
+
+### Added
+- Swap quotes Ethereum and Base to and from Solana, Sui, TRON, and Stellar
+  through Scratchpost. Extra tokens hop on the desk L1/L2 Uniswap first, then
+  Li.Fi; if that hop cannot quote, the whole path is Li.Fi. Sui and Stellar
+  destinations take a pasted receive address. This device still cannot sign
+  Sui or Stellar as the source.
+- **Copy address** on Send and Receive writes a visible “copied” note and
+  button label. `#wallet-status` stays screen-reader-only.
+
+### Fixed
+- Robinhood read failures include the edge error (for example
+  `unsupported chain` when the origin has no Robinhood RPC).
+
 ## 0.10.23 — 2026-09-20
 
 ### Fixed

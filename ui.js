@@ -1092,6 +1092,69 @@
     setText(el("wallet-status"), message);
   }
 
+  var copyResetTimer = null;
+  function copyTextToClipboard(text, opts) {
+    opts = opts || {};
+    var okMessage = opts.okMessage || "Address copied to clipboard.";
+    var failMessage = opts.failMessage || "Copy failed. Select the address and copy it manually.";
+    var emptyMessage = opts.emptyMessage || "Unlock the wallet to copy an address.";
+    function paintOk() {
+      setWalletStatus(okMessage);
+      if (opts.noteEl) {
+        setText(opts.noteEl, okMessage);
+      }
+      if (opts.button) {
+        opts.button.textContent = "Copied";
+        if (copyResetTimer) {
+          root.clearTimeout(copyResetTimer);
+        }
+        copyResetTimer = root.setTimeout(function () {
+          opts.button.textContent = opts.buttonLabel || "Copy address";
+        }, 2000);
+      }
+    }
+    function paintFail(message) {
+      setWalletStatus(message);
+      if (opts.noteEl) {
+        setText(opts.noteEl, message);
+      }
+    }
+    if (!text) {
+      paintFail(emptyMessage);
+      return Promise.resolve(false);
+    }
+    try {
+      if (root.navigator && root.navigator.clipboard && root.navigator.clipboard.writeText) {
+        var done = root.navigator.clipboard.writeText(text);
+        if (done && typeof done.then === "function") {
+          return done.then(function () {
+            paintOk();
+            return true;
+          }).catch(function () {
+            paintFail(failMessage);
+            return false;
+          });
+        }
+        paintOk();
+        return Promise.resolve(true);
+      }
+    } catch (e) {
+      /* fall through */
+    }
+    paintFail("Copy is unavailable in this browser. Select the address and copy it manually.");
+    return Promise.resolve(false);
+  }
+
+  function addressForChain(chainId) {
+    if (Number(chainId) === 900001) {
+      return session.solAddress || "";
+    }
+    if (Number(chainId) === 728126428) {
+      return session.tronAddress || "";
+    }
+    return session.address || "";
+  }
+
   var busyCount = 0;
   var BUSY_BUTTONS = [
     "swap-quote",
@@ -1344,9 +1407,9 @@
       }
       var name = (root.tkrWalletData && root.tkrWalletData.chainName(c.chain_id)) || "chain " + c.chain_id;
       if (c.state === "unknown") {
-        names.push(name + " could not be read");
+        names.push(name + " could not be read" + (c.error ? " (" + c.error + ")" : ""));
       } else {
-        names.push(name + " was read only in part");
+        names.push(name + " was read only in part" + (c.error ? " (" + c.error + ")" : ""));
       }
     });
     return names.length ? names.join("; ") + "." : "";
@@ -3545,7 +3608,7 @@
     var keepTo = to.value;
     from.textContent = "";
     to.textContent = "";
-    [1, 8453, 4663, 900001, 728126428].forEach(function (chainId) {
+    [1, 8453, 4663, 900001, 728126428, 900002, 900003].forEach(function (chainId) {
       var list = wallet.TOKENS[chainId] || [];
       var chain = wallet.CHAINS[chainId];
       var chainName = chain ? chain.name : "chain " + chainId;
@@ -3565,13 +3628,16 @@
     if (from.value === to.value) {
       to.value = "1:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
     }
+    syncSwapDest();
   }
 
   function looksLikeSendAddress(value) {
     var s = String(value || "").trim();
     return (
       /^0x[a-fA-F0-9]{40}$/.test(s) ||
+      /^0x[a-fA-F0-9]{64}$/.test(s) ||
       /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(s) ||
+      /^G[A-Z2-7]{55}$/.test(s) ||
       /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s)
     );
   }
@@ -3968,6 +4034,48 @@
     return null;
   }
 
+  function isEthBaseChain(id) {
+    return id === 1 || id === 8453;
+  }
+
+  function isForeignChain(id) {
+    return id === 900001 || id === 728126428 || id === 900002 || id === 900003;
+  }
+
+  function isEthBaseForeignPair(fromId, toId) {
+    return (isEthBaseChain(fromId) && isForeignChain(toId)) || (isForeignChain(fromId) && isEthBaseChain(toId));
+  }
+
+  function destAddressFor(toSel) {
+    if (!toSel) {
+      return "";
+    }
+    if (isEthBaseChain(toSel.chainId) || toSel.chainId === 4663) {
+      return session.address || "";
+    }
+    if (toSel.chainId === 900001) {
+      return session.solAddress || "";
+    }
+    if (toSel.chainId === 728126428) {
+      return session.tronAddress || "";
+    }
+    return String((el("swap-dest") || {}).value || "").trim();
+  }
+
+  function syncSwapDest() {
+    var wrap = el("swap-dest-wrap");
+    var toSel = selectedSwapToken(el("swap-to"));
+    if (!wrap) {
+      return;
+    }
+    var need = !!(toSel && (toSel.chainId === 900002 || toSel.chainId === 900003));
+    if (need) {
+      wrap.removeAttribute("hidden");
+    } else {
+      wrap.setAttribute("hidden", "");
+    }
+  }
+
   function onSwapQuote() {
     var wallet = root.tkrWalletData;
     pendingSwapQuote = null;
@@ -3981,8 +4089,19 @@
     }
     var fromSel = selectedSwapToken(el("swap-from"));
     var toSel = selectedSwapToken(el("swap-to"));
-    if (!fromSel || !toSel || fromSel.chainId !== toSel.chainId || fromSel.mint === toSel.mint) {
-      setText(el("swap-note"), "Pick two different assets on the same chain. Mainnet, Base, and Robinhood are separate swaps, not a bridge.");
+    if (!fromSel || !toSel || (fromSel.chainId === toSel.chainId && fromSel.mint === toSel.mint)) {
+      setText(el("swap-note"), "Pick two different assets.");
+      return;
+    }
+    if (fromSel.chainId !== toSel.chainId && !isEthBaseForeignPair(fromSel.chainId, toSel.chainId)) {
+      setText(
+        el("swap-note"),
+        "Pick two assets on the same chain, or Ethereum/Base to or from Solana, Sui, TRON, or Stellar."
+      );
+      return;
+    }
+    if (fromSel.chainId === 900002 || fromSel.chainId === 900003) {
+      setText(el("swap-note"), "This wallet cannot sign Sui or Stellar yet. Quote from Ethereum or Base.");
       return;
     }
     if (fromSel.chainId === 900001 && !session.solAddress) {
@@ -3991,6 +4110,11 @@
     }
     if (fromSel.chainId === 728126428 && !session.tronAddress) {
       setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
+      return;
+    }
+    var dest = destAddressFor(toSel);
+    if (isForeignChain(toSel.chainId) && !dest) {
+      setText(el("swap-note"), "Enter the destination address on that chain. Nothing was signed.");
       return;
     }
     var amount = wallet.toAtomicAmount(
@@ -4005,9 +4129,12 @@
     withBusy(function () {
       return wallet.quoteSwap({
         chain_id: fromSel.chainId,
+        from_chain_id: fromSel.chainId,
+        to_chain_id: toSel.chainId,
         input_mint: fromSel.mint,
         output_mint: toSel.mint,
         amount: amount,
+        to_address: dest || undefined,
       });
     }, "Asking Scratchpost for a quote\u2026")
       .then(function (body) {
@@ -4084,27 +4211,29 @@
       return;
     }
     var chainId = pendingSwapQuote.chainId;
+    var activeQuote = pendingSwapQuote.body.quote;
     setText(el("swap-note"), "Building unsigned swap\u2026");
     function signBuilt(built) {
       if (!built || built.ok === false) {
         throw new Error((built && built.error) || "build-failed");
       }
+      var signChain = Number(built.chain_id || chainId);
       if (built.needs_approval && built.tx) {
         var approved = c.signAndBroadcastPayload(session.phrase, session.index, built.tx);
         return wallet.broadcastRaw({ raw: approved.raw, chain_id: approved.chainId }).then(function (sent) {
           if (!sent || sent.ok === false) {
             throw new Error((sent && sent.error) || "broadcast");
           }
-          return wallet.buildSwap({ chain_id: chainId, quote: pendingSwapQuote.body.quote });
+          return wallet.buildSwap({ chain_id: signChain, quote: activeQuote });
         }).then(signBuilt);
       }
       var signed;
-      if (chainId === 900001) {
+      if (signChain === 900001) {
         if (!built.unsigned_tx || typeof c.signSolanaVersionedTx !== "function") {
           throw new Error("build-failed");
         }
         signed = c.signSolanaVersionedTx(session.phrase, built.unsigned_tx);
-      } else if (chainId === 728126428) {
+      } else if (signChain === 728126428) {
         if (!built.unsigned_tx || typeof c.signTronTransaction !== "function") {
           throw new Error("build-failed");
         }
@@ -4118,10 +4247,33 @@
       }
       return wallet.broadcastRaw({ raw: signed.raw, chain_id: signed.chainId });
     }
+    function buildStep(quote, stepChain) {
+      activeQuote = quote;
+      return wallet.buildSwap({ chain_id: stepChain, quote: quote }).then(signBuilt);
+    }
     withBusy(function () {
-      return wallet
-        .buildSwap({ chain_id: chainId, quote: pendingSwapQuote.body.quote })
-        .then(signBuilt)
+      var q = pendingSwapQuote.body.quote || {};
+      var first;
+      if (q.route === "hop_then_lifi") {
+        first = buildStep({ route: "hop_then_lifi", step: "hop", hop: q.hop, lifi: q.lifi }, chainId).then(function (sent) {
+          if (!sent || sent.ok === false) {
+            throw new Error((sent && sent.error) || "broadcast");
+          }
+          return buildStep({ route: "hop_then_lifi", step: "lifi", hop: q.hop, lifi: q.lifi }, chainId);
+        });
+      } else if (q.route === "lifi_then_hop") {
+        var lifiChain = Number((q.lifi && q.lifi.from_chain) || chainId);
+        var hopChain = Number((q.hop && q.hop.chain_id) || 8453);
+        first = buildStep({ route: "lifi_then_hop", step: "lifi", hop: q.hop, lifi: q.lifi }, lifiChain).then(function (sent) {
+          if (!sent || sent.ok === false) {
+            throw new Error((sent && sent.error) || "broadcast");
+          }
+          return buildStep({ route: "lifi_then_hop", step: "hop", hop: q.hop, lifi: q.lifi }, hopChain);
+        });
+      } else {
+        first = buildStep(q, chainId);
+      }
+      return first
         .then(function (sent) {
           if (!sent || sent.ok === false) {
             throw new Error((sent && sent.error) || "broadcast");
@@ -4220,15 +4372,13 @@
     var receiveCopy = el("receive-copy");
     if (receiveCopy) {
       receiveCopy.addEventListener("click", function () {
-        var addr = session.address;
-        if (!addr) {
-          setWalletStatus("Unlock the wallet to copy an address.");
-          return;
-        }
-        if (root.navigator && root.navigator.clipboard && root.navigator.clipboard.writeText) {
-          root.navigator.clipboard.writeText(addr);
-        }
-        setWalletStatus("Address copied.");
+        var chain = Number((el("receive-chain") || {}).value || 1);
+        copyTextToClipboard(addressForChain(chain), {
+          button: receiveCopy,
+          noteEl: el("receive-note"),
+          buttonLabel: "Copy address",
+          okMessage: "Address copied to clipboard.",
+        });
       });
     }
     var sendTo = el("send-to");
@@ -4244,6 +4394,18 @@
     if (sendScan) {
       sendScan.addEventListener("click", function () {
         startSendCamera();
+      });
+    }
+    var sendCopy = el("send-copy");
+    if (sendCopy) {
+      sendCopy.addEventListener("click", function () {
+        var chain = Number((el("send-chain") || {}).value || 1);
+        copyTextToClipboard(addressForChain(chain), {
+          button: sendCopy,
+          noteEl: el("send-note"),
+          buttonLabel: "Copy address",
+          okMessage: "Address copied to clipboard.",
+        });
       });
     }
     var sendAddContact = el("send-add-contact");
@@ -4280,6 +4442,10 @@
     var poolRefresh = el("pool-refresh");
     if (poolRefresh) {
       poolRefresh.addEventListener("click", refreshPoolPositions);
+    }
+    var swapTo = el("swap-to");
+    if (swapTo) {
+      swapTo.addEventListener("change", syncSwapDest);
     }
     var swapQuote = el("swap-quote");
     if (swapQuote) {
@@ -4835,6 +5001,7 @@
     holdingsScopeText: holdingsScopeText,
     mergeBalanceReads: mergeBalanceReads,
     chainProblems: chainProblems,
+    copyTextToClipboard: copyTextToClipboard,
     openGate: openGate,
     closeGate: closeGate,
     showGateForm: showGateForm,
