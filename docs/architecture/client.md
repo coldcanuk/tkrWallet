@@ -75,7 +75,7 @@ retry. This is the client half of the edge contract in
 |---|---|
 | `#/home` | wallet value, actions, holdings |
 | `#/swap` | You Pay / You Receive; quote then Swap Now; Ethereum ↔ Base, Robinhood ↔ Ethereum/Base, Ethereum/Base ↔ Solana, Sui, TRON, Stellar |
-| `#/activity` | device-local placeholder |
+| `#/activity` | local Swap/Send broadcasts + official explorer links (ETH/Base/RH) |
 | `#/search` | catalogue search |
 | `#/settings` | auto-lock, currency, lock now |
 | `#/accounts` | several IndexedDB wallets: New / Remove / Import + Watch |

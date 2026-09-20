@@ -112,6 +112,35 @@
   };
   var SWAP_PCT_CMD = /^(25|50|75)%$/;
 
+  var EXPLORER_ORIGIN = {
+    1: "https://etherscan.io",
+    8453: "https://basescan.org",
+    4663: "https://robinhoodchain.blockscout.com",
+  };
+  var EXPLORER_CHAINS = [
+    { chainId: 1, name: "Ethereum" },
+    { chainId: 8453, name: "Base" },
+    { chainId: 4663, name: "Robinhood" },
+  ];
+
+  function explorerAddressUrl(chainId, address) {
+    var origin = EXPLORER_ORIGIN[Number(chainId)];
+    var addr = String(address || "").trim();
+    if (!origin || !addr) {
+      return "";
+    }
+    return origin + "/address/" + addr;
+  }
+
+  function explorerTxUrl(chainId, hash) {
+    var origin = EXPLORER_ORIGIN[Number(chainId)];
+    var tx = String(hash || "").trim();
+    if (!origin || !tx) {
+      return "";
+    }
+    return origin + "/tx/" + tx;
+  }
+
   function nativeGasReserve(chainId, isNative) {
     if (!isNative) {
       return 0;
@@ -835,6 +864,9 @@
     if (next === "receive") {
       renderReceive();
     }
+    if (next === "activity") {
+      renderActivity();
+    }
     if (next === "send") {
       paintSendContacts();
     }
@@ -1329,6 +1361,115 @@
   /** Balance/price updates announce here, separate from connection state. */
   function setWalletStatus(message) {
     setText(el("wallet-status"), message);
+  }
+
+  function noteBroadcast(sent, kind, extra) {
+    extra = extra || {};
+    var hash = sent && sent.tx_hash ? String(sent.tx_hash) : "";
+    var chainId = Number((sent && sent.chain_id) || extra.chain_id || 0);
+    var s = store();
+    if (!hash || !session.walletId || !s || typeof s.recordActivity !== "function") {
+      return;
+    }
+    s.recordActivity({
+      wallet_id: session.walletId,
+      chain_id: chainId,
+      tx_hash: hash,
+      kind: kind || "swap",
+      symbol: extra.symbol || "",
+      amount: extra.amount || "",
+      at: Date.now(),
+    }).then(function () {
+      if (state.screen === "activity") {
+        renderActivity();
+      }
+    }).catch(function () {
+      /* non-fatal */
+    });
+  }
+
+  function renderActivity() {
+    var explorers = el("activity-explorers");
+    var list = el("activity-list");
+    if (!explorers || !list) {
+      return;
+    }
+    explorers.textContent = "";
+    list.textContent = "";
+    var addr = session.address;
+    if (!addr) {
+      var locked = document.createElement("p");
+      locked.className = "px-4 py-3 text-sm text-cream-500";
+      locked.textContent = "Unlock to see explorers and broadcasts for this wallet.";
+      list.appendChild(locked);
+      return;
+    }
+    var i;
+    for (i = 0; i < EXPLORER_CHAINS.length; i++) {
+      var spec = EXPLORER_CHAINS[i];
+      var href = explorerAddressUrl(spec.chainId, addr);
+      if (!href) {
+        continue;
+      }
+      var a = document.createElement("a");
+      a.href = href;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.className =
+        "min-h-11 rounded-full bg-ink-900 px-4 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400";
+      a.textContent = spec.name + " explorer";
+      explorers.appendChild(a);
+    }
+    if (session.watch) {
+      var watchNote = document.createElement("p");
+      watchNote.className = "px-4 py-3 text-sm text-cream-500";
+      watchNote.textContent = "Watch address. This device does not broadcast.";
+      list.appendChild(watchNote);
+      return;
+    }
+    var s = store();
+    if (!s || typeof s.listActivity !== "function" || !session.walletId) {
+      var empty = document.createElement("p");
+      empty.className = "px-4 py-3 text-sm text-cream-500";
+      empty.textContent = "No broadcasts from this device yet.";
+      list.appendChild(empty);
+      return;
+    }
+    s.listActivity(session.walletId)
+      .then(function (rows) {
+        list.textContent = "";
+        if (!rows || !rows.length) {
+          var none = document.createElement("p");
+          none.className = "px-4 py-3 text-sm text-cream-500";
+          none.textContent = "No broadcasts from this device yet.";
+          list.appendChild(none);
+          return;
+        }
+        var n;
+        for (n = 0; n < rows.length; n++) {
+          var row = rows[n];
+          var txHref = explorerTxUrl(row.chain_id, row.tx_hash);
+          var line = document.createElement(txHref ? "a" : "p");
+          line.className = "block px-4 py-3 text-sm text-cream-100 ring-1 ring-inset ring-white/10";
+          if (txHref) {
+            line.href = txHref;
+            line.target = "_blank";
+            line.rel = "noopener noreferrer";
+            line.className += " text-ember-400";
+          }
+          var when = row.at ? new Date(Number(row.at)).toISOString().slice(0, 19).replace("T", " ") + " UTC" : "";
+          var label = (row.kind || "tx") + " · " + (row.symbol || "") + " · " + String(row.tx_hash || "").slice(0, 10) + "…";
+          line.textContent = when ? when + " · " + label : label;
+          list.appendChild(line);
+        }
+      })
+      .catch(function () {
+        list.textContent = "";
+        var fail = document.createElement("p");
+        fail.className = "px-4 py-3 text-sm text-cream-500";
+        fail.textContent = "Could not read local broadcasts.";
+        list.appendChild(fail);
+      });
   }
 
   var copyResetTimer = null;
@@ -1959,6 +2100,7 @@
           }
           setText(el("send-note"), "Broadcast " + (sent.tx_hash || "") + ".");
           setWalletStatus("Sent. Key stayed on this device.");
+          noteBroadcast(sent, "send", { chain_id: chainId, amount: atomic, symbol: token === "native" ? "" : token });
         });
     }, "Building send on Scratchpost\u2026").catch(function () {
       setText(el("send-note"), "Send failed. Nothing was signed off-device.");
@@ -3660,7 +3802,10 @@
     var id = session.walletId || session.pendingWalletId;
     s.clearVault(id)
       .then(function () {
-        return typeof s.listVaults === "function" ? s.listVaults() : Promise.resolve([]);
+        var wipe = typeof s.clearActivity === "function" ? s.clearActivity(id) : Promise.resolve();
+        return wipe.then(function () {
+          return typeof s.listVaults === "function" ? s.listVaults() : Promise.resolve([]);
+        });
       })
       .then(function (rows) {
         hideWalletRemoveForm();
@@ -4815,6 +4960,11 @@
           if (!sent || sent.ok === false) {
             throw new Error((sent && sent.error) || "broadcast");
           }
+          var fromSym =
+            pendingSwapQuote && pendingSwapQuote.from && pendingSwapQuote.from.token
+              ? pendingSwapQuote.from.token.symbol
+              : "";
+          noteBroadcast(sent, "swap", { chain_id: chainId, symbol: fromSym });
           pendingSwapQuote = null;
           clearQuoteTimer();
           hideSwapEstimate();
@@ -5547,6 +5697,8 @@
     sendCameraErrorText: sendCameraErrorText,
     parseCurrency: parseCurrency,
     nativeGasReserve: nativeGasReserve,
+    explorerAddressUrl: explorerAddressUrl,
+    explorerTxUrl: explorerTxUrl,
     spendableAmount: spendableAmount,
     percentOfSpendable: percentOfSpendable,
     formatSwapInput: formatSwapInput,

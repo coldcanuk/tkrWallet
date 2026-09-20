@@ -9,7 +9,7 @@
   "use strict";
 
   var DB_NAME = "tkrwallet";
-  var DB_VERSION = 3;
+  var DB_VERSION = 4;
   var STORE = "vault";
   var META = "meta";
   var DEFAULT_VAULT_ID = "default";
@@ -17,6 +17,7 @@
   var MAX_WALLETS = 20;
   var CONTACTS = "contacts";
   var RECENT = "recent_recipients";
+  var ACTIVITY = "activity";
 
   function openDb() {
     return new Promise(function (resolve, reject) {
@@ -38,6 +39,10 @@
         }
         if (!db.objectStoreNames.contains(RECENT)) {
           db.createObjectStore(RECENT, { keyPath: "address" });
+        }
+        if (!db.objectStoreNames.contains(ACTIVITY)) {
+          var act = db.createObjectStore(ACTIVITY, { keyPath: "id", autoIncrement: true });
+          act.createIndex("wallet_id", "wallet_id", { unique: false });
         }
       };
       req.onsuccess = function () {
@@ -258,6 +263,8 @@
         return tx(db, STORE, "readwrite", function (store) {
           return store.delete(key);
         }).then(function () {
+          return clearActivity(key);
+        }).then(function () {
           return getActiveId().then(function (active) {
             if (active && active !== key) {
               return;
@@ -338,6 +345,77 @@
     });
   }
 
+  function recordActivity(row) {
+    var rec = {
+      wallet_id: String((row && row.wallet_id) || ""),
+      chain_id: Number(row && row.chain_id),
+      tx_hash: String((row && row.tx_hash) || "").trim(),
+      kind: String((row && row.kind) || "swap"),
+      symbol: String((row && row.symbol) || ""),
+      amount: String((row && row.amount) || ""),
+      at: Number(row && row.at) || Date.now(),
+    };
+    if (!rec.wallet_id || !rec.tx_hash || !Number.isFinite(rec.chain_id)) {
+      return Promise.resolve(null);
+    }
+    return openDb().then(function (db) {
+      return tx(db, ACTIVITY, "readwrite", function (store) {
+        return store.add(rec);
+      });
+    });
+  }
+
+  function listActivity(walletId) {
+    var id = String(walletId || "");
+    if (!id) {
+      return Promise.resolve([]);
+    }
+    return openDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var t = db.transaction(ACTIVITY, "readonly");
+        var idx = t.objectStore(ACTIVITY).index("wallet_id");
+        var req = idx.getAll(id);
+        req.onsuccess = function () {
+          var rows = Array.isArray(req.result) ? req.result.slice() : [];
+          rows.sort(function (a, b) {
+            return Number(b.at || 0) - Number(a.at || 0);
+          });
+          resolve(rows);
+        };
+        req.onerror = function () {
+          reject(req.error || new Error("indexeddb-failed"));
+        };
+      });
+    });
+  }
+
+  function clearActivity(walletId) {
+    var id = String(walletId || "");
+    if (!id) {
+      return Promise.resolve(null);
+    }
+    return openDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var t = db.transaction(ACTIVITY, "readwrite");
+        var store = t.objectStore(ACTIVITY);
+        var idx = store.index("wallet_id");
+        var req = idx.openCursor(IDBKeyRange.only(id));
+        req.onsuccess = function () {
+          var cursor = req.result;
+          if (cursor) {
+            cursor.delete();
+            cursor.continue();
+            return;
+          }
+          resolve(null);
+        };
+        req.onerror = function () {
+          reject(req.error || new Error("indexeddb-failed"));
+        };
+      });
+    });
+  }
+
   function rememberRecipient(address) {
     var addr = String(address || "").trim();
     if (!addr) {
@@ -383,6 +461,9 @@
     removeContact: removeContact,
     listRecentRecipients: listRecentRecipients,
     rememberRecipient: rememberRecipient,
+    recordActivity: recordActivity,
+    listActivity: listActivity,
+    clearActivity: clearActivity,
   };
 
   if (typeof module === "object" && module.exports) {
