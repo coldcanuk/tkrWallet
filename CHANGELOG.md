@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.23 — 2026-09-20
+
+### Fixed
+- The left account rail lists every IndexedDB wallet (Wallet 1, Wallet 2, …),
+  not only HD Account 1 of the unlocked seed. Tapping another wallet unlocks
+  it. The + button still opens Wallets.
+
 ## 0.10.22 — 2026-09-20
 
 ### Added

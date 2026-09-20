@@ -745,6 +745,29 @@
     }
   }
 
+  function appendDrawerDot(list, opts) {
+    var wrap = document.createElement("div");
+    var btn = document.createElement("button");
+    var cap = document.createElement("span");
+    wrap.className = "flex flex-col items-center gap-1";
+    btn.type = "button";
+    btn.className =
+      "flex size-11 items-center justify-center rounded-full text-xs font-semibold text-ink-950 ring-1 ring-inset ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400";
+    if (opts.current) {
+      btn.className += " ring-2";
+    }
+    btn.style.backgroundColor = ACCOUNT_COLORS[opts.n % ACCOUNT_COLORS.length];
+    btn.textContent = opts.dot;
+    btn.setAttribute("aria-label", opts.label);
+    btn.setAttribute("aria-current", opts.current ? "true" : "false");
+    btn.addEventListener("click", opts.onClick);
+    cap.className = "max-w-14 truncate text-center text-[10px] leading-tight text-cream-500";
+    cap.textContent = opts.caption;
+    wrap.appendChild(btn);
+    wrap.appendChild(cap);
+    list.appendChild(wrap);
+  }
+
   function renderAccountDrawer() {
     var list = el("account-list");
     if (!list) {
@@ -753,51 +776,80 @@
     while (list.firstChild) {
       list.removeChild(list.firstChild);
     }
-    var accounts = session.accounts || [];
-    if (!session.address || !accounts.length) {
+    var s = store();
+    function paintWatches(startN) {
+      var accounts = session.accounts || [];
+      var watchN = 0;
+      var n = startN || 0;
+      accounts.forEach(function (acc) {
+        if (!isWatchRow(acc)) {
+          return;
+        }
+        watchN += 1;
+        var mine =
+          acc &&
+          acc.evmAddress &&
+          session.address &&
+          String(acc.evmAddress).toLowerCase() === String(session.address).toLowerCase();
+        appendDrawerDot(list, {
+          n: n,
+          current: mine,
+          dot: "W" + watchN,
+          label: "Watch " + watchN,
+          caption: "Watch " + watchN,
+          onClick: function () {
+            switchToAccount(acc);
+          },
+        });
+        n += 1;
+      });
+    }
+    function paintWalletRows(rows) {
+      var n = 0;
+      (rows || []).forEach(function (row, i) {
+        var current = row && row.id && session.walletId && String(row.id) === String(session.walletId);
+        appendDrawerDot(list, {
+          n: n,
+          current: current || (!session.walletId && i === 0 && session.address && row.evmAddress && String(row.evmAddress).toLowerCase() === String(session.address).toLowerCase()),
+          dot: accountDotLabel(i),
+          label: "Wallet " + (i + 1),
+          caption: "Wallet " + (i + 1),
+          onClick: function () {
+            switchWallet(row.id);
+          },
+        });
+        n += 1;
+      });
+      paintWatches(n);
+    }
+    if (!s || typeof s.listVaults !== "function") {
+      paintWatches(0);
       return;
     }
-    var watchN = 0;
-    accounts.forEach(function (acc, n) {
-      var wrap = document.createElement("div");
-      var btn = document.createElement("button");
-      var cap = document.createElement("span");
-      var watch = isWatchRow(acc);
-      if (watch) {
-        watchN += 1;
-      }
-      var idx = acc && acc.i != null ? Number(acc.i) : n;
-      var mine =
-        acc &&
-        acc.evmAddress &&
-        session.address &&
-        String(acc.evmAddress).toLowerCase() === String(session.address).toLowerCase();
-      wrap.className = "flex flex-col items-center gap-1";
-      btn.type = "button";
-      btn.className =
-        "flex size-11 items-center justify-center rounded-full text-xs font-semibold text-ink-950 ring-1 ring-inset ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400";
-      if (mine) {
-        btn.className += " ring-2";
-      }
-      btn.style.backgroundColor = ACCOUNT_COLORS[n % ACCOUNT_COLORS.length];
-      btn.textContent = watch ? "W" + watchN : accountDotLabel(idx);
-      btn.setAttribute("aria-label", watch ? "Watch " + watchN : "Account " + (idx + 1));
-      btn.setAttribute("aria-current", mine ? "true" : "false");
-      btn.addEventListener("click", function () {
-        switchToAccount(acc);
+    s.listVaults()
+      .then(function (rows) {
+        if (!list || list !== el("account-list")) {
+          return;
+        }
+        while (list.firstChild) {
+          list.removeChild(list.firstChild);
+        }
+        if (!rows || !rows.length) {
+          paintWatches(0);
+          return;
+        }
+        paintWalletRows(rows);
+      })
+      .catch(function () {
+        paintWatches(0);
       });
-      cap.className = "max-w-14 truncate text-center text-[10px] leading-tight text-cream-500";
-      cap.textContent = watch ? "Watch " + watchN : "Account " + (idx + 1);
-      wrap.appendChild(btn);
-      wrap.appendChild(cap);
-      list.appendChild(wrap);
-    });
   }
 
   function switchWallet(id) {
     if (!id) {
       return;
     }
+    closeAccountDrawer();
     if (session.walletId === id && session.phrase) {
       return;
     }

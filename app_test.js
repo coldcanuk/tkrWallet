@@ -123,6 +123,19 @@ test("account drawer labels and selectedIndex restore the last HD account", func
   );
 });
 
+test("left drawer lists IndexedDB wallets, not only HD Account 1 of the unlocked seed", function () {
+  const ui = readFile("ui.js");
+  const start = ui.indexOf("function renderAccountDrawer");
+  assert.ok(start !== -1, "renderAccountDrawer must exist");
+  const next = ui.indexOf("\n  function ", start + 10);
+  const body = ui.slice(start, next === -1 ? start + 2500 : next);
+  assert.ok(body.indexOf("listVaults") !== -1, "drawer must read every wallet on this device");
+  assert.ok(body.indexOf("switchWallet") !== -1, "drawer dots must switch wallets");
+  assert.ok(body.indexOf("Wallet ") !== -1, "drawer captions are Wallet N, not only Account 1");
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('id="account-drawer-title">Wallets') !== -1, "drawer is the wallet switcher");
+});
+
 test("index.html ships the account drawer and receive/send screens", function () {
   const html = readFile("index.html");
   assert.match(html, /id="account-drawer"/);
@@ -505,7 +518,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.22") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.23") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -804,7 +817,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v19"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v20"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
