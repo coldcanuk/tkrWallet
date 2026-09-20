@@ -48,6 +48,17 @@
         <div id="account-list" class="flex min-h-0 flex-1 flex-col items-center gap-3 overflow-y-auto px-2 py-3"></div>
         <button
           type="button"
+          id="account-drawer-connect"
+          data-connect
+          class="mb-2 flex size-11 items-center justify-center rounded-full text-cream-300 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+          aria-label="Connect to Scratchpost"
+        >
+          <svg viewBox="0 0 24 24" fill="none" class="size-5" aria-hidden="true">
+            <path stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+          </svg>
+        </button>
+        <button
+          type="button"
           id="account-drawer-settings"
           class="mb-2 flex size-11 items-center justify-center rounded-full text-cream-300 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
           aria-label="Settings"
@@ -185,7 +196,7 @@
             <p id="wallet-value-note" class="mt-2 text-xs text-cream-500">
               Unlock with your password, or import / recover with a recovery phrase.
             </p>
-            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.26</p>
+            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.27</p>
           </div>
 
           <div class="mt-4 grid grid-cols-4 gap-2">
@@ -615,7 +626,7 @@
         <section data-screen="settings" hidden aria-labelledby="settings-heading">
           <h1 id="settings-heading" class="sr-only">Settings</h1>
           <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
-            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.26</p>
+            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.27</p>
             <h2 class="mt-4 text-sm font-medium text-cream-500">Security</h2>
             <p class="mt-1 text-xs leading-relaxed text-cream-500">
               Auto-lock locks the wallet after inactivity. It cannot be turned off;
@@ -629,6 +640,17 @@
               <button type="button" data-autolock="60" aria-pressed="false" class="min-h-10 rounded-full px-4 text-xs font-medium text-cream-500 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 aria-pressed:bg-ember-400 aria-pressed:text-ink-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">1 hour</button>
             </div>
             <p id="autolock-feedback" class="mt-2 text-xs text-cream-300" role="status"></p>
+            <label class="mt-4 flex min-h-11 items-center gap-3 text-sm text-cream-300">
+              <input
+                type="checkbox"
+                id="connect-at-launch"
+                class="size-4 shrink-0"
+              />
+              Connect at Launch
+            </label>
+            <p class="mt-1 text-xs leading-relaxed text-cream-500">
+              Off by default. When on, unlocking this wallet connects to Scratchpost.
+            </p>
             <button type="button" data-connect class="mt-4 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">
               Connect to Scratchpost
             </button>
