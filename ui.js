@@ -613,13 +613,17 @@
   }
 
   function renderReceive() {
-    var addr = session.address;
-    setText(el("receive-account-label"), "Account " + (Number(session.index) + 1));
+    var chain = Number((el("receive-chain") || {}).value || 1);
+    var addr = chain === 900001 ? session.solAddress : session.address;
+    var label = chain === 900001 ? "Solana" : chain === 8453 ? "Base" : chain === 4663 ? "Robinhood" : "Ethereum";
+    setText(el("receive-account-label"), "Account " + (Number(session.index) + 1) + " · " + label);
     setText(el("receive-address"), addr || "Unlock to see this address.");
     setText(
       el("receive-note"),
       addr
-        ? "Same address on Ethereum, Base, and other EVM chains. Scan the QR to pay this account."
+        ? chain === 900001
+          ? "Pay this Solana address. It is not the EVM address."
+          : "Same EVM address on Ethereum, Base, and Robinhood. Scan the QR to pay this account."
         : "No wallet is unlocked."
     );
     paintReceiveQr(addr);
@@ -1052,8 +1056,218 @@
     }
   }
 
+  function signBuiltTx(tx, chainId) {
+    var c = crypto();
+    var data = root.tkrWalletData;
+    if (!session.phrase || !c || !data) {
+      return Promise.reject(new Error("locked"));
+    }
+    if (Number(chainId) === 900001) {
+      var signedSol = c.signSolanaVersionedTx(session.phrase, tx.tx_b64 || tx);
+      return data.broadcastRaw({ raw: signedSol.raw, chain_id: 900001 });
+    }
+    var signed = c.signAndBroadcastPayload(session.phrase, session.index, tx);
+    return data.broadcastRaw({ raw: signed.raw, chain_id: signed.chainId });
+  }
+
+  function poolChainId() {
+    return Number((el("pool-chain") || {}).value || 1);
+  }
+
+  function setPoolNote(msg) {
+    setText(el("pool-note"), msg || "");
+  }
+
+  function refreshPoolPositions() {
+    var wallet = root.tkrWalletData;
+    var box = el("pool-positions");
+    if (!wallet || typeof wallet.listPositions !== "function" || !box) {
+      return;
+    }
+    if (!session.address) {
+      box.textContent = "Unlock to see positions.";
+      return;
+    }
+    wallet.listPositions(poolChainId(), session.address).then(function (body) {
+      box.textContent = "";
+      var rows = (body && body.positions) || [];
+      if (!rows.length) {
+        box.textContent = "No Uniswap v3 positions on this chain.";
+        return;
+      }
+      rows.forEach(function (p) {
+        var row = document.createElement("div");
+        row.className = "mb-3 rounded-lg bg-ink-950 p-3 ring-1 ring-inset ring-white/10";
+        var title = document.createElement("p");
+        title.className = "text-sm text-cream-100";
+        title.textContent = (p.symbol0 || "T0") + "/" + (p.symbol1 || "T1") + " · " + (Number(p.fee) / 10000) + "%";
+        var meta = document.createElement("p");
+        meta.className = "mt-1 text-[11px] text-cream-500";
+        meta.textContent = "NFT " + p.token_id + " · liq " + p.liquidity;
+        var actions = document.createElement("div");
+        actions.className = "mt-2 flex gap-2";
+        var collect = document.createElement("button");
+        collect.type = "button";
+        collect.className = "min-h-9 flex-1 rounded-full bg-ink-900 text-xs text-ember-400 ring-1 ring-inset ring-white/10";
+        collect.textContent = "Collect fees";
+        collect.addEventListener("click", function () {
+          onPoolBuild({ action: "collect", chain_id: poolChainId(), token_id: p.token_id });
+        });
+        var exit = document.createElement("button");
+        exit.type = "button";
+        exit.className = "min-h-9 flex-1 rounded-full bg-ink-900 text-xs text-ember-400 ring-1 ring-inset ring-white/10";
+        exit.textContent = "Withdraw";
+        exit.addEventListener("click", function () {
+          onPoolBuild({
+            action: "decrease",
+            chain_id: poolChainId(),
+            token_id: p.token_id,
+            liquidity: p.liquidity,
+          });
+        });
+        actions.appendChild(collect);
+        actions.appendChild(exit);
+        row.appendChild(title);
+        row.appendChild(meta);
+        row.appendChild(actions);
+        box.appendChild(row);
+      });
+    }).catch(function () {
+      box.textContent = "Could not read positions.";
+    });
+  }
+
+  function onPoolBuild(payload) {
+    var wallet = root.tkrWalletData;
+    if (!wallet || typeof wallet.buildPool !== "function") {
+      setPoolNote("Pools are unavailable.");
+      return;
+    }
+    if (!session.phrase) {
+      openGate("unlock");
+      return;
+    }
+    setPoolNote("Building…");
+    wallet.buildPool(payload).then(function (body) {
+      if (!body || body.ok === false || !body.tx) {
+        throw new Error((body && body.error) || "build");
+      }
+      return signBuiltTx(body.tx, body.chain_id).then(function (sent) {
+        if (!sent || sent.ok === false) {
+          throw new Error("broadcast");
+        }
+        setPoolNote("Broadcast " + (sent.tx_hash || "") + ". If Scratchpost asked for wrap or approve, tap Add again.");
+        refreshPoolPositions();
+      });
+    }).catch(function () {
+      setPoolNote("Pool tx failed. The key did not leave this device.");
+    });
+  }
+
+  function onPoolSearch() {
+    var wallet = root.tkrWalletData;
+    var box = el("pool-search-results");
+    if (!wallet || typeof wallet.searchPools !== "function" || !box) {
+      return;
+    }
+    var a = String((el("pool-token-a") || {}).value || "native");
+    var b = String((el("pool-token-b") || {}).value || "");
+    wallet.searchPools({
+      chain_id: poolChainId(),
+      token_a: a,
+      token_b: b,
+      fee: Number((el("pool-fee") || {}).value || 3000),
+    }).then(function (body) {
+      box.textContent = "";
+      var pools = (body && body.pools) || [];
+      if (!pools.length) {
+        box.textContent = "No pool on this fee tier.";
+        return;
+      }
+      pools.forEach(function (p) {
+        var row = document.createElement("button");
+        row.type = "button";
+        row.className = "mb-2 min-h-11 w-full rounded-lg bg-ink-950 px-3 text-left text-xs text-cream-100 ring-1 ring-inset ring-white/10";
+        row.textContent = (p.symbol0 || "T0") + "/" + (p.symbol1 || "T1") + " · " + p.pool;
+        row.addEventListener("click", function () {
+          if (el("pool-token-a")) el("pool-token-a").value = p.token0;
+          if (el("pool-token-b")) el("pool-token-b").value = p.token1;
+          setPoolNote("Selected " + p.pool);
+        });
+        box.appendChild(row);
+      });
+    }).catch(function () {
+      box.textContent = "Search failed.";
+    });
+  }
+
+  function onSendSubmit() {
+    var wallet = root.tkrWalletData;
+    var c = crypto();
+    if (!wallet || typeof wallet.buildSend !== "function" || !c) {
+      setText(el("send-note"), "Send is unavailable.");
+      return;
+    }
+    if (!session.phrase) {
+      openGate("unlock");
+      return;
+    }
+    var chainId = Number((el("send-chain") || {}).value || 1);
+    var to = String((el("send-to") || {}).value || "").trim();
+    var amountHuman = String((el("send-amount") || {}).value || "").trim();
+    var token = String((el("send-token") || {}).value || "native");
+    var atomic = wallet.toAtomicAmount(amountHuman, chainId === 900001 ? 9 : 18);
+    var from = chainId === 900001 ? session.solAddress : session.address;
+    setText(el("send-note"), "Building send…");
+    wallet
+      .buildSend({ chain_id: chainId, from: from, to: to, amount: atomic, token: token })
+      .then(function (body) {
+        if (!body || body.ok === false) {
+          throw new Error((body && body.error) || "build");
+        }
+        if (chainId === 900001) {
+          return signBuiltTx({ tx_b64: body.tx_b64 }, 900001);
+        }
+        return signBuiltTx(body.tx, body.chain_id);
+      })
+      .then(function (sent) {
+        if (!sent || sent.ok === false) {
+          throw new Error("broadcast");
+        }
+        setText(el("send-note"), "Broadcast " + (sent.tx_hash || "") + ".");
+        setWalletStatus("Sent. Key stayed on this device.");
+      })
+      .catch(function () {
+        setText(el("send-note"), "Send failed. Nothing was signed off-device.");
+      });
+  }
+
+  function onPoolAdd() {
+    var wallet = root.tkrWalletData;
+    if (!wallet || typeof wallet.toAtomicAmount !== "function") {
+      return;
+    }
+    var a = String((el("pool-token-a") || {}).value || "native");
+    var b = String((el("pool-token-b") || {}).value || "");
+    var amtA = String((el("pool-amount-a") || {}).value || "0");
+    var amtB = String((el("pool-amount-b") || {}).value || "0");
+    var atomicA = wallet.toAtomicAmount(amtA, 18);
+    var atomicB = wallet.toAtomicAmount(amtB, 18);
+    onPoolBuild({
+      action: "mint",
+      chain_id: poolChainId(),
+      token_a: a,
+      token_b: b,
+      fee: Number((el("pool-fee") || {}).value || 3000),
+      amount_a: atomicA,
+      amount_b: atomicB,
+      native_a: !a || a.toLowerCase() === "native" || a.toUpperCase() === "ETH",
+      native_b: !b || b.toLowerCase() === "native" || b.toUpperCase() === "ETH",
+    });
+  }
+
   function setDeskTab(name) {
-    var next = name === "tokens" || name === "airdrop" ? name : "mine";
+    var next = name === "tokens" || name === "airdrop" || name === "pools" ? name : "mine";
     uiData.deskTab = next;
     paintDeskTabs();
     setText(el("holdings-scope"), holdingsScopeText());
@@ -1100,6 +1314,17 @@
     renderBalancesNotice();
     paintDeskTabs();
     setText(el("holdings-scope"), holdingsScopeText());
+    var poolsPanel = el("pools-panel");
+    if (poolsPanel) {
+      if ((uiData.deskTab || "mine") === "pools") {
+        poolsPanel.removeAttribute("hidden");
+        box.setAttribute("hidden", "");
+        refreshPoolPositions();
+        return;
+      }
+      poolsPanel.setAttribute("hidden", "");
+      box.removeAttribute("hidden");
+    }
     var split = splitCurrentHoldings(holdings, prices);
     renderAirdrops(split.airdrops, prices);
     if (!session.address || holdings == null) {
@@ -1579,6 +1804,9 @@
     }
     if (tab === "airdrop") {
       return "Unpriced tokens sent to this address. They are not in your total.";
+    }
+    if (tab === "pools") {
+      return "Uniswap v3 positions on Ethereum, Base, and Robinhood. Add, withdraw, and collect fees. Mainnet and Base quotes use the desk L1/L2 nodes.";
     }
     return (
       "Only crypto you hold. Zero balances are on Tokens, not here" +
@@ -3244,12 +3472,26 @@
         if (looksLikeSendAddress(to) && s && typeof s.rememberRecipient === "function") {
           s.rememberRecipient(to).catch(function () {});
         }
-        setText(
-          el("send-note"),
-          "Scratchpost has not published unsigned send calldata. Nothing was signed."
-        );
-        setWalletStatus("Send is not built. Nothing was signed.");
+        onSendSubmit();
       });
+    }
+    var receiveChain = el("receive-chain");
+    if (receiveChain) {
+      receiveChain.addEventListener("change", function () {
+        renderReceive();
+      });
+    }
+    var poolSearch = el("pool-search");
+    if (poolSearch) {
+      poolSearch.addEventListener("click", onPoolSearch);
+    }
+    var poolAdd = el("pool-add");
+    if (poolAdd) {
+      poolAdd.addEventListener("click", onPoolAdd);
+    }
+    var poolRefresh = el("pool-refresh");
+    if (poolRefresh) {
+      poolRefresh.addEventListener("click", refreshPoolPositions);
     }
     var swapQuote = el("swap-quote");
     if (swapQuote) {
@@ -3472,12 +3714,10 @@
           onDisconnect();
           return;
         }
-        // send / receive / buy are not built. Say so rather than dead-ending.
-        setStatus(
-          action.charAt(0).toUpperCase() +
-            action.slice(1) +
-            " is not built yet. Nothing was signed."
-        );
+        if (action === "buy") {
+          setStatus("Buy is not built yet. Nothing was signed.");
+          return;
+        }
       });
     }
 
