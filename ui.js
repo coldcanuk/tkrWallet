@@ -1510,6 +1510,12 @@
     if (uiData.lastHoldings) {
       refreshValue();
     }
+    if (state.screen === "detail") {
+      renderDetail();
+    }
+    if (state.screen === "send") {
+      paintSendContacts();
+    }
   }
 
   function refreshValue() {
@@ -1611,7 +1617,7 @@
       renderAll();
       return Promise.resolve(null);
     }
-    var vs = state.currency === "usd" ? ["usd"] : ["usd", state.currency];
+    var vs = CURRENCIES.slice();
     paintFxButton();
     return wallet.getPrices(assets, vs, null, uiData.fxSource).then(function (prices) {
       uiData.lastPrices = prices;
@@ -1935,32 +1941,91 @@
     return usdValue / px;
   }
 
-  function openSwapFor(chainId, asset) {
+  function swapOptionValue(chainId, asset) {
+    return Number(chainId) + ":" + (asset || "native");
+  }
+
+  function ensureSelectOption(sel, value, label) {
+    if (!sel) {
+      return;
+    }
+    var opts = sel.options;
+    var i;
+    for (i = 0; i < opts.length; i++) {
+      if (opts[i].value.toLowerCase() === String(value).toLowerCase()) {
+        sel.value = opts[i].value;
+        return;
+      }
+    }
+    var opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    sel.appendChild(opt);
+    sel.value = value;
+  }
+
+  function defaultCounterAsset(chainId, asset) {
+    var self = swapOptionValue(chainId, asset).toLowerCase();
+    var native = swapOptionValue(chainId, null).toLowerCase();
+    if (self === native) {
+      if (Number(chainId) === 8453) {
+        return USDC_BASE;
+      }
+      if (Number(chainId) === 900001) {
+        return "900001:native";
+      }
+      return USDC_MAIN;
+    }
+    return swapOptionValue(chainId, null);
+  }
+
+  function openSwapFor(chainId, asset, side) {
     fillSwapPairs();
+    var value = swapOptionValue(chainId, asset);
+    var meta = metaFor(chainId, asset);
+    var label = ((meta && meta.symbol) || "Token") + " \u00b7 chain " + chainId;
     var from = el("swap-from");
-    var value = Number(chainId) + ":" + (asset || "native");
-    if (from) {
-      if (from.value !== value) {
-        var found = false;
-        var opts = from.options;
-        for (var i = 0; i < opts.length; i++) {
-          if (opts[i].value.toLowerCase() === value.toLowerCase()) {
-            from.value = opts[i].value;
-            found = true;
-            break;
-          }
+    var to = el("swap-to");
+    var counter = defaultCounterAsset(chainId, asset);
+    if (side === "to") {
+      ensureSelectOption(to, value, label);
+      if (from) {
+        if (String(from.value).toLowerCase() === value.toLowerCase()) {
+          ensureSelectOption(from, counter, counter);
         }
-        if (!found) {
-          var opt = document.createElement("option");
-          opt.value = value;
-          var meta = metaFor(chainId, asset);
-          opt.textContent = ((meta && meta.symbol) || "Token") + " \u00b7 chain " + chainId;
-          from.appendChild(opt);
-          from.value = value;
+      }
+    } else {
+      ensureSelectOption(from, value, label);
+      if (to) {
+        if (String(to.value).toLowerCase() === value.toLowerCase()) {
+          ensureSelectOption(to, counter, counter);
         }
       }
     }
     go("swap");
+  }
+
+  function openSendFor(chainId, asset) {
+    var chain = el("send-chain");
+    var token = el("send-token");
+    if (chain) {
+      chain.value = String(chainId);
+    }
+    if (token) {
+      token.value = asset || "native";
+    }
+    go("send");
+  }
+
+  function stampDetailActions(chainId, asset) {
+    var key = asset || "native";
+    ["detail-buy", "detail-send", "detail-swap"].forEach(function (id) {
+      var btn = el(id);
+      if (btn) {
+        btn.setAttribute("data-chain", String(chainId));
+        btn.setAttribute("data-asset", key);
+      }
+    });
   }
 
   /** Render the detail screen for the current hash. An invalid route goes home
@@ -2021,11 +2086,7 @@
         : amountInUsdAsset(usdValue, USDC_BASE))
     );
     setText(el("detail-lesou"), "lesou coming soon");
-    var buy = el("detail-buy");
-    if (buy) {
-      buy.setAttribute("data-chain", String(route.chainId));
-      buy.setAttribute("data-asset", route.asset || "native");
-    }
+    stampDetailActions(route.chainId, route.asset);
     var note;
     if (!holding) {
       if (!session.address) {
@@ -3783,12 +3844,26 @@
     if (detailCopy) {
       detailCopy.addEventListener("click", copyDetailContract);
     }
+    function detailAsset(btn) {
+      var asset = btn.getAttribute("data-asset");
+      return asset === "native" ? null : asset;
+    }
     var detailBuy = el("detail-buy");
     if (detailBuy) {
       detailBuy.addEventListener("click", function () {
-        var chainId = Number(detailBuy.getAttribute("data-chain"));
-        var asset = detailBuy.getAttribute("data-asset");
-        openSwapFor(chainId, asset === "native" ? null : asset);
+        openSwapFor(Number(detailBuy.getAttribute("data-chain")), detailAsset(detailBuy), "to");
+      });
+    }
+    var detailSend = el("detail-send");
+    if (detailSend) {
+      detailSend.addEventListener("click", function () {
+        openSendFor(Number(detailSend.getAttribute("data-chain")), detailAsset(detailSend));
+      });
+    }
+    var detailSwap = el("detail-swap");
+    if (detailSwap) {
+      detailSwap.addEventListener("click", function () {
+        openSwapFor(Number(detailSwap.getAttribute("data-chain")), detailAsset(detailSwap), "from");
       });
     }
     var fxLive = el("fx-live");
