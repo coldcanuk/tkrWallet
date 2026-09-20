@@ -145,7 +145,7 @@ Then chrome://extensions and brave://extensions → Remove tkrWallet →
 Load unpacked → `/home/chuck/tkrWallet-unpacked`. Do not pick `/opt/repo`
 in the file dialog.
 
-The home card must read **tkrWallet 0.10.16**. If it does not, the browser
+The home card must read **tkrWallet 0.10.17**. If it does not, the browser
 is not this tree. Site access for `tkrwallet.scratchpost.ai` must not be
 “On click”.
 
@@ -180,6 +180,10 @@ secrets. No keys, no signing server-side, no vendor calls.
 ## Docs
 
 - `docs/plans/rdap-build-plan.md` — the build plan this repo executes.
-- `docs/reviews/wallet-technical-review.md`, `docs/security/security-audit.md`
-  — the review and audit this build is closing.
-- `docs/architecture/client.md` — the client contract and invariants.
+- `docs/reviews/2026-09-19-technical-review.md`,
+  `docs/security/2026-09-19-audit.md` — current-tree review and four-track
+  audit (0.10.17). The 0.7-era files under `docs/reviews/` and
+  `docs/security/` are historical.
+- `docs/architecture/client.md` — the client contract and invariants
+  (swap screen note there is stale; the client quotes).
+- `AGENTS.md` — Prime Directive: never write or commit on `main`.

@@ -374,7 +374,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.16") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.17") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -431,7 +431,11 @@ test("wallet CLI routes commands and refuses secrets", function () {
   const ui = require("./ui.js");
   const help = ui.runCliCommand("help");
   assert.ok(help.lines.some(function (line) { return /status/.test(line); }));
+  assert.ok(help.lines.some(function (line) { return /Secrets are never printed/.test(line); }));
   assert.strictEqual(help.refuse, false);
+  const q = ui.runCliCommand("?");
+  assert.deepStrictEqual(q.lines, help.lines);
+  assert.deepStrictEqual(ui.runCliCommand("").lines, []);
   const locked = ui.runCliCommand("status", { unlocked: false, address: "" });
   assert.deepStrictEqual(locked.lines, ["locked.", "no account."]);
   const open = ui.runCliCommand("status", {
@@ -441,14 +445,34 @@ test("wallet CLI routes commands and refuses secrets", function () {
   assert.strictEqual(open.lines[0], "unlocked.");
   assert.ok(open.lines[1].indexOf("0x2222") === 0);
   assert.ok(open.lines.join(" ").indexOf("22222222222222222222222222222222") === -1);
-  assert.strictEqual(ui.runCliCommand("settings").action.type, "go");
-  assert.strictEqual(ui.runCliCommand("search usdc").action.query, "usdc");
-  ["seed", "mnemonic", "password", "private", "export"].forEach(function (cmd) {
+  ["home", "settings", "swap", "activity"].forEach(function (screen) {
+    const go = ui.runCliCommand(screen);
+    assert.deepStrictEqual(go.action, { type: "go", screen: screen });
+    assert.strictEqual(go.lines[0], "opening " + screen + ".");
+  });
+  assert.deepStrictEqual(ui.runCliCommand("search usdc").action, { type: "search", query: "usdc" });
+  assert.strictEqual(ui.runCliCommand("search").action.query, "");
+  assert.deepStrictEqual(ui.runCliCommand("lock").action, { type: "lock" });
+  assert.deepStrictEqual(ui.runCliCommand("dock").action, { type: "dock" });
+  assert.deepStrictEqual(ui.runCliCommand("clear").action, { type: "clear" });
+  assert.deepStrictEqual(ui.runCliCommand("close").action, { type: "close" });
+  assert.deepStrictEqual(ui.runCliCommand("exit").action, { type: "close" });
+  ["seed", "mnemonic", "phrase", "secret", "private", "privkey", "password", "passwd", "export", "backup"].forEach(function (cmd) {
     const refused = ui.runCliCommand(cmd);
     assert.strictEqual(refused.refuse, true, cmd + " must be refused");
     assert.ok(!/0x/.test(refused.lines.join(" ")));
+    assert.ok(/never prints keys/.test(refused.lines.join(" ")));
   });
   assert.strictEqual(ui.runCliCommand("nonsense").lines[0], "unknown command. type help.");
+});
+
+test("Prime Directive lives in AGENTS.md", function () {
+  const agents = readFile("AGENTS.md");
+  assert.ok(/Prime Directive/.test(agents));
+  assert.ok(/strictly prohibited to write and\/or commit directly to `main`/.test(agents));
+  assert.ok(/git worktree add -b/.test(agents));
+  assert.ok(/gh pr create --base main/.test(agents));
+  assert.ok(/Do not `git commit` while `git branch --show-current` is `main`/.test(agents));
 });
 
 test("safe-area padding uses classes, never inline styles", function () {
@@ -649,7 +673,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v14"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v15"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -1663,6 +1687,69 @@ test("swap screen quotes same-chain swaps through the wallet edge, never a vendo
   });
 });
 
+test("quoteSwap and buildSwap POST the real edge paths and return the quote body", async function () {
+  const wallet = require("./wallet.js");
+  const quotePayload = {
+    chain_id: 1,
+    input_mint: "native",
+    output_mint: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    amount: "1000000000000000000",
+  };
+  const quoteBody = {
+    ok: true,
+    out_amount: "2500000000",
+    other_amount_threshold: "2475000000",
+    expires_at: 1737000000000,
+    quote: { id: "q-live-1", chain_id: 1 },
+  };
+  const builtBody = {
+    ok: true,
+    tx: {
+      kind: "evm",
+      chain_id: 1,
+      to: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
+      data: "0x",
+      value: "0x0",
+    },
+  };
+  const calls = [];
+  function fetchFn(url, opts) {
+    calls.push({ url: url, method: opts.method, body: JSON.parse(opts.body), credentials: opts.credentials });
+    const path = String(url);
+    const body = path.indexOf("/api/wallet/swap/build") !== -1 ? builtBody : quoteBody;
+    return Promise.resolve({
+      ok: true,
+      json: function () {
+        return Promise.resolve(body);
+      },
+    });
+  }
+  const quoted = await wallet.quoteSwap(quotePayload, fetchFn);
+  assert.strictEqual(calls[0].method, "POST");
+  assert.ok(String(calls[0].url).indexOf("/api/wallet/swap/quote") !== -1);
+  assert.strictEqual(calls[0].credentials, "include");
+  assert.deepStrictEqual(calls[0].body, quotePayload);
+  assert.strictEqual(quoted.ok, true);
+  assert.strictEqual(quoted.out_amount, "2500000000");
+  assert.deepStrictEqual(quoted.quote, quoteBody.quote);
+  const built = await wallet.buildSwap({ chain_id: 1, quote: quoted.quote }, fetchFn);
+  assert.strictEqual(calls[1].method, "POST");
+  assert.ok(String(calls[1].url).indexOf("/api/wallet/swap/build") !== -1);
+  assert.deepStrictEqual(calls[1].body, { chain_id: 1, quote: quoteBody.quote });
+  assert.strictEqual(built.ok, true);
+  assert.strictEqual(built.tx.chain_id, 1);
+  const failed = await wallet.quoteSwap(quotePayload, function (url, opts) {
+    calls.push({ url: url, method: opts.method });
+    return Promise.resolve({
+      ok: false,
+      json: function () {
+        return Promise.resolve({ error: "quote-expired" });
+      },
+    });
+  });
+  assert.deepStrictEqual(failed, { ok: false, error: "quote-expired" });
+});
+
 test("crypto: signPersonal signs a connect statement and recovers the HD address", function () {
   const c = require("./crypto.js");
   const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -2012,6 +2099,29 @@ test("desk UX: airdrops submenu, receive QR, send contacts, live quote estimate"
   assert.ok(storeSrc.indexOf("listRecentRecipients") !== -1);
   assert.ok(storeSrc.indexOf("rememberRecipient") !== -1);
   assert.ok(storeSrc.indexOf("DB_VERSION = 2") !== -1);
+});
+
+test("Send QR camera: popup cannot prompt; errors stay honest", function () {
+  const src = readFile("ui.js");
+  const ui = require("./ui.js");
+  assert.strictEqual(
+    src.indexOf("Camera permission was denied. Nothing was signed."),
+    -1,
+    "camera failures must not pretend a signature was involved"
+  );
+  assert.ok(src.indexOf("facingMode") === -1, "desk webcam must not demand a rear camera");
+  assert.ok(src.indexOf("getUserMedia({ video: true, audio: false })") !== -1);
+  assert.ok(src.indexOf("chrome.tabs.create") !== -1, "toolbar popup must open a tab to request camera");
+  assert.strictEqual(ui.cameraShellCannotPrompt("", "chrome-extension:", 432), true);
+  assert.strictEqual(ui.cameraShellCannotPrompt("", "chrome-extension:", 1200), false);
+  assert.strictEqual(ui.cameraShellCannotPrompt("?mode=panel", "chrome-extension:", 1200), true);
+  assert.strictEqual(ui.cameraShellCannotPrompt("", "https:", 432), false);
+  assert.strictEqual(ui.wantsAutoScan("?scan=1"), true);
+  assert.strictEqual(ui.wantsAutoScan("?preview=1"), false);
+  assert.ok(/Allow the camera/.test(ui.sendCameraErrorText({ name: "NotAllowedError" })));
+  assert.ok(/No camera/.test(ui.sendCameraErrorText({ name: "NotFoundError" })));
+  assert.ok(!/Nothing was signed/.test(ui.sendCameraErrorText({ name: "NotAllowedError" })));
+  assert.ok(/could not be opened/.test(ui.sendCameraErrorText({ name: "AbortError" })));
 });
 
 test("catalogue: a token is never listed on a chain it is not deployed on (the OP bug)", function () {
