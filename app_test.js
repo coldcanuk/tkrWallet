@@ -170,7 +170,14 @@ test("Wallet value live FX, MXN, labeled token rows, and Buy Now", function () {
   assert.ok(html.indexOf("Held:") !== -1, "token rows label Held");
   assert.ok(html.indexOf("data-token-price") !== -1, "token rows show unit price");
   assert.ok(html.indexOf("data-token-asof") !== -1, "token rows show last update");
-  assert.ok(html.indexOf('id="detail-buy"') !== -1, "detail Buy Now");
+  assert.ok(html.indexOf('id="detail-buy"') !== -1, "detail Buy");
+  assert.ok(html.indexOf('id="detail-send"') !== -1, "detail Send");
+  assert.ok(html.indexOf('id="detail-swap"') !== -1, "detail Swap");
+  assert.ok(html.indexOf("Buy Now") === -1, "Buy Now was replaced by Buy/Send/Swap");
+  const uiSrc = readFile("ui.js");
+  assert.ok(uiSrc.indexOf('state.screen === "detail"') !== -1, "currency refresh must repaint the token card");
+  assert.ok(uiSrc.indexOf("openSendFor") !== -1, "Send from the card pre-fills chain and token");
+  assert.ok(uiSrc.indexOf('openSwapFor(chainId, asset, side)') !== -1 || uiSrc.indexOf('side === "to"') !== -1, "Buy pre-fills swap To");
   assert.ok(html.indexOf("lesou coming soon") !== -1, "lesou is disclosed as coming soon");
   assert.ok(html.indexOf('id="detail-eth-main"') !== -1, "ETH mainnet equivalent");
   const wallet = require("./wallet.js");

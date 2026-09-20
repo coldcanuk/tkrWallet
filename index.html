@@ -614,9 +614,9 @@
                 </p>
               </div>
               <div role="group" aria-label="Display currency" class="flex shrink-0 rounded-full bg-ink-950 ring-1 ring-inset ring-white/10 p-0.5">
-                <button type="button" data-currency="usd" aria-pressed="true" title="US dollar" class="min-h-8 rounded-full px-2 text-xs font-medium text-cream-500 aria-pressed:bg-ember-400 aria-pressed:text-ink-950">USD</button>
-                <button type="button" data-currency="cad" aria-pressed="false" title="Canadian dollar" class="min-h-8 rounded-full px-2 text-xs font-medium text-cream-500 aria-pressed:bg-ember-400 aria-pressed:text-ink-950">CAD</button>
-                <button type="button" data-currency="mxn" aria-pressed="false" title="Mexican peso" class="min-h-8 rounded-full px-2 text-xs font-medium text-cream-500 aria-pressed:bg-ember-400 aria-pressed:text-ink-950">MXN</button>
+                <button type="button" data-currency="usd" aria-pressed="true" title="US dollar" class="min-h-9 rounded-full px-2.5 text-xs font-medium text-cream-500 aria-pressed:bg-ember-400 aria-pressed:text-ink-950">USD</button>
+                <button type="button" data-currency="cad" aria-pressed="false" title="Canadian dollar" class="min-h-9 rounded-full px-2.5 text-xs font-medium text-cream-500 aria-pressed:bg-ember-400 aria-pressed:text-ink-950">CAD</button>
+                <button type="button" data-currency="mxn" aria-pressed="false" title="Mexican peso" class="min-h-9 rounded-full px-2.5 text-xs font-medium text-cream-500 aria-pressed:bg-ember-400 aria-pressed:text-ink-950">MXN</button>
               </div>
             </div>
 
@@ -667,13 +667,29 @@
               </div>
             </dl>
 
-            <button
-              type="button"
-              id="detail-buy"
-              class="mt-4 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50"
-            >
-              Buy Now
-            </button>
+            <div class="mt-4 grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                id="detail-buy"
+                class="min-h-11 rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50"
+              >
+                Buy
+              </button>
+              <button
+                type="button"
+                id="detail-send"
+                class="min-h-11 rounded-full bg-ink-950 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+              >
+                Send
+              </button>
+              <button
+                type="button"
+                id="detail-swap"
+                class="min-h-11 rounded-full bg-ink-950 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+              >
+                Swap
+              </button>
+            </div>
             <p id="detail-note" class="mt-3 text-xs leading-relaxed text-cream-500"></p>
           </div>
         </section>
