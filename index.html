@@ -127,6 +127,22 @@
         <!-- Screen readers announce connection state and errors. -->
         <p id="account-status" class="sr-only" role="status" aria-live="polite"></p>
         <p id="wallet-status" class="sr-only" role="status" aria-live="polite"></p>
+        <!-- Visible while Scratchpost is in flight so the operator does not
+             hammer Quote / Retry / Send. Hidden until withBusy turns it on. -->
+        <div
+          id="scratchpost-busy"
+          hidden
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          class="scratchpost-busy"
+        >
+          <div class="mx-auto flex w-full max-w-md items-center gap-2 px-3 py-1.5 md:max-w-2xl">
+            <span class="scratchpost-busy-spinner" aria-hidden="true"></span>
+            <span id="scratchpost-busy-label" class="min-w-0 truncate text-[11px] text-cream-500">Talking to Scratchpost…</span>
+          </div>
+          <span class="scratchpost-busy-bar" aria-hidden="true"></span>
+        </div>
       </header>
 
       <!-- Screens -->
@@ -135,7 +151,7 @@
         <section data-screen="home" aria-labelledby="home-heading">
           <h1 id="home-heading" class="sr-only">Wallet home</h1>
 
-          <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
+          <div id="wallet-value-card" class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
             <div class="flex items-center justify-between">
               <span class="flex items-center gap-2 whitespace-nowrap text-sm text-cream-500">
                 Wallet value
@@ -169,7 +185,7 @@
             <p id="wallet-value-note" class="mt-2 text-xs text-cream-500">
               Unlock with your password, or import / recover with a recovery phrase.
             </p>
-            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.16</p>
+            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.17</p>
           </div>
 
           <div class="mt-4 grid grid-cols-4 gap-2">
@@ -540,7 +556,7 @@
         <section data-screen="settings" hidden aria-labelledby="settings-heading">
           <h1 id="settings-heading" class="sr-only">Settings</h1>
           <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
-            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.16</p>
+            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.17</p>
             <h2 class="mt-4 text-sm font-medium text-cream-500">Security</h2>
             <p class="mt-1 text-xs leading-relaxed text-cream-500">
               Auto-lock locks the wallet after inactivity. It cannot be turned off;

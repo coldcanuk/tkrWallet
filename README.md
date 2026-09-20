@@ -145,7 +145,7 @@ Then chrome://extensions and brave://extensions → Remove tkrWallet →
 Load unpacked → `/home/chuck/tkrWallet-unpacked`. Do not pick `/opt/repo`
 in the file dialog.
 
-The home card must read **tkrWallet 0.10.16**. If it does not, the browser
+The home card must read **tkrWallet 0.10.17**. If it does not, the browser
 is not this tree. Site access for `tkrwallet.scratchpost.ai` must not be
 “On click”.
 

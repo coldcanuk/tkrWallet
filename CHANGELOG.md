@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.17 — 2026-09-20
+
+### Added
+- While Scratchpost is in flight, a slim ember busy strip (spinner +
+  indeterminate bar) sits under the header, the wallet-value card pulses,
+  and Quote / Send / Retry / pool / FX / add-token stay disabled so they
+  cannot be hammered. Overlapping fetches share one indicator. Reduced
+  motion drops the animation and keeps the strip.
+
 ## 0.10.16 — 2026-09-19
 
 ### Added
