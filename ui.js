@@ -4246,6 +4246,14 @@
     return (isEthBaseChain(fromId) && isForeignChain(toId)) || (isForeignChain(fromId) && isEthBaseChain(toId));
   }
 
+  function isScratchpostSwapChain(id) {
+    return id === 1 || id === 8453 || id === 4663 || id === 900001 || id === 728126428 || id === 900002 || id === 900003;
+  }
+
+  function isScratchpostSwapPair(fromId, toId) {
+    return isScratchpostSwapChain(fromId) && isScratchpostSwapChain(toId);
+  }
+
   function destAddressFor(toSel) {
     if (!toSel) {
       return "";
@@ -4503,10 +4511,8 @@
     if (!fromSel || !toSel || (fromSel.chainId === toSel.chainId && fromSel.mint === toSel.mint)) {
       return failQuote("Pick two different assets.");
     }
-    if (fromSel.chainId !== toSel.chainId && !isEthBaseForeignPair(fromSel.chainId, toSel.chainId)) {
-      return failQuote(
-        "Pick two assets on the same chain, or Ethereum/Base to or from Solana, Sui, TRON, or Stellar."
-      );
+    if (!isScratchpostSwapPair(fromSel.chainId, toSel.chainId)) {
+      return failQuote("Scratchpost could not route that pair. Nothing was signed.");
     }
     if (fromSel.chainId === 900002 || fromSel.chainId === 900003) {
       return failQuote("This wallet cannot sign Sui or Stellar yet. Quote from Ethereum or Base.");
