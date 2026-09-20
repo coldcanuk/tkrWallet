@@ -185,7 +185,7 @@
             <p id="wallet-value-note" class="mt-2 text-xs text-cream-500">
               Unlock with your password, or import / recover with a recovery phrase.
             </p>
-            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.17</p>
+            <p id="app-build" class="mt-2 text-[11px] text-cream-500">tkrWallet 0.10.18</p>
           </div>
 
           <div class="mt-4 grid grid-cols-4 gap-2">
@@ -556,7 +556,7 @@
         <section data-screen="settings" hidden aria-labelledby="settings-heading">
           <h1 id="settings-heading" class="sr-only">Settings</h1>
           <div class="rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
-            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.17</p>
+            <p id="app-version" class="text-xs text-cream-500">tkrWallet 0.10.18</p>
             <h2 class="mt-4 text-sm font-medium text-cream-500">Security</h2>
             <p class="mt-1 text-xs leading-relaxed text-cream-500">
               Auto-lock locks the wallet after inactivity. It cannot be turned off;
@@ -582,20 +582,39 @@
             <button type="button" data-action="lock" class="mt-4 min-h-11 w-full rounded-full bg-ink-950 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
               Lock now
             </button>
-            <h2 class="mt-6 text-sm font-medium text-cream-500">Accounts</h2>
-            <p class="mt-1 text-xs leading-relaxed text-cream-500">
-              One recovery phrase. Each extra account is the next Ethereum
-              address from that phrase. Adding an account asks for your
-              password and never stores the phrase in the clear.
-            </p>
-            <button type="button" data-add-account class="mt-3 min-h-11 w-full rounded-full bg-ink-950 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400">
-              Add account
-            </button>
-            <form id="add-account-form" class="mt-3" hidden>
-              <label for="add-account-password" class="block text-xs text-cream-500">Password</label>
+          </div>
+        </section>
+
+        <!-- Extra accounts. Own form — not Home, not Settings. -->
+        <section data-screen="accounts" hidden aria-labelledby="accounts-heading">
+          <button
+            type="button"
+            id="accounts-back"
+            class="mb-3 inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-xs font-medium text-cream-300 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+          >
+            <svg viewBox="0 0 24 24" fill="none" class="size-4" aria-hidden="true"><path d="m15 6-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Back
+          </button>
+          <h1 id="accounts-heading" class="text-lg font-semibold text-cream-50">Extra accounts</h1>
+          <p class="mt-2 text-sm leading-relaxed text-cream-500">
+            One recovery phrase. Each extra account is the next Ethereum
+            address from that phrase. This form is the only place extra
+            accounts are added. The home desk shows the unlocked account.
+          </p>
+          <div class="mt-4 rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
+            <h2 class="text-sm font-medium text-cream-500">On this device</h2>
+            <div id="accounts-manage-list" class="mt-3"></div>
+            <form id="add-account-form" class="mt-5">
+              <p class="text-xs leading-relaxed text-cream-500">
+                Adding an extra account asks for your password and never
+                stores the phrase in the clear.
+              </p>
+              <label for="add-account-password" class="mt-3 block text-xs text-cream-500">Password</label>
               <input id="add-account-password" type="password" autocomplete="current-password" class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none" />
               <p id="add-account-error" class="mt-2 text-xs text-down-400" hidden></p>
-              <button type="submit" class="mt-3 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">Derive next account</button>
+              <button type="submit" data-add-account id="add-account-submit" class="mt-3 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950 hover:bg-ember-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cream-50">
+                Derive next account
+              </button>
             </form>
           </div>
         </section>

@@ -13,7 +13,7 @@
 (function (root) {
   "use strict";
 
-  var SCREENS = ["home", "swap", "activity", "search", "settings", "detail", "send", "receive", "airdrops"];
+  var SCREENS = ["home", "swap", "activity", "search", "settings", "accounts", "detail", "send", "receive", "airdrops"];
   var ACCOUNT_COLORS = ["#e8a33d", "#a8a29e", "#4ade80", "#cfc8b8", "#d98a1f"];
   var DEFAULT_SCREEN = "home";
   var CURRENCIES = ["usd", "cad", "mxn"];
@@ -67,7 +67,7 @@
     "tkrWallet CLI. Secrets are never printed.",
     "help              this list",
     "status            lock state and public account",
-    "home | search | settings | swap | activity",
+    "home | search | settings | accounts | swap | activity",
     "search <query>    open token search",
     "lock              lock now",
     "dock              dock to the browser side panel",
@@ -115,7 +115,7 @@
       out.action = { type: "dock" };
       return out;
     }
-    if (cmd === "home" || cmd === "settings" || cmd === "swap" || cmd === "activity") {
+    if (cmd === "home" || cmd === "settings" || cmd === "accounts" || cmd === "swap" || cmd === "activity") {
       out.action = { type: "go", screen: cmd };
       out.lines.push("opening " + cmd + ".");
       return out;
@@ -560,6 +560,13 @@
     if (next === "swap") {
       fillSwapPairs();
     }
+    if (next === "accounts") {
+      renderAccountsManage();
+      var pw = el("add-account-password");
+      if (pw && document.activeElement !== pw) {
+        pw.focus();
+      }
+    }
     return next;
   }
 
@@ -718,6 +725,63 @@
       wrap.appendChild(cap);
       list.appendChild(wrap);
     });
+  }
+
+  function renderAccountsManage() {
+    var list = el("accounts-manage-list");
+    if (!list) {
+      return;
+    }
+    while (list.firstChild) {
+      list.removeChild(list.firstChild);
+    }
+    var accounts = session.accounts || [];
+    var submit = el("add-account-submit");
+    var c = crypto();
+    var next =
+      c && typeof c.nextAccountIndex === "function" ? c.nextAccountIndex(accounts) : accounts.length;
+    var atCap = c && typeof c.MAX_ACCOUNTS === "number" ? next >= c.MAX_ACCOUNTS : false;
+    if (submit) {
+      submit.disabled = !!atCap;
+    }
+    if (!session.address || !accounts.length) {
+      var empty = document.createElement("p");
+      empty.className = "text-xs leading-relaxed text-cream-500";
+      empty.textContent = session.address
+        ? "No extra accounts yet. Derive the next address from this phrase."
+        : "Unlock the wallet to manage extra accounts.";
+      list.appendChild(empty);
+      return;
+    }
+    accounts.forEach(function (acc, n) {
+      var btn = document.createElement("button");
+      var label = document.createElement("span");
+      var meta = document.createElement("span");
+      var idx = acc && acc.i != null ? Number(acc.i) : n;
+      var mine =
+        acc &&
+        acc.evmAddress &&
+        session.address &&
+        String(acc.evmAddress).toLowerCase() === String(session.address).toLowerCase();
+      btn.type = "button";
+      btn.className =
+        "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-card bg-ink-950 px-4 text-left ring-1 ring-inset ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400";
+      label.className = "text-sm text-cream-100";
+      label.textContent =
+        "Account " + (idx + 1) + (mine ? " (current)" : "");
+      meta.className = "tnum truncate text-xs text-cream-500";
+      meta.textContent = acc && acc.evmAddress ? shortAddress(acc.evmAddress) : "";
+      btn.appendChild(label);
+      btn.appendChild(meta);
+      btn.setAttribute("aria-current", mine ? "true" : "false");
+      btn.addEventListener("click", function () {
+        switchAccount(idx);
+      });
+      list.appendChild(btn);
+    });
+    if (atCap) {
+      showGateError("add-account-error", "This vault already has the maximum of 20 accounts.");
+    }
   }
 
   function setDrawerOpen(open) {
@@ -2539,6 +2603,7 @@
     refreshBalances();
     renderReceive();
     renderAccountDrawer();
+    renderAccountsManage();
     return w;
   }
 
@@ -2645,6 +2710,7 @@
     uiData.lastChecked = null;
     closeGate();
     closeAccountDrawer();
+    renderAccountsManage();
     setAccount(null, "Locked");
     setWalletStatus(
       reason === "auto"
@@ -2817,7 +2883,7 @@
     s.loadVault()
       .then(function (existing) {
         if (existing) {
-          showGateError("gate-create-error", "A wallet already exists on this device. Unlock it, or add an account in Settings.");
+          showGateError("gate-create-error", "A wallet already exists on this device. Unlock it, or add an extra account from Extra accounts.");
           throw new Error("vault-exists");
         }
         return c.encryptVault(phrase, password);
@@ -2867,6 +2933,10 @@
           if (next < accounts.length) {
             next = c.nextAccountIndex(accounts);
           }
+          if (typeof c.MAX_ACCOUNTS === "number" && next >= c.MAX_ACCOUNTS) {
+            showGateError("add-account-error", "This vault already has the maximum of 20 accounts.");
+            return;
+          }
           var w = c.importMnemonic(phrase, next);
           accounts.push({ i: w.index, path: w.path, evmAddress: w.evmAddress });
           vault.accounts = accounts;
@@ -2880,6 +2950,7 @@
             }
             showGateError("add-account-error", null);
             setWalletStatus("Account " + w.index + " \u00b7 " + w.path);
+            renderAccountsManage();
           });
         });
       })
@@ -3634,11 +3705,7 @@
     if (drawerAdd) {
       drawerAdd.addEventListener("click", function () {
         closeAccountDrawer();
-        go("settings");
-        var addBtn = document.querySelector("[data-add-account]");
-        if (addBtn) {
-          addBtn.click();
-        }
+        go("accounts");
       });
     }
     var receiveCopy = el("receive-copy");
@@ -3863,25 +3930,6 @@
       });
     }
 
-    var addAccountBtn = document.querySelector("[data-add-account]");
-    if (addAccountBtn) {
-      addAccountBtn.addEventListener("click", function () {
-        var form = el("add-account-form");
-        if (!form) {
-          return;
-        }
-        if (form.hasAttribute("hidden")) {
-          form.removeAttribute("hidden");
-          showGateError("add-account-error", null);
-          var pw = el("add-account-password");
-          if (pw) {
-            pw.focus();
-          }
-        } else {
-          form.setAttribute("hidden", "");
-        }
-      });
-    }
     var addAccountForm = el("add-account-form");
     if (addAccountForm) {
       addAccountForm.addEventListener("submit", function (event) {
@@ -3985,6 +4033,12 @@
       });
     }
 
+    var accountsBack = el("accounts-back");
+    if (accountsBack) {
+      accountsBack.addEventListener("click", function () {
+        go("home");
+      });
+    }
     var detailBack = el("detail-back");
     if (detailBack) {
       detailBack.addEventListener("click", function () {

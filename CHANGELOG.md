@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.18 — 2026-09-20
+
+### Changed
+- Extra HD accounts are managed on their own **Extra accounts** form
+  (`#/accounts`), not on Home and not in Settings. Drawer `+` opens that
+  form. One recovery phrase still derives `m/44'/60'/0'/0/{i}`; the vault
+  still stores public addresses only. Cap remains 20.
+
 ## 0.10.17 — 2026-09-20
 
 ### Added

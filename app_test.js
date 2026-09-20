@@ -78,7 +78,7 @@ function readFile(rel) {
 
 test("ui.js exports the shell API", function () {
   const ui = require("./ui.js");
-  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings", "detail", "send", "receive", "airdrops"]);
+  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings", "accounts", "detail", "send", "receive", "airdrops"]);
   assert.strictEqual(typeof ui.renderTokens, "function");
   assert.strictEqual(typeof ui.setWalletValue, "function");
   assert.strictEqual(typeof ui.renderDetail, "function");
@@ -96,6 +96,7 @@ test("route parsing is strict and never throws", function () {
   assert.strictEqual(ui.parseRoute(null), "home");
   assert.strictEqual(ui.parseRoute("#/ACTIVITY?x=1"), "activity");
   assert.strictEqual(ui.parseRoute("#/settings"), "settings");
+  assert.strictEqual(ui.parseRoute("#/accounts"), "accounts");
 });
 
 test("account drawer labels and selectedIndex restore the last HD account", function () {
@@ -133,6 +134,30 @@ test("index.html ships the account drawer and receive/send screens", function ()
   assert.match(html, /id="receive-copy"/);
   assert.match(html, /id="send-chain"/);
   assert.match(html, /id="receive-chain"/);
+});
+
+test("extra accounts are managed on their own form, not Home or Settings", function () {
+  const html = readFile("index.html");
+  const section = function (name) {
+    const re = new RegExp('<section[^>]*data-screen="' + name + '"[\\s\\S]*?<\\/section>');
+    const m = html.match(re);
+    assert.ok(m, "missing data-screen=" + name);
+    return m[0];
+  };
+  const accounts = section("accounts");
+  const home = section("home");
+  const settings = section("settings");
+  assert.ok(accounts.indexOf('id="add-account-form"') !== -1, "add-account form must live on Extra accounts");
+  assert.ok(accounts.indexOf("data-add-account") !== -1, "accounts form must offer derive");
+  assert.ok(home.indexOf('id="add-account-form"') === -1, "Home must not host extra-account management");
+  assert.ok(settings.indexOf('id="add-account-form"') === -1, "Settings must not host extra-account management");
+  assert.ok(settings.indexOf("data-add-account") === -1, "Settings must not offer add-account");
+  const ui = readFile("ui.js");
+  const addStart = ui.indexOf('el("account-drawer-add")');
+  assert.ok(addStart !== -1, "drawer + must be bound");
+  const addChunk = ui.slice(addStart, addStart + 400);
+  assert.ok(addChunk.indexOf('go("accounts")') !== -1, "drawer + opens Extra accounts");
+  assert.ok(addChunk.indexOf('go("settings")') === -1, "drawer + must not dump extra accounts into Settings");
 });
 
 test("token routes parse to a detail screen, and malformed ones fall home", function () {
@@ -335,7 +360,7 @@ test("amount formatting: unknown renders an em dash, zero renders 0", function (
 test("shell structure: five screens, four nav entries, and drawer settings", function () {
   const html = readFile("index.html");
   assert.ok(html.indexOf('id="main"') !== -1, "missing main region");
-  ["home", "swap", "activity", "search", "settings"].forEach(function (screen) {
+  ["home", "swap", "activity", "search", "settings", "accounts"].forEach(function (screen) {
     assert.ok(html.indexOf('data-screen="' + screen + '"') !== -1, "missing screen " + screen);
   });
   ["home", "swap", "activity", "search"].forEach(function (screen) {
@@ -382,7 +407,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.17") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.18") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -450,6 +475,7 @@ test("wallet CLI routes commands and refuses secrets", function () {
   assert.ok(open.lines[1].indexOf("0x2222") === 0);
   assert.ok(open.lines.join(" ").indexOf("22222222222222222222222222222222") === -1);
   assert.strictEqual(ui.runCliCommand("settings").action.type, "go");
+  assert.strictEqual(ui.runCliCommand("accounts").action.screen, "accounts");
   assert.strictEqual(ui.runCliCommand("search usdc").action.query, "usdc");
   ["seed", "mnemonic", "password", "private", "export"].forEach(function (cmd) {
     const refused = ui.runCliCommand(cmd);
@@ -657,7 +683,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v14"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v15"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -1244,6 +1270,8 @@ test("crypto: accountsFromMnemonic lists public addresses only", function () {
   assert.strictEqual(c.nextAccountIndex(acc), 3);
   assert.strictEqual(c.nextAccountIndex(null), 0);
   assert.strictEqual(c.nextAccountIndex([]), 0);
+  assert.strictEqual(c.MAX_ACCOUNTS, 20);
+  assert.throws(function () { c.accountsFromMnemonic(phrase, 21); }, /invalid-count/);
 });
 
 test("crypto: wipeBytes zeros key material in place", function () {
@@ -1319,7 +1347,7 @@ test("create gate: generate, typed confirm, wipe; empty state offers Create", fu
   assert.ok(html.indexOf('id="create-priv"') !== -1, "Phantom-parity: EVM priv shown once");
   assert.ok(html.indexOf('id="create-confirm"') !== -1, "typed confirm input");
   assert.ok(html.indexOf("data-create") !== -1, "empty state must offer Create wallet");
-  assert.ok(html.indexOf('data-add-account') !== -1, "settings must offer add-account for HD index i");
+  assert.ok(html.indexOf('data-add-account') !== -1, "accounts form must offer add-account for HD index i");
   const ui = require("./ui.js");
   assert.strictEqual(typeof ui.typedCreateConfirm, "function");
   assert.strictEqual(ui.CREATE_CONFIRM, "I saved my recovery phrase");

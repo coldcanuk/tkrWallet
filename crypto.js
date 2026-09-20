@@ -642,6 +642,7 @@
 
   var api = {
     KDF_ITERATIONS: KDF_ITERATIONS,
+    MAX_ACCOUNTS: MAX_ACCOUNTS,
     importMnemonic: importMnemonic,
     generateWallet: generateWallet,
     accountsFromMnemonic: accountsFromMnemonic,
