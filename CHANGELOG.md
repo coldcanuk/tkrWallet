@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.29 — 2026-09-20
+
+### Added
+- Activity lists successful Swap/Send broadcasts this device made, with a
+  new-tab link to the official explorer (Ethereum etherscan.io, Base
+  basescan.org, Robinhood robinhoodchain.blockscout.com). Address shortcuts
+  open the same explorers. History stays until Remove Wallet.
+
 ## 0.10.28 — 2026-09-20
 
 ### Fixed

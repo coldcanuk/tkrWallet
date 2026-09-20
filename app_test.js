@@ -11,6 +11,14 @@ const path = require("path");
 
 const ROOT = __dirname;
 const ALLOWED_ORIGIN = "https://tkrwallet.scratchpost.ai";
+const ALLOWED_EXPLORERS = {
+  "https://etherscan.io": true,
+  "https://basescan.org": true,
+  "https://robinhoodchain.blockscout.com": true,
+};
+function allowedHttpsOrigin(url) {
+  return url === ALLOWED_ORIGIN || ALLOWED_EXPLORERS[url] === true;
+}
 const SHIPPED = ["index.html", "shell.js", "ui.js", "wallet.js", "crypto.js", "store.js", "sw.js", "manifest.json", "manifest.webmanifest", "README.md"];
 /* Browser-loaded artifacts only. README/CHANGELOG/deploy/tools are not this list. */
 const CLIENT_SHIPPED = [
@@ -578,7 +586,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.28") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.29") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -830,7 +838,7 @@ test("shipped files reference only the wallet origin", function () {
       if (LOCAL.test(m[0])) {
         continue;
       }
-      assert.strictEqual(m[0], ALLOWED_ORIGIN, file + " references a foreign origin: " + m[0]);
+      assert.ok(allowedHttpsOrigin(m[0]), file + " references a foreign origin: " + m[0]);
     }
   });
 });
@@ -849,7 +857,7 @@ test("shipped client files contain no lab IPs, internal hostnames, or extra orig
     let m;
     urlRe.lastIndex = 0;
     while ((m = urlRe.exec(src)) !== null) {
-      assert.strictEqual(m[0], ALLOWED_ORIGIN, file + " references a foreign origin: " + m[0]);
+      assert.ok(allowedHttpsOrigin(m[0]), file + " references a foreign origin: " + m[0]);
     }
   });
   assert.ok(readFile("wallet.js").indexOf("/api/wallet/balances") !== -1);
@@ -955,7 +963,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v25"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v26"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -2035,8 +2043,28 @@ test("swap screen quotes same-chain swaps through the wallet edge, never a vendo
   assert.ok(ui.indexOf("isScratchpostSwapPair") !== -1);
   assert.ok(ui.indexOf('mode !== "popup"') !== -1, "extension popup must not showModal the quote dialog");
   const activity = html.split('data-screen="activity"')[1].split('data-screen="search"')[0];
-  assert.ok(activity.indexOf("No activity yet") === -1);
-  assert.ok(activity.indexOf("not listed here yet") !== -1);
+  assert.ok(activity.indexOf("id=\"activity-explorers\"") !== -1);
+  assert.ok(activity.indexOf("id=\"activity-list\"") !== -1);
+  assert.ok(activity.indexOf("not listed here yet") === -1);
+  assert.ok(ui.indexOf("explorerTxUrl") !== -1);
+  assert.ok(ui.indexOf("noteBroadcast") !== -1);
+  assert.ok(ui.indexOf("https://etherscan.io") !== -1);
+  assert.ok(ui.indexOf("https://basescan.org") !== -1);
+  assert.ok(ui.indexOf("https://robinhoodchain.blockscout.com") !== -1);
+  const shell = require("./ui.js");
+  assert.strictEqual(
+    shell.explorerAddressUrl(1, "0x69ccA722864515c2F87324E1B9bd643949ffAF95"),
+    "https://etherscan.io/address/0x69ccA722864515c2F87324E1B9bd643949ffAF95",
+  );
+  assert.strictEqual(
+    shell.explorerTxUrl(8453, "0x0aa35d361752bbe0dbdc62f1e7dc5ba801d288f8703a2e6a98ad2210b55e842c"),
+    "https://basescan.org/tx/0x0aa35d361752bbe0dbdc62f1e7dc5ba801d288f8703a2e6a98ad2210b55e842c",
+  );
+  assert.strictEqual(
+    shell.explorerTxUrl(4663, "0x57d7d9b8c43f8cbb977efb22d1c41a5f1af9b7610bc371ddfa4160db57bbd699"),
+    "https://robinhoodchain.blockscout.com/tx/0x57d7d9b8c43f8cbb977efb22d1c41a5f1af9b7610bc371ddfa4160db57bbd699",
+  );
+  assert.strictEqual(shell.explorerTxUrl(900001, "abc"), "");
   assert.ok(ui.indexOf("isEthBaseForeignPair") !== -1);
   assert.ok(
     ui.indexOf("Pick two assets on the same chain, or Ethereum/Base to or from Solana, Sui, TRON, or Stellar.") === -1,
@@ -2468,7 +2496,9 @@ test("desk UX: airdrops submenu, receive QR, send contacts, live quote estimate"
   assert.ok(storeSrc.indexOf("listContacts") !== -1);
   assert.ok(storeSrc.indexOf("listRecentRecipients") !== -1);
   assert.ok(storeSrc.indexOf("rememberRecipient") !== -1);
-  assert.ok(storeSrc.indexOf("DB_VERSION = 3") !== -1, "IndexedDB v3 adds meta + several vault keys");
+  assert.ok(storeSrc.indexOf("DB_VERSION = 4") !== -1, "IndexedDB v4 adds the local activity log");
+  assert.ok(storeSrc.indexOf("recordActivity") !== -1);
+  assert.ok(storeSrc.indexOf("clearActivity") !== -1);
 });
 
 test("Send QR camera: popup cannot prompt; errors stay honest", function () {
