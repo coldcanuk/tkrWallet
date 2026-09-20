@@ -131,7 +131,8 @@ test("index.html ships the account drawer and receive/send screens", function ()
   assert.match(html, /data-screen="receive"/);
   assert.match(html, /data-screen="send"/);
   assert.match(html, /id="receive-copy"/);
-  assert.match(html, /Scratchpost has not published unsigned send calldata/);
+  assert.match(html, /id="send-chain"/);
+  assert.match(html, /id="receive-chain"/);
 });
 
 test("token routes parse to a detail screen, and malformed ones fall home", function () {
@@ -1511,6 +1512,10 @@ test("holdings coverage is disclosed and a token can be added by address", funct
     "data-desk-tab=\"mine\"",
     "data-desk-tab=\"tokens\"",
     "data-desk-tab=\"airdrop\"",
+    "data-desk-tab=\"pools\"",
+    "id=\"pools-panel\"",
+    "id=\"send-chain\"",
+    "id=\"receive-chain\"",
     "id=\"airdrop-list\"",
   ].forEach(function (n) {
     assert.ok(html.indexOf(n) !== -1, "index.html must include " + n);
@@ -1522,7 +1527,12 @@ test("holdings coverage is disclosed and a token can be added by address", funct
   assert.ok(ui.indexOf("holdingsScopeText") !== -1, "the scope of the list must be stated");
   assert.ok(ui.indexOf("built-in tokens") === -1, "holdings must not advertise a 40-token catalogue cap");
   assert.ok(ui.indexOf("renderAirdrops") !== -1, "unpriced airdrops must be reachable from home");
-  assert.ok(ui.indexOf("setDeskTab") !== -1, "Mine/Tokens/Airdrop must switch in place");
+  assert.ok(ui.indexOf("setDeskTab") !== -1, "Mine/Tokens/Airdrop/Pools must switch in place");
+  assert.ok(ui.indexOf("onPoolAdd") !== -1, "pools can add liquidity");
+  assert.ok(ui.indexOf("onSendSubmit") !== -1, "send builds unsigned calldata");
+  assert.ok(wallet.indexOf("buildPool") !== -1, "wallet.js talks to pool build");
+  assert.ok(wallet.indexOf("buildSend") !== -1, "wallet.js talks to send build");
+  assert.ok(html.indexOf("Under construction") === -1, "send is no longer a stub");
   assert.ok(wallet.indexOf("splitHoldings: splitHoldings") !== -1, "wallet.js must export splitHoldings");
   assert.ok(wallet.indexOf("mineHoldings: mineHoldings") !== -1, "wallet.js must export mineHoldings");
   assert.ok(wallet.indexOf("tokenListRows: tokenListRows") !== -1, "wallet.js must export tokenListRows");

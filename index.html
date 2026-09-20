@@ -200,7 +200,7 @@
           </div>
 
           <div class="mb-2 mt-6" role="group" aria-label="Holdings">
-            <div class="grid grid-cols-3 rounded-full bg-ink-900 p-1 ring-1 ring-inset ring-white/10">
+            <div class="grid grid-cols-4 rounded-full bg-ink-900 p-1 ring-1 ring-inset ring-white/10">
               <button
                 type="button"
                 data-desk-tab="mine"
@@ -225,6 +225,14 @@
                 class="desk-tab min-h-9 rounded-full text-xs font-medium text-cream-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
               >
                 Airdrop
+              </button>
+              <button
+                type="button"
+                data-desk-tab="pools"
+                aria-pressed="false"
+                class="desk-tab min-h-9 rounded-full text-xs font-medium text-cream-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400"
+              >
+                Pools
               </button>
             </div>
           </div>
@@ -301,6 +309,48 @@
           </form>
 
           <div id="token-list" class="overflow-hidden rounded-card bg-ink-900 ring-1 ring-inset ring-white/10">
+          </div>
+          <div id="pools-panel" hidden class="space-y-4">
+            <div class="rounded-card bg-ink-900 p-4 ring-1 ring-inset ring-white/10">
+              <label for="pool-chain" class="block text-xs text-cream-500">Chain</label>
+              <select id="pool-chain" class="mt-1 min-h-11 w-full rounded-lg bg-ink-950 px-3 text-sm text-cream-100 ring-1 ring-inset ring-white/10">
+                <option value="1">Ethereum</option>
+                <option value="8453">Base</option>
+                <option value="4663">Robinhood</option>
+              </select>
+              <div class="mt-3 grid grid-cols-2 gap-2">
+                <div>
+                  <label for="pool-token-a" class="block text-xs text-cream-500">Token A</label>
+                  <input id="pool-token-a" type="text" placeholder="ETH or 0x…" class="mt-1 min-h-11 w-full rounded-lg bg-ink-950 px-3 font-mono text-xs text-cream-100 ring-1 ring-inset ring-white/10" />
+                </div>
+                <div>
+                  <label for="pool-token-b" class="block text-xs text-cream-500">Token B</label>
+                  <input id="pool-token-b" type="text" placeholder="0x…" class="mt-1 min-h-11 w-full rounded-lg bg-ink-950 px-3 font-mono text-xs text-cream-100 ring-1 ring-inset ring-white/10" />
+                </div>
+              </div>
+              <label for="pool-fee" class="mt-3 block text-xs text-cream-500">Fee</label>
+              <select id="pool-fee" class="mt-1 min-h-11 w-full rounded-lg bg-ink-950 px-3 text-sm text-cream-100 ring-1 ring-inset ring-white/10">
+                <option value="500">0.05%</option>
+                <option value="3000" selected>0.30%</option>
+                <option value="10000">1%</option>
+              </select>
+              <button type="button" id="pool-search" class="mt-3 min-h-11 w-full rounded-full bg-ink-950 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10">Search pools</button>
+              <div id="pool-search-results" class="mt-3"></div>
+            </div>
+            <div class="rounded-card bg-ink-900 p-4 ring-1 ring-inset ring-white/10">
+              <p class="text-xs font-medium text-cream-500">Add liquidity</p>
+              <label for="pool-amount-a" class="mt-2 block text-xs text-cream-500">Amount A</label>
+              <input id="pool-amount-a" type="text" inputmode="decimal" class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10" placeholder="0.0" />
+              <label for="pool-amount-b" class="mt-2 block text-xs text-cream-500">Amount B</label>
+              <input id="pool-amount-b" type="text" inputmode="decimal" class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10" placeholder="0.0" />
+              <button type="button" id="pool-add" class="mt-3 min-h-11 w-full rounded-full bg-ember-400 text-sm font-medium text-ink-950">Add liquidity</button>
+            </div>
+            <div class="rounded-card bg-ink-900 p-4 ring-1 ring-inset ring-white/10">
+              <p class="text-xs font-medium text-cream-500">Your positions</p>
+              <button type="button" id="pool-refresh" class="mt-2 min-h-9 rounded-full px-3 text-xs font-medium text-ember-400 ring-1 ring-inset ring-white/10">Refresh</button>
+              <div id="pool-positions" class="mt-3"></div>
+            </div>
+            <p id="pool-note" class="text-xs leading-relaxed text-cream-500"></p>
           </div>
         </section>
 
@@ -380,12 +430,18 @@
         <section data-screen="receive" hidden aria-labelledby="receive-heading">
           <h1 id="receive-heading" class="text-lg font-semibold text-cream-50">Receive</h1>
           <p class="mt-2 text-sm leading-relaxed text-cream-500">
-            This is the unlocked account. Anyone who pays this address on Ethereum,
-            Base, or Robinhood Chain is paying you. tkrWallet never asks Scratchpost to invent a
-            deposit.
+            Pick the chain. Ethereum, Base, and Robinhood share the EVM address.
+            Solana uses the SOL address from the same phrase.
           </p>
           <div class="mt-4 rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
-            <p class="text-xs text-cream-500">Account</p>
+            <label for="receive-chain" class="block text-xs text-cream-500">Chain</label>
+            <select id="receive-chain" class="mt-1 min-h-11 w-full rounded-lg bg-ink-950 px-3 text-sm text-cream-100 ring-1 ring-inset ring-white/10">
+              <option value="1">Ethereum</option>
+              <option value="8453">Base</option>
+              <option value="4663">Robinhood</option>
+              <option value="900001">Solana</option>
+            </select>
+            <p class="mt-3 text-xs text-cream-500">Account</p>
             <p id="receive-account-label" class="mt-1 text-sm text-cream-300">Account 1</p>
             <p id="receive-address" class="tnum mt-3 break-all text-sm text-cream-50">&mdash;</p>
             <div id="receive-qr-wrap" class="mt-4 flex justify-center">
@@ -405,13 +461,15 @@
         <section data-screen="send" hidden aria-labelledby="send-heading">
           <h1 id="send-heading" class="text-lg font-semibold text-cream-50">Send</h1>
           <div class="mt-4 rounded-card bg-ink-900 p-5 shadow-card ring-1 ring-inset ring-white/10">
-            <span class="inline-block rounded-full border border-warn-400/40 bg-warn-400/10 px-2.5 py-1 text-xs font-medium text-warn-400">
-              Under construction
-            </span>
-            <p class="mt-3 text-sm leading-relaxed text-cream-300">
-              Scratchpost has not published unsigned send calldata. This screen
-              will not pretend a transfer went out.
-            </p>
+            <label for="send-chain" class="block text-xs text-cream-500">Chain</label>
+            <select id="send-chain" class="mt-1 min-h-11 w-full rounded-lg bg-ink-950 px-3 text-sm text-cream-100 ring-1 ring-inset ring-white/10">
+              <option value="1">Ethereum</option>
+              <option value="8453">Base</option>
+              <option value="4663">Robinhood</option>
+              <option value="900001">Solana</option>
+            </select>
+            <label for="send-token" class="mt-3 block text-xs text-cream-500">Token</label>
+            <input id="send-token" type="text" value="native" class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10" />
             <label for="send-to" class="mt-4 block text-xs text-cream-500">To</label>
             <div class="relative">
               <input id="send-to" type="text" autocomplete="off" spellcheck="false" class="mt-1 min-h-11 w-full rounded-full bg-ink-950 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none" placeholder="0x…" />
