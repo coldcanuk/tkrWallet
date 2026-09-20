@@ -586,7 +586,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.29") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.30") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -963,7 +963,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v26"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v27"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -2048,6 +2048,7 @@ test("swap screen quotes same-chain swaps through the wallet edge, never a vendo
   assert.ok(activity.indexOf("not listed here yet") === -1);
   assert.ok(ui.indexOf("explorerTxUrl") !== -1);
   assert.ok(ui.indexOf("noteBroadcast") !== -1);
+  assert.ok(ui.indexOf("refreshAfterSwap") !== -1);
   assert.ok(ui.indexOf("https://etherscan.io") !== -1);
   assert.ok(ui.indexOf("https://basescan.org") !== -1);
   assert.ok(ui.indexOf("https://robinhoodchain.blockscout.com") !== -1);

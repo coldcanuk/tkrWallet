@@ -2577,6 +2577,56 @@
    *   partial — some chains failed; rows are shown AND the gap is disclosed
    *   unknown — nothing readable; the UI says unknown, never "no balances"
    * `unknown` is never rendered as a zero balance. */
+  function holdingAmount(holdings, chainId, mint) {
+    var want = String(mint || "native").toLowerCase();
+    var rows = holdings || [];
+    var i;
+    for (i = 0; i < rows.length; i++) {
+      var h = rows[i];
+      if (!h || Number(h.chain_id) !== Number(chainId)) {
+        continue;
+      }
+      var got = String(h.address || "native").toLowerCase();
+      if (want === "native" ? got === "native" : got === want) {
+        return typeof h.amount === "number" && Number.isFinite(h.amount) ? h.amount : null;
+      }
+    }
+    return null;
+  }
+
+  function refreshAfterSwap(fromChain, toChain, destMint) {
+    var before = holdingAmount(uiData.lastHoldings, toChain, destMint);
+    var destName =
+      root.tkrWalletData && typeof root.tkrWalletData.chainName === "function"
+        ? root.tkrWalletData.chainName(toChain)
+        : "destination";
+    return refreshBalances().then(function again(attempt) {
+      if (Number(fromChain) === Number(toChain)) {
+        return;
+      }
+      var after = holdingAmount(uiData.lastHoldings, toChain, destMint);
+      if (after != null && (before == null || after > before + 1e-18)) {
+        setWalletStatus("Received funds on " + destName + ".");
+        return;
+      }
+      if (!attempt) {
+        attempt = 1;
+      }
+      if (attempt >= 20) {
+        setWalletStatus("Swap sent. " + destName + " may still be settling — open Home or pull refresh.");
+        return;
+      }
+      setWalletStatus("Waiting for funds on " + destName + "…");
+      return new Promise(function (resolve) {
+        root.setTimeout(resolve, 2000);
+      }).then(function () {
+        return refreshBalances().then(function () {
+          return again(attempt + 1);
+        });
+      });
+    });
+  }
+
   function refreshBalances() {
     var wallet = root.tkrWalletData;
     if (!wallet || !session.address) {
@@ -4964,6 +5014,11 @@
             pendingSwapQuote && pendingSwapQuote.from && pendingSwapQuote.from.token
               ? pendingSwapQuote.from.token.symbol
               : "";
+          var destChain = pendingSwapQuote && pendingSwapQuote.to ? Number(pendingSwapQuote.to.chainId) : chainId;
+          var destMint =
+            pendingSwapQuote && pendingSwapQuote.to && pendingSwapQuote.to.mint
+              ? String(pendingSwapQuote.to.mint)
+              : "native";
           noteBroadcast(sent, "swap", { chain_id: chainId, symbol: fromSym });
           pendingSwapQuote = null;
           clearQuoteTimer();
@@ -4972,7 +5027,7 @@
           setText(el("swap-note"), "Broadcast " + (sent.tx_hash || "") + ". Key stayed on this device.");
           setWalletStatus("Swap broadcast. Key stayed on this device.");
           paintSwapPanel();
-          return refreshBalances();
+          return refreshAfterSwap(chainId, destChain, destMint);
         });
     }, "Building unsigned swap\u2026").catch(function () {
       setText(el("swap-note"), "Swap did not broadcast. The key did not leave this device.");

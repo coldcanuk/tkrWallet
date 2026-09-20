@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.30 — 2026-09-20
+
+### Fixed
+- After a cross-chain Swap Now, Home polls balances until the destination
+  amount increases (Phantom-style settle), instead of one read of the source
+  chain the instant the source tx is broadcast.
+
 ## 0.10.29 — 2026-09-20
 
 ### Added
