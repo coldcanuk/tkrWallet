@@ -47,8 +47,11 @@ and remediations): [`docs/reviews/2026-09-14-technical-review.md`](docs/reviews/
   Derives Ethereum accounts at `m/44'/60'/0'/0/{i}` in the same vault and a
   Solana address at `m/44'/501'/0'/0'`, and signs EIP-191 messages and legacy
   EIP-155 transactions locally with audited `@noble`/`@scure` primitives —
-  never a server. Extra accounts are derived in Settings (password required);
-  only public addresses sit next to the ciphertext. **Connect** (Settings)
+  never a server. Extra accounts are derived on the Extra accounts form
+  (`#/accounts`, password required), not on the home desk and not in
+  Settings; **Watch** adds a public address this phrase does not control
+  (balances only, no send). Only public addresses sit next to the ciphertext.
+  **Connect** (Settings)
   proves the address with an EIP-191 challenge–response on the wallet origin;
   the key never leaves the device and nothing is broadcast.
 - **Auto-lock**: the wallet locks itself after inactivity — 5 minutes by
@@ -145,7 +148,7 @@ Then chrome://extensions and brave://extensions → Remove tkrWallet →
 Load unpacked → `/home/chuck/tkrWallet-unpacked`. Do not pick `/opt/repo`
 in the file dialog.
 
-The home card must read **tkrWallet 0.10.17**. If it does not, the browser
+The home card must read **tkrWallet 0.10.20**. If it does not, the browser
 is not this tree. Site access for `tkrwallet.scratchpost.ai` must not be
 “On click”.
 
@@ -182,7 +185,7 @@ secrets. No keys, no signing server-side, no vendor calls.
 - `docs/plans/rdap-build-plan.md` — the build plan this repo executes.
 - `docs/reviews/2026-09-19-technical-review.md`,
   `docs/security/2026-09-19-audit.md` — current-tree review and four-track
-  audit (0.10.17). The 0.7-era files under `docs/reviews/` and
+  audit. The 0.7-era files under `docs/reviews/` and
   `docs/security/` are historical.
 - `docs/architecture/client.md` — the client contract and invariants
   (swap screen note there is stale; the client quotes).

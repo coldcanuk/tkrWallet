@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.10.17 — 2026-09-19
+## 0.10.20 — 2026-09-20
 
 ### Fixed
 - Scan QR from the toolbar popup or side panel opens Send in a tab so Chrome
@@ -10,6 +10,34 @@
 ### Added
 - `AGENTS.md` Prime Directive: never write or commit on `main`. New worktree,
   commit there, push, open a PR, merge the PR.
+
+## 0.10.19 — 2026-09-20
+
+### Added
+- Extra accounts **Watch** adds a public Ethereum address this recovery
+  phrase does not control. Hover the one-word button for two seconds for
+  the help bubble. tkrWallet can show that address's balances and cannot
+  send, swap, connect, or sign as it. Derive next account is unchanged:
+  password, then the next `m/44'/60'/0'/0/{i}` on this phrase. Neither
+  path reads a JSON file; both write public rows next to the IndexedDB
+  vault ciphertext.
+
+## 0.10.18 — 2026-09-20
+
+### Changed
+- Extra HD accounts are managed on their own **Extra accounts** form
+  (`#/accounts`), not on Home and not in Settings. Drawer `+` opens that
+  form. One recovery phrase still derives `m/44'/60'/0'/0/{i}`; the vault
+  still stores public addresses only. Cap remains 20.
+
+## 0.10.17 — 2026-09-20
+
+### Added
+- While Scratchpost is in flight, a slim ember busy strip (spinner +
+  indeterminate bar) sits under the header, the wallet-value card pulses,
+  and Quote / Send / Retry / pool / FX / add-token stay disabled so they
+  cannot be hammered. Overlapping fetches share one indicator. Reduced
+  motion drops the animation and keeps the strip.
 
 ## 0.10.16 — 2026-09-19
 

@@ -13,7 +13,7 @@
 (function (root) {
   "use strict";
 
-  var SCREENS = ["home", "swap", "activity", "search", "settings", "detail", "send", "receive", "airdrops"];
+  var SCREENS = ["home", "swap", "activity", "search", "settings", "accounts", "detail", "send", "receive", "airdrops"];
   var ACCOUNT_COLORS = ["#e8a33d", "#a8a29e", "#4ade80", "#cfc8b8", "#d98a1f"];
   var DEFAULT_SCREEN = "home";
   var CURRENCIES = ["usd", "cad", "mxn"];
@@ -26,6 +26,7 @@
   var AUTOLOCK_DEFAULT = 5;
   var AUTOLOCK_MAX = 60;
   var CREATE_CONFIRM = "I saved my recovery phrase";
+  var WATCH_HELP_MS = 2000;
 
   /* ---- pure helpers (unit-testable without a DOM) ---------------------- */
 
@@ -103,7 +104,7 @@
     "tkrWallet CLI. Secrets are never printed.",
     "help              this list",
     "status            lock state and public account",
-    "home | search | settings | swap | activity",
+    "home | search | settings | accounts | swap | activity",
     "search <query>    open token search",
     "lock              lock now",
     "dock              dock to the browser side panel",
@@ -151,7 +152,7 @@
       out.action = { type: "dock" };
       return out;
     }
-    if (cmd === "home" || cmd === "settings" || cmd === "swap" || cmd === "activity") {
+    if (cmd === "home" || cmd === "settings" || cmd === "accounts" || cmd === "swap" || cmd === "activity") {
       out.action = { type: "go", screen: cmd };
       out.lines.push("opening " + cmd + ".");
       return out;
@@ -596,6 +597,13 @@
     if (next === "swap") {
       fillSwapPairs();
     }
+    if (next === "accounts") {
+      renderAccountsManage();
+      var pw = el("add-account-password");
+      if (pw && document.activeElement !== pw) {
+        pw.focus();
+      }
+    }
     return next;
   }
 
@@ -631,6 +639,25 @@
     return "A" + String(n + 1);
   }
 
+  function isWatchRow(acc) {
+    var c = crypto();
+    if (c && typeof c.isWatchAccount === "function") {
+      return c.isWatchAccount(acc);
+    }
+    return Boolean(acc && acc.kind === "watch");
+  }
+
+  function sessionCanSign() {
+    return Boolean(
+      session.phrase &&
+        session.watch !== true &&
+        session.index != null &&
+        session.index !== "" &&
+        Number.isInteger(Number(session.index)) &&
+        Number(session.index) >= 0
+    );
+  }
+
   function selectedIndexFromVault(vault) {
     if (!vault || !vault.accounts || !vault.accounts.length) {
       return 0;
@@ -649,13 +676,17 @@
   }
 
   function renderReceive() {
-    var addr = session.address;
-    setText(el("receive-account-label"), "Account " + (Number(session.index) + 1));
+    var chain = Number((el("receive-chain") || {}).value || 1);
+    var addr = chain === 900001 ? session.solAddress : session.address;
+    var label = chain === 900001 ? "Solana" : chain === 8453 ? "Base" : chain === 4663 ? "Robinhood" : "Ethereum";
+    setText(el("receive-account-label"), "Account " + (Number(session.index) + 1) + " · " + label);
     setText(el("receive-address"), addr || "Unlock to see this address.");
     setText(
       el("receive-note"),
       addr
-        ? "Same address on Ethereum, Base, and other EVM chains. Scan the QR to pay this account."
+        ? chain === 900001
+          ? "Pay this Solana address. It is not the EVM address."
+          : "Same EVM address on Ethereum, Base, and Robinhood. Scan the QR to pay this account."
         : "No wallet is unlocked."
     );
     paintReceiveQr(addr);
@@ -720,10 +751,15 @@
     if (!session.address || !accounts.length) {
       return;
     }
+    var watchN = 0;
     accounts.forEach(function (acc, n) {
       var wrap = document.createElement("div");
       var btn = document.createElement("button");
       var cap = document.createElement("span");
+      var watch = isWatchRow(acc);
+      if (watch) {
+        watchN += 1;
+      }
       var idx = acc && acc.i != null ? Number(acc.i) : n;
       var mine =
         acc &&
@@ -738,18 +774,97 @@
         btn.className += " ring-2";
       }
       btn.style.backgroundColor = ACCOUNT_COLORS[n % ACCOUNT_COLORS.length];
-      btn.textContent = accountDotLabel(idx);
-      btn.setAttribute("aria-label", "Account " + (idx + 1));
+      btn.textContent = watch ? "W" + watchN : accountDotLabel(idx);
+      btn.setAttribute("aria-label", watch ? "Watch " + watchN : "Account " + (idx + 1));
       btn.setAttribute("aria-current", mine ? "true" : "false");
       btn.addEventListener("click", function () {
-        switchAccount(idx);
+        switchToAccount(acc);
       });
       cap.className = "max-w-14 truncate text-center text-[10px] leading-tight text-cream-500";
-      cap.textContent = "Account " + (idx + 1);
+      cap.textContent = watch ? "Watch " + watchN : "Account " + (idx + 1);
       wrap.appendChild(btn);
       wrap.appendChild(cap);
       list.appendChild(wrap);
     });
+  }
+
+  function renderAccountsManage() {
+    var list = el("accounts-manage-list");
+    if (!list) {
+      return;
+    }
+    while (list.firstChild) {
+      list.removeChild(list.firstChild);
+    }
+    var accounts = session.accounts || [];
+    var submit = el("add-account-submit");
+    var watchSubmit = el("watch-account-submit");
+    var c = crypto();
+    var next =
+      c && typeof c.nextAccountIndex === "function" ? c.nextAccountIndex(accounts) : accounts.length;
+    var atCap = c && typeof c.MAX_ACCOUNTS === "number" ? next >= c.MAX_ACCOUNTS : false;
+    var watchN = 0;
+    var w;
+    for (w = 0; w < accounts.length; w++) {
+      if (isWatchRow(accounts[w])) {
+        watchN += 1;
+      }
+    }
+    var watchCap =
+      c && typeof c.MAX_WATCH_ACCOUNTS === "number" ? watchN >= c.MAX_WATCH_ACCOUNTS : false;
+    if (submit) {
+      submit.disabled = !!atCap;
+    }
+    if (watchSubmit) {
+      watchSubmit.disabled = !!watchCap;
+    }
+    if (!session.address || !accounts.length) {
+      var empty = document.createElement("p");
+      empty.className = "text-xs leading-relaxed text-cream-500";
+      empty.textContent = session.address
+        ? "No extra accounts yet. Derive the next address from this phrase."
+        : "Unlock the wallet to manage extra accounts.";
+      list.appendChild(empty);
+      return;
+    }
+    var watchShown = 0;
+    accounts.forEach(function (acc, n) {
+      var btn = document.createElement("button");
+      var label = document.createElement("span");
+      var meta = document.createElement("span");
+      var watch = isWatchRow(acc);
+      if (watch) {
+        watchShown += 1;
+      }
+      var idx = acc && acc.i != null ? Number(acc.i) : n;
+      var mine =
+        acc &&
+        acc.evmAddress &&
+        session.address &&
+        String(acc.evmAddress).toLowerCase() === String(session.address).toLowerCase();
+      btn.type = "button";
+      btn.className =
+        "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-card bg-ink-950 px-4 text-left ring-1 ring-inset ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400";
+      label.className = "text-sm text-cream-100";
+      label.textContent = watch
+        ? "Watch " + watchShown + (mine ? " (current)" : "")
+        : "Account " + (idx + 1) + (mine ? " (current)" : "");
+      meta.className = "tnum truncate text-xs text-cream-500";
+      meta.textContent = acc && acc.evmAddress ? shortAddress(acc.evmAddress) : "";
+      btn.appendChild(label);
+      btn.appendChild(meta);
+      btn.setAttribute("aria-current", mine ? "true" : "false");
+      btn.addEventListener("click", function () {
+        switchToAccount(acc);
+      });
+      list.appendChild(btn);
+    });
+    if (atCap) {
+      showGateError("add-account-error", "This vault already has the maximum of 20 accounts.");
+    }
+    if (watchCap) {
+      showGateError("watch-account-error", "This vault already has the maximum of 20 watch addresses.");
+    }
   }
 
   function setDrawerOpen(open) {
@@ -795,6 +910,8 @@
           return;
         }
         vault.selectedIndex = Number(index);
+        vault.selectedKind = "hd";
+        vault.selectedWatch = null;
         return s.saveVault(vault);
       })
       .catch(function () {
@@ -802,18 +919,58 @@
       });
   }
 
-  function switchAccount(index) {
+  function persistSelectedWatch(address) {
+    var s = store();
+    if (!s) {
+      return;
+    }
+    s.loadVault()
+      .then(function (vault) {
+        if (!vault) {
+          return;
+        }
+        vault.selectedKind = "watch";
+        vault.selectedWatch = address;
+        return s.saveVault(vault);
+      })
+      .catch(function () {
+        /* non-fatal: next unlock falls back to the last HD account */
+      });
+  }
+
+  function switchToAccount(acc) {
     if (!session.phrase) {
       setWalletStatus("Unlock the wallet to switch accounts.");
       return;
     }
-    var idx = Number(index);
+    if (!acc) {
+      return;
+    }
+    if (isWatchRow(acc)) {
+      revealWatchAccount(acc.evmAddress);
+      persistSelectedWatch(acc.evmAddress);
+      closeAccountDrawer();
+      return;
+    }
+    var idx = Number(acc.i);
     if (!isFinite(idx) || idx < 0) {
       return;
     }
+    session.watch = false;
     revealAccount(session.phrase, idx);
     persistSelectedIndex(idx);
     closeAccountDrawer();
+  }
+
+  function switchAccount(index) {
+    var accounts = session.accounts || [];
+    var i;
+    for (i = 0; i < accounts.length; i++) {
+      if (!isWatchRow(accounts[i]) && Number(accounts[i].i) === Number(index)) {
+        switchToAccount(accounts[i]);
+        return;
+      }
+    }
   }
 
   function setAccount(address, label) {
@@ -835,6 +992,122 @@
   /** Balance/price updates announce here, separate from connection state. */
   function setWalletStatus(message) {
     setText(el("wallet-status"), message);
+  }
+
+  var busyCount = 0;
+  var BUSY_BUTTONS = [
+    "swap-quote",
+    "swap-submit",
+    "send-submit",
+    "pool-add",
+    "pool-search",
+    "pool-refresh",
+    "balances-retry",
+    "detail-buy",
+    "detail-send",
+    "detail-swap",
+    "add-token-btn",
+    "fx-live",
+  ];
+
+  function isBusy() {
+    return busyCount > 0;
+  }
+
+  function paintBusy(message) {
+    var on = busyCount > 0;
+    var bar = el("scratchpost-busy");
+    var app = el("app");
+    var card = el("wallet-value-card");
+    var label = el("scratchpost-busy-label");
+    var i;
+    var extras;
+    if (app) {
+      if (on) {
+        app.setAttribute("aria-busy", "true");
+      } else {
+        app.removeAttribute("aria-busy");
+      }
+    }
+    if (bar) {
+      if (on) {
+        bar.removeAttribute("hidden");
+      } else {
+        bar.setAttribute("hidden", "");
+      }
+    }
+    if (label && on && message) {
+      setText(label, message);
+    }
+    if (card && card.classList) {
+      if (on) {
+        card.classList.add("tkr-busy-pulse");
+      } else {
+        card.classList.remove("tkr-busy-pulse");
+      }
+    }
+    if (typeof document !== "undefined" && document.documentElement && document.documentElement.classList) {
+      document.documentElement.classList.toggle("tkr-busy", on);
+    }
+    for (i = 0; i < BUSY_BUTTONS.length; i++) {
+      var btn = el(BUSY_BUTTONS[i]);
+      if (!btn) {
+        continue;
+      }
+      btn.disabled = on;
+      if (on) {
+        btn.setAttribute("aria-disabled", "true");
+      } else {
+        btn.removeAttribute("aria-disabled");
+      }
+    }
+    if (typeof document !== "undefined" && document.querySelectorAll) {
+      extras = document.querySelectorAll("[data-currency]");
+      for (i = 0; i < extras.length; i++) {
+        extras[i].disabled = on;
+        if (on) {
+          extras[i].setAttribute("aria-disabled", "true");
+        } else {
+          extras[i].removeAttribute("aria-disabled");
+        }
+      }
+    }
+  }
+
+  function setBusy(message) {
+    var first = busyCount === 0;
+    busyCount += 1;
+    if (message && first) {
+      setWalletStatus(message);
+    }
+    paintBusy(message);
+  }
+
+  function clearBusy() {
+    if (busyCount > 0) {
+      busyCount -= 1;
+    }
+    paintBusy();
+  }
+
+  /** Refcount Scratchpost waits so overlapping fetches keep one indicator
+   * and Quote / Retry / Send stay inert until the last wait settles. */
+  function withBusy(work, message) {
+    setBusy(message || "Talking to Scratchpost\u2026");
+    return Promise.resolve()
+      .then(function () {
+        return typeof work === "function" ? work() : work;
+      })
+      .then(
+        function (value) {
+          clearBusy();
+          return value;
+        },
+        function (err) {
+          clearBusy();
+          throw err;
+        }
+      );
   }
 
   function setWalletValue(value, currency, note) {
@@ -1088,8 +1361,235 @@
     }
   }
 
+  function signBuiltTx(tx, chainId) {
+    var c = crypto();
+    var data = root.tkrWalletData;
+    if (!sessionCanSign() || !c || !data) {
+      return Promise.reject(new Error(session.watch ? "watch" : "locked"));
+    }
+    if (Number(chainId) === 900001) {
+      var signedSol = c.signSolanaVersionedTx(session.phrase, tx.tx_b64 || tx);
+      return data.broadcastRaw({ raw: signedSol.raw, chain_id: 900001 });
+    }
+    var signed = c.signAndBroadcastPayload(session.phrase, session.index, tx);
+    return data.broadcastRaw({ raw: signed.raw, chain_id: signed.chainId });
+  }
+
+  function poolChainId() {
+    return Number((el("pool-chain") || {}).value || 1);
+  }
+
+  function setPoolNote(msg) {
+    setText(el("pool-note"), msg || "");
+  }
+
+  function refreshPoolPositions() {
+    var wallet = root.tkrWalletData;
+    var box = el("pool-positions");
+    if (!wallet || typeof wallet.listPositions !== "function" || !box) {
+      return;
+    }
+    if (!session.address) {
+      box.textContent = "Unlock to see positions.";
+      return;
+    }
+    box.textContent = "Reading positions\u2026";
+    return withBusy(function () {
+      return wallet.listPositions(poolChainId(), session.address);
+    }, "Reading pool positions from Scratchpost\u2026").then(function (body) {
+      box.textContent = "";
+      var rows = (body && body.positions) || [];
+      if (!rows.length) {
+        box.textContent = "No Uniswap v3 positions on this chain.";
+        return;
+      }
+      rows.forEach(function (p) {
+        var row = document.createElement("div");
+        row.className = "mb-3 rounded-lg bg-ink-950 p-3 ring-1 ring-inset ring-white/10";
+        var title = document.createElement("p");
+        title.className = "text-sm text-cream-100";
+        title.textContent = (p.symbol0 || "T0") + "/" + (p.symbol1 || "T1") + " · " + (Number(p.fee) / 10000) + "%";
+        var meta = document.createElement("p");
+        meta.className = "mt-1 text-[11px] text-cream-500";
+        meta.textContent = "NFT " + p.token_id + " · liq " + p.liquidity;
+        var actions = document.createElement("div");
+        actions.className = "mt-2 flex gap-2";
+        var collect = document.createElement("button");
+        collect.type = "button";
+        collect.className = "min-h-9 flex-1 rounded-full bg-ink-900 text-xs text-ember-400 ring-1 ring-inset ring-white/10";
+        collect.textContent = "Collect fees";
+        collect.addEventListener("click", function () {
+          onPoolBuild({ action: "collect", chain_id: poolChainId(), token_id: p.token_id });
+        });
+        var exit = document.createElement("button");
+        exit.type = "button";
+        exit.className = "min-h-9 flex-1 rounded-full bg-ink-900 text-xs text-ember-400 ring-1 ring-inset ring-white/10";
+        exit.textContent = "Withdraw";
+        exit.addEventListener("click", function () {
+          onPoolBuild({
+            action: "decrease",
+            chain_id: poolChainId(),
+            token_id: p.token_id,
+            liquidity: p.liquidity,
+          });
+        });
+        actions.appendChild(collect);
+        actions.appendChild(exit);
+        row.appendChild(title);
+        row.appendChild(meta);
+        row.appendChild(actions);
+        box.appendChild(row);
+      });
+    }).catch(function () {
+      box.textContent = "Could not read positions.";
+    });
+  }
+
+  function onPoolBuild(payload) {
+    var wallet = root.tkrWalletData;
+    if (!wallet || typeof wallet.buildPool !== "function") {
+      setPoolNote("Pools are unavailable.");
+      return;
+    }
+    if (!sessionCanSign()) {
+      if (session.watch) {
+        setPoolNote("This is a watch address. tkrWallet does not hold its key. Nothing was signed.");
+        return;
+      }
+      openGate("unlock");
+      return;
+    }
+    setPoolNote("Building\u2026");
+    withBusy(function () {
+      return wallet.buildPool(payload).then(function (body) {
+        if (!body || body.ok === false || !body.tx) {
+          throw new Error((body && body.error) || "build");
+        }
+        return signBuiltTx(body.tx, body.chain_id).then(function (sent) {
+          if (!sent || sent.ok === false) {
+            throw new Error("broadcast");
+          }
+          setPoolNote("Broadcast " + (sent.tx_hash || "") + ". If Scratchpost asked for wrap or approve, tap Add again.");
+          return refreshPoolPositions();
+        });
+      });
+    }, "Building pool transaction\u2026").catch(function () {
+      setPoolNote("Pool tx failed. The key did not leave this device.");
+    });
+  }
+
+  function onPoolSearch() {
+    var wallet = root.tkrWalletData;
+    var box = el("pool-search-results");
+    if (!wallet || typeof wallet.searchPools !== "function" || !box) {
+      return;
+    }
+    var a = String((el("pool-token-a") || {}).value || "native");
+    var b = String((el("pool-token-b") || {}).value || "");
+    box.textContent = "Searching\u2026";
+    withBusy(function () {
+      return wallet.searchPools({
+        chain_id: poolChainId(),
+        token_a: a,
+        token_b: b,
+        fee: Number((el("pool-fee") || {}).value || 3000),
+      });
+    }, "Searching pools on Scratchpost\u2026").then(function (body) {
+      box.textContent = "";
+      var pools = (body && body.pools) || [];
+      if (!pools.length) {
+        box.textContent = "No pool on this fee tier.";
+        return;
+      }
+      pools.forEach(function (p) {
+        var row = document.createElement("button");
+        row.type = "button";
+        row.className = "mb-2 min-h-11 w-full rounded-lg bg-ink-950 px-3 text-left text-xs text-cream-100 ring-1 ring-inset ring-white/10";
+        row.textContent = (p.symbol0 || "T0") + "/" + (p.symbol1 || "T1") + " · " + p.pool;
+        row.addEventListener("click", function () {
+          if (el("pool-token-a")) el("pool-token-a").value = p.token0;
+          if (el("pool-token-b")) el("pool-token-b").value = p.token1;
+          setPoolNote("Selected " + p.pool);
+        });
+        box.appendChild(row);
+      });
+    }).catch(function () {
+      box.textContent = "Search failed.";
+    });
+  }
+
+  function onSendSubmit() {
+    var wallet = root.tkrWalletData;
+    var c = crypto();
+    if (!wallet || typeof wallet.buildSend !== "function" || !c) {
+      setText(el("send-note"), "Send is unavailable.");
+      return;
+    }
+    if (!sessionCanSign()) {
+      if (session.watch) {
+        setText(el("send-note"), "This is a watch address. tkrWallet does not hold its key. Nothing was signed.");
+        return;
+      }
+      openGate("unlock");
+      return;
+    }
+    var chainId = Number((el("send-chain") || {}).value || 1);
+    var to = String((el("send-to") || {}).value || "").trim();
+    var amountHuman = String((el("send-amount") || {}).value || "").trim();
+    var token = String((el("send-token") || {}).value || "native");
+    var atomic = wallet.toAtomicAmount(amountHuman, chainId === 900001 ? 9 : 18);
+    var from = chainId === 900001 ? session.solAddress : session.address;
+    setText(el("send-note"), "Building send\u2026");
+    withBusy(function () {
+      return wallet
+        .buildSend({ chain_id: chainId, from: from, to: to, amount: atomic, token: token })
+        .then(function (body) {
+          if (!body || body.ok === false) {
+            throw new Error((body && body.error) || "build");
+          }
+          if (chainId === 900001) {
+            return signBuiltTx({ tx_b64: body.tx_b64 }, 900001);
+          }
+          return signBuiltTx(body.tx, body.chain_id);
+        })
+        .then(function (sent) {
+          if (!sent || sent.ok === false) {
+            throw new Error("broadcast");
+          }
+          setText(el("send-note"), "Broadcast " + (sent.tx_hash || "") + ".");
+          setWalletStatus("Sent. Key stayed on this device.");
+        });
+    }, "Building send on Scratchpost\u2026").catch(function () {
+      setText(el("send-note"), "Send failed. Nothing was signed off-device.");
+    });
+  }
+
+  function onPoolAdd() {
+    var wallet = root.tkrWalletData;
+    if (!wallet || typeof wallet.toAtomicAmount !== "function") {
+      return;
+    }
+    var a = String((el("pool-token-a") || {}).value || "native");
+    var b = String((el("pool-token-b") || {}).value || "");
+    var amtA = String((el("pool-amount-a") || {}).value || "0");
+    var amtB = String((el("pool-amount-b") || {}).value || "0");
+    var atomicA = wallet.toAtomicAmount(amtA, 18);
+    var atomicB = wallet.toAtomicAmount(amtB, 18);
+    onPoolBuild({
+      action: "mint",
+      chain_id: poolChainId(),
+      token_a: a,
+      token_b: b,
+      fee: Number((el("pool-fee") || {}).value || 3000),
+      amount_a: atomicA,
+      amount_b: atomicB,
+      native_a: !a || a.toLowerCase() === "native" || a.toUpperCase() === "ETH",
+      native_b: !b || b.toLowerCase() === "native" || b.toUpperCase() === "ETH",
+    });
+  }
+
   function setDeskTab(name) {
-    var next = name === "tokens" || name === "airdrop" ? name : "mine";
+    var next = name === "tokens" || name === "airdrop" || name === "pools" ? name : "mine";
     uiData.deskTab = next;
     paintDeskTabs();
     setText(el("holdings-scope"), holdingsScopeText());
@@ -1136,6 +1636,17 @@
     renderBalancesNotice();
     paintDeskTabs();
     setText(el("holdings-scope"), holdingsScopeText());
+    var poolsPanel = el("pools-panel");
+    if (poolsPanel) {
+      if ((uiData.deskTab || "mine") === "pools") {
+        poolsPanel.removeAttribute("hidden");
+        box.setAttribute("hidden", "");
+        refreshPoolPositions();
+        return;
+      }
+      poolsPanel.setAttribute("hidden", "");
+      box.removeAttribute("hidden");
+    }
     var split = splitCurrentHoldings(holdings, prices);
     renderAirdrops(split.airdrops, prices);
     if (!session.address || holdings == null) {
@@ -1281,7 +1792,9 @@
     if (!root.tkrWalletData || typeof root.tkrWalletData.searchTokens !== "function") {
       return local;
     }
-    root.tkrWalletData.searchTokens(q, readStoredTokens()).then(function (remote) {
+    withBusy(function () {
+      return root.tkrWalletData.searchTokens(q, readStoredTokens());
+    }, "Searching Scratchpost\u2026").then(function (remote) {
       if (seq !== searchSeq) {
         return;
       }
@@ -1320,6 +1833,12 @@
     renderTokens(uiData.lastHoldings, uiData.lastPrices);
     if (uiData.lastHoldings) {
       refreshValue();
+    }
+    if (state.screen === "detail") {
+      renderDetail();
+    }
+    if (state.screen === "send") {
+      paintSendContacts();
     }
   }
 
@@ -1422,12 +1941,18 @@
       renderAll();
       return Promise.resolve(null);
     }
-    var vs = state.currency === "usd" ? ["usd"] : ["usd", state.currency];
+    var vs = CURRENCIES.slice();
     paintFxButton();
-    return wallet.getPrices(assets, vs, null, uiData.fxSource).then(function (prices) {
-      uiData.lastPrices = prices;
+    return withBusy(function () {
+      return wallet.getPrices(assets, vs, null, uiData.fxSource).then(function (prices) {
+        uiData.lastPrices = prices;
+        renderAll();
+        return prices;
+      });
+    }, "Fetching prices from Scratchpost\u2026").catch(function () {
+      setWalletStatus("Prices unavailable from the wallet edge.");
       renderAll();
-      return prices;
+      return null;
     });
   }
 
@@ -1509,7 +2034,8 @@
     var extras = readStoredTokens().map(function (t) {
       return t.chain_id + ":" + t.address;
     });
-    return ensureEdgeAccess().then(function (allowed) {
+    return withBusy(function () {
+      return ensureEdgeAccess().then(function (allowed) {
       if (!allowed) {
         uiData.lastChecked = Date.now();
         uiData.lastBalances = {
@@ -1567,6 +2093,18 @@
         return null;
       });
     });
+    }, "Reading balances from Scratchpost\u2026").catch(function () {
+      uiData.lastChecked = Date.now();
+      uiData.lastBalances = {
+        state: "unknown",
+        reason: "edge-unreachable",
+        detail: "The wallet edge did not answer.",
+      };
+      renderBalancesNotice();
+      setWalletStatus("Balances unknown: the wallet edge did not answer. Nothing was signed.");
+      setWalletValue(null, state.currency, "Balances unavailable until the wallet edge responds.");
+      return null;
+    });
   }
 
   /* ---- user-added tokens -------------------------------------------------
@@ -1616,6 +2154,9 @@
     if (tab === "airdrop") {
       return "Unpriced tokens sent to this address. They are not in your total.";
     }
+    if (tab === "pools") {
+      return "Uniswap v3 positions on Ethereum, Base, and Robinhood. Add, withdraw, and collect fees. Mainnet and Base quotes use the desk L1/L2 nodes.";
+    }
     return (
       "Only crypto you hold. Zero balances are on Tokens, not here" +
       extraBit +
@@ -1649,7 +2190,9 @@
     }
     showAddTokenError(null);
     setWalletStatus("Looking up the token at " + shortAddress(addr, 6, 4) + "\u2026");
-    return wallet.getTokenMeta(chainId, addr).then(function (res) {
+    return withBusy(function () {
+      return wallet.getTokenMeta(chainId, addr);
+    }, "Looking up the token on Scratchpost\u2026").then(function (res) {
       if (res.state !== "ok") {
         showAddTokenError(
           res.reason === "not-a-token"
@@ -1743,32 +2286,91 @@
     return usdValue / px;
   }
 
-  function openSwapFor(chainId, asset) {
+  function swapOptionValue(chainId, asset) {
+    return Number(chainId) + ":" + (asset || "native");
+  }
+
+  function ensureSelectOption(sel, value, label) {
+    if (!sel) {
+      return;
+    }
+    var opts = sel.options;
+    var i;
+    for (i = 0; i < opts.length; i++) {
+      if (opts[i].value.toLowerCase() === String(value).toLowerCase()) {
+        sel.value = opts[i].value;
+        return;
+      }
+    }
+    var opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    sel.appendChild(opt);
+    sel.value = value;
+  }
+
+  function defaultCounterAsset(chainId, asset) {
+    var self = swapOptionValue(chainId, asset).toLowerCase();
+    var native = swapOptionValue(chainId, null).toLowerCase();
+    if (self === native) {
+      if (Number(chainId) === 8453) {
+        return USDC_BASE;
+      }
+      if (Number(chainId) === 900001) {
+        return "900001:native";
+      }
+      return USDC_MAIN;
+    }
+    return swapOptionValue(chainId, null);
+  }
+
+  function openSwapFor(chainId, asset, side) {
     fillSwapPairs();
+    var value = swapOptionValue(chainId, asset);
+    var meta = metaFor(chainId, asset);
+    var label = ((meta && meta.symbol) || "Token") + " \u00b7 chain " + chainId;
     var from = el("swap-from");
-    var value = Number(chainId) + ":" + (asset || "native");
-    if (from) {
-      if (from.value !== value) {
-        var found = false;
-        var opts = from.options;
-        for (var i = 0; i < opts.length; i++) {
-          if (opts[i].value.toLowerCase() === value.toLowerCase()) {
-            from.value = opts[i].value;
-            found = true;
-            break;
-          }
+    var to = el("swap-to");
+    var counter = defaultCounterAsset(chainId, asset);
+    if (side === "to") {
+      ensureSelectOption(to, value, label);
+      if (from) {
+        if (String(from.value).toLowerCase() === value.toLowerCase()) {
+          ensureSelectOption(from, counter, counter);
         }
-        if (!found) {
-          var opt = document.createElement("option");
-          opt.value = value;
-          var meta = metaFor(chainId, asset);
-          opt.textContent = ((meta && meta.symbol) || "Token") + " \u00b7 chain " + chainId;
-          from.appendChild(opt);
-          from.value = value;
+      }
+    } else {
+      ensureSelectOption(from, value, label);
+      if (to) {
+        if (String(to.value).toLowerCase() === value.toLowerCase()) {
+          ensureSelectOption(to, counter, counter);
         }
       }
     }
     go("swap");
+  }
+
+  function openSendFor(chainId, asset) {
+    var chain = el("send-chain");
+    var token = el("send-token");
+    if (chain) {
+      chain.value = String(chainId);
+    }
+    if (token) {
+      token.value = asset || "native";
+    }
+    go("send");
+  }
+
+  function stampDetailActions(chainId, asset) {
+    var key = asset || "native";
+    ["detail-buy", "detail-send", "detail-swap"].forEach(function (id) {
+      var btn = el(id);
+      if (btn) {
+        btn.setAttribute("data-chain", String(chainId));
+        btn.setAttribute("data-asset", key);
+      }
+    });
   }
 
   /** Render the detail screen for the current hash. An invalid route goes home
@@ -1829,11 +2431,7 @@
         : amountInUsdAsset(usdValue, USDC_BASE))
     );
     setText(el("detail-lesou"), "lesou coming soon");
-    var buy = el("detail-buy");
-    if (buy) {
-      buy.setAttribute("data-chain", String(route.chainId));
-      buy.setAttribute("data-asset", route.asset || "native");
-    }
+    stampDetailActions(route.chainId, route.asset);
     var note;
     if (!holding) {
       if (!session.address) {
@@ -1896,8 +2494,9 @@
 
   /* ---- wallet gate: unlock with password, or import a recovery phrase ----- */
 
-  var session = { vault: null, address: null, solAddress: null, tronAddress: null, locked: false, index: 0, phrase: null, accounts: [] };
+  var session = { vault: null, address: null, solAddress: null, tronAddress: null, locked: false, index: 0, phrase: null, accounts: [], watch: false };
   var pendingCreate = null;
+  var watchHelpTimer = null;
   var pendingSwapQuote = null;
   var sendCameraStream = null;
   var sendScanTimer = null;
@@ -2123,6 +2722,7 @@
     session.tronAddress = w.tronAddress;
     session.index = w.index;
     session.phrase = w.mnemonic;
+    session.watch = false;
     session.locked = false;
     uiData.lastBalances = null; // never show a previous wallet's read
     uiData.lastChecked = null;
@@ -2138,7 +2738,38 @@
     refreshBalances();
     renderReceive();
     renderAccountDrawer();
+    renderAccountsManage();
     return w;
+  }
+
+  function revealWatchAccount(address) {
+    var c = crypto();
+    var checksum;
+    try {
+      checksum = c && typeof c.parseEvmAddress === "function" ? c.parseEvmAddress(address) : String(address || "");
+    } catch (e) {
+      setWalletStatus("That is not a wallet address.");
+      return;
+    }
+    session.address = checksum;
+    session.solAddress = null;
+    session.tronAddress = null;
+    session.index = null;
+    session.watch = true;
+    session.locked = false;
+    uiData.lastBalances = null;
+    uiData.lastChecked = null;
+    setAccount(checksum);
+    setWalletStatus("Watch " + checksum + ". Reading balances\u2026 This address cannot send.");
+    setWalletValue(null, state.currency, "Reading balances from the wallet edge\u2026");
+    renderTokens(null);
+    state.lastActivity = Date.now();
+    scheduleLock();
+    saveViewSession();
+    refreshBalances();
+    renderReceive();
+    renderAccountDrawer();
+    renderAccountsManage();
   }
 
   /* ---- auto-lock: a security floor, not a preference --------------------- */
@@ -2229,6 +2860,7 @@
     session.tronAddress = null;
     session.index = 0;
     session.phrase = null;
+    session.watch = false;
     session.vault = null;
     session.accounts = [];
     session.locked = session.locked || wasUnlocked;
@@ -2244,6 +2876,7 @@
     uiData.lastChecked = null;
     closeGate();
     closeAccountDrawer();
+    renderAccountsManage();
     setAccount(null, "Locked");
     setWalletStatus(
       reason === "auto"
@@ -2285,7 +2918,19 @@
           unlocked.vault && unlocked.vault.accounts && unlocked.vault.accounts.length
             ? unlocked.vault.accounts.slice()
             : c.accountsFromMnemonic(unlocked.phrase, 1);
-        revealAccount(unlocked.phrase, selectedIndexFromVault(unlocked.vault));
+        if (
+          unlocked.vault &&
+          unlocked.vault.selectedKind === "watch" &&
+          unlocked.vault.selectedWatch &&
+          typeof c.findAccountByAddress === "function" &&
+          c.findAccountByAddress(session.accounts, unlocked.vault.selectedWatch)
+        ) {
+          session.phrase = unlocked.phrase;
+          session.locked = false;
+          revealWatchAccount(unlocked.vault.selectedWatch);
+        } else {
+          revealAccount(unlocked.phrase, selectedIndexFromVault(unlocked.vault));
+        }
         closeGate();
       })
       .catch(function (err) {
@@ -2416,7 +3061,7 @@
     s.loadVault()
       .then(function (existing) {
         if (existing) {
-          showGateError("gate-create-error", "A wallet already exists on this device. Unlock it, or add an account in Settings.");
+          showGateError("gate-create-error", "A wallet already exists on this device. Unlock it, or add an extra account from Extra accounts.");
           throw new Error("vault-exists");
         }
         return c.encryptVault(phrase, password);
@@ -2466,10 +3111,36 @@
           if (next < accounts.length) {
             next = c.nextAccountIndex(accounts);
           }
+          if (typeof c.MAX_ACCOUNTS === "number" && next >= c.MAX_ACCOUNTS) {
+            showGateError("add-account-error", "This vault already has the maximum of 20 accounts.");
+            return;
+          }
           var w = c.importMnemonic(phrase, next);
-          accounts.push({ i: w.index, path: w.path, evmAddress: w.evmAddress });
+          var existing =
+            typeof c.findAccountByAddress === "function"
+              ? c.findAccountByAddress(accounts, w.evmAddress)
+              : null;
+          if (existing && !isWatchRow(existing)) {
+            showGateError("add-account-error", "That account is already listed.");
+            return;
+          }
+          var kept = [];
+          var ai;
+          for (ai = 0; ai < accounts.length; ai++) {
+            if (
+              isWatchRow(accounts[ai]) &&
+              String(accounts[ai].evmAddress || "").toLowerCase() === String(w.evmAddress).toLowerCase()
+            ) {
+              continue;
+            }
+            kept.push(accounts[ai]);
+          }
+          kept.push({ i: w.index, path: w.path, evmAddress: w.evmAddress });
+          accounts = kept;
           vault.accounts = accounts;
           vault.selectedIndex = w.index;
+          vault.selectedKind = "hd";
+          vault.selectedWatch = null;
           return s.saveVault(vault).then(function () {
             session.accounts = accounts.slice();
             revealAccount(phrase, w.index);
@@ -2479,6 +3150,7 @@
             }
             showGateError("add-account-error", null);
             setWalletStatus("Account " + w.index + " \u00b7 " + w.path);
+            renderAccountsManage();
           });
         });
       })
@@ -2488,6 +3160,123 @@
         } else {
           showGateError("add-account-error", "Could not add an account.");
         }
+      });
+  }
+
+  function hideWatchHelp() {
+    if (watchHelpTimer) {
+      clearTimeout(watchHelpTimer);
+      watchHelpTimer = null;
+    }
+    var tip = el("watch-account-tip");
+    if (tip) {
+      tip.setAttribute("hidden", "");
+    }
+  }
+
+  function bindWatchHelp(btn) {
+    if (!btn) {
+      return;
+    }
+    function arm() {
+      hideWatchHelp();
+      watchHelpTimer = setTimeout(function () {
+        watchHelpTimer = null;
+        var tip = el("watch-account-tip");
+        if (tip) {
+          tip.removeAttribute("hidden");
+        }
+      }, WATCH_HELP_MS);
+    }
+    btn.addEventListener("mouseenter", arm);
+    btn.addEventListener("mouseleave", hideWatchHelp);
+    btn.addEventListener("focus", arm);
+    btn.addEventListener("blur", hideWatchHelp);
+    btn.addEventListener("click", function () {
+      hideWatchHelp();
+      var form = el("watch-account-form");
+      var open = form && form.hasAttribute("hidden");
+      if (form) {
+        if (open) {
+          form.removeAttribute("hidden");
+        } else {
+          form.setAttribute("hidden", "");
+        }
+      }
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) {
+        var input = el("watch-account-address");
+        if (input) {
+          input.focus();
+        }
+      }
+    });
+  }
+
+  function onAddWatchAccount() {
+    var c = crypto();
+    var s = store();
+    if (!session.phrase) {
+      showGateError("watch-account-error", "Unlock the wallet to add a watch address.");
+      return;
+    }
+    if (!c || !s || typeof c.watchAccount !== "function") {
+      showGateError("watch-account-error", "Wallet storage unavailable in this browser.");
+      return;
+    }
+    var raw = (el("watch-account-address") || {}).value || "";
+    var row;
+    try {
+      row = c.watchAccount(raw);
+    } catch (err) {
+      showGateError(
+        "watch-account-error",
+        err && err.message === "invalid-checksum"
+          ? "That address checksum does not match."
+          : "Enter a wallet address starting with 0x."
+      );
+      return;
+    }
+    s.loadVault()
+      .then(function (vault) {
+        if (!vault) {
+          throw new Error("no vault");
+        }
+        var accounts =
+          vault.accounts && vault.accounts.length
+            ? vault.accounts.slice()
+            : (session.accounts || []).slice();
+        if (c.findAccountByAddress(accounts, row.evmAddress)) {
+          showGateError("watch-account-error", "That address is already listed.");
+          return;
+        }
+        var nWatch = 0;
+        var i;
+        for (i = 0; i < accounts.length; i++) {
+          if (isWatchRow(accounts[i])) {
+            nWatch += 1;
+          }
+        }
+        if (typeof c.MAX_WATCH_ACCOUNTS === "number" && nWatch >= c.MAX_WATCH_ACCOUNTS) {
+          showGateError("watch-account-error", "This vault already has the maximum of 20 watch addresses.");
+          return;
+        }
+        accounts.push(row);
+        vault.accounts = accounts;
+        vault.selectedKind = "watch";
+        vault.selectedWatch = row.evmAddress;
+        return s.saveVault(vault).then(function () {
+          session.accounts = accounts.slice();
+          var input = el("watch-account-address");
+          if (input) {
+            input.value = "";
+          }
+          showGateError("watch-account-error", null);
+          revealWatchAccount(row.evmAddress);
+        });
+      })
+      .catch(function () {
+        showGateError("watch-account-error", "Could not add a watch address.");
       });
   }
 
@@ -2517,7 +3306,11 @@
   function onConfirmSign() {
     var data = root.tkrWalletData;
     var c = crypto();
-    if (!session.phrase || !data || !c || typeof data.broadcastRaw !== "function") {
+    if (!sessionCanSign() || !data || !c || typeof data.broadcastRaw !== "function") {
+      if (session.watch) {
+        setWalletStatus("This is a watch address. tkrWallet does not hold its key. Nothing was signed.");
+        return;
+      }
       setWalletStatus("Unlock and Connect first.");
       openGate("unlock");
       return;
@@ -2547,7 +3340,11 @@
   function onConnect() {
     var data = root.tkrWalletData;
     var c = crypto();
-    if (!session.phrase || !session.address) {
+    if (!sessionCanSign() || !session.address) {
+      if (session.watch) {
+        setWalletStatus("This is a watch address. Connect needs a key this phrase does not hold.");
+        return;
+      }
       setWalletStatus("Unlock with your password to connect. The recovery phrase is not in this tab.");
       openGate("unlock");
       return;
@@ -3056,13 +3853,14 @@
       return;
     }
     setText(el("swap-note"), "Asking Scratchpost for a quote\u2026");
-    wallet
-      .quoteSwap({
+    withBusy(function () {
+      return wallet.quoteSwap({
         chain_id: fromSel.chainId,
         input_mint: fromSel.mint,
         output_mint: toSel.mint,
         amount: amount,
-      })
+      });
+    }, "Asking Scratchpost for a quote\u2026")
       .then(function (body) {
         if (!body || body.ok === false) {
           throw new Error((body && body.error) || "quote-failed");
@@ -3123,8 +3921,13 @@
       setText(el("swap-note"), "Quote expired. Request a new quote. Nothing was signed.");
       return;
     }
-    if (!session.phrase) {
-      setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
+    if (!sessionCanSign()) {
+      setText(
+        el("swap-note"),
+        session.watch
+          ? "This is a watch address. tkrWallet does not hold its key. Nothing was signed."
+          : "Unlock the wallet first. Nothing was signed."
+      );
       return;
     }
     if (!wallet || typeof wallet.buildSwap !== "function") {
@@ -3166,25 +3969,26 @@
       }
       return wallet.broadcastRaw({ raw: signed.raw, chain_id: signed.chainId });
     }
-    wallet
-      .buildSwap({ chain_id: chainId, quote: pendingSwapQuote.body.quote })
-      .then(signBuilt)
-      .then(function (sent) {
-        if (!sent || sent.ok === false) {
-          throw new Error((sent && sent.error) || "broadcast");
-        }
-        pendingSwapQuote = null;
-        clearQuoteTimer();
-        hideSwapEstimate();
-        closeQuoteDialog();
-        setText(el("swap-note"), "Broadcast " + (sent.tx_hash || "") + ". Key stayed on this device.");
-        setWalletStatus("Swap broadcast. Key stayed on this device.");
-        refreshBalances();
-      })
-      .catch(function () {
-        setText(el("swap-note"), "Swap did not broadcast. The key did not leave this device.");
-        setWalletStatus("Swap failed. The key did not leave this device.");
-      });
+    withBusy(function () {
+      return wallet
+        .buildSwap({ chain_id: chainId, quote: pendingSwapQuote.body.quote })
+        .then(signBuilt)
+        .then(function (sent) {
+          if (!sent || sent.ok === false) {
+            throw new Error((sent && sent.error) || "broadcast");
+          }
+          pendingSwapQuote = null;
+          clearQuoteTimer();
+          hideSwapEstimate();
+          closeQuoteDialog();
+          setText(el("swap-note"), "Broadcast " + (sent.tx_hash || "") + ". Key stayed on this device.");
+          setWalletStatus("Swap broadcast. Key stayed on this device.");
+          return refreshBalances();
+        });
+    }, "Building unsigned swap\u2026").catch(function () {
+      setText(el("swap-note"), "Swap did not broadcast. The key did not leave this device.");
+      setWalletStatus("Swap failed. The key did not leave this device.");
+    });
   }
 
   function onDisconnect() {
@@ -3193,8 +3997,9 @@
       setWalletStatus("Disconnect is unavailable in this browser.");
       return;
     }
-    data
-      .closeSession()
+    withBusy(function () {
+      return data.closeSession();
+    }, "Disconnecting from Scratchpost\u2026")
       .then(function (out) {
         if (!out || out.ok === false) {
           throw new Error((out && out.error) || "logout-failed");
@@ -3260,11 +4065,7 @@
     if (drawerAdd) {
       drawerAdd.addEventListener("click", function () {
         closeAccountDrawer();
-        go("settings");
-        var addBtn = document.querySelector("[data-add-account]");
-        if (addBtn) {
-          addBtn.click();
-        }
+        go("accounts");
       });
     }
     var receiveCopy = el("receive-copy");
@@ -3310,12 +4111,26 @@
         if (looksLikeSendAddress(to) && s && typeof s.rememberRecipient === "function") {
           s.rememberRecipient(to).catch(function () {});
         }
-        setText(
-          el("send-note"),
-          "Scratchpost has not published unsigned send calldata. Nothing was signed."
-        );
-        setWalletStatus("Send is not built. Nothing was signed.");
+        onSendSubmit();
       });
+    }
+    var receiveChain = el("receive-chain");
+    if (receiveChain) {
+      receiveChain.addEventListener("change", function () {
+        renderReceive();
+      });
+    }
+    var poolSearch = el("pool-search");
+    if (poolSearch) {
+      poolSearch.addEventListener("click", onPoolSearch);
+    }
+    var poolAdd = el("pool-add");
+    if (poolAdd) {
+      poolAdd.addEventListener("click", onPoolAdd);
+    }
+    var poolRefresh = el("pool-refresh");
+    if (poolRefresh) {
+      poolRefresh.addEventListener("click", refreshPoolPositions);
     }
     var swapQuote = el("swap-quote");
     if (swapQuote) {
@@ -3475,30 +4290,19 @@
       });
     }
 
-    var addAccountBtn = document.querySelector("[data-add-account]");
-    if (addAccountBtn) {
-      addAccountBtn.addEventListener("click", function () {
-        var form = el("add-account-form");
-        if (!form) {
-          return;
-        }
-        if (form.hasAttribute("hidden")) {
-          form.removeAttribute("hidden");
-          showGateError("add-account-error", null);
-          var pw = el("add-account-password");
-          if (pw) {
-            pw.focus();
-          }
-        } else {
-          form.setAttribute("hidden", "");
-        }
-      });
-    }
     var addAccountForm = el("add-account-form");
     if (addAccountForm) {
       addAccountForm.addEventListener("submit", function (event) {
         event.preventDefault();
         onAddAccount();
+      });
+    }
+    bindWatchHelp(el("watch-account-open"));
+    var watchAccountForm = el("watch-account-form");
+    if (watchAccountForm) {
+      watchAccountForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        onAddWatchAccount();
       });
     }
     var connectBtn = document.querySelector("[data-connect]");
@@ -3538,12 +4342,10 @@
           onDisconnect();
           return;
         }
-        // send / receive / buy are not built. Say so rather than dead-ending.
-        setStatus(
-          action.charAt(0).toUpperCase() +
-            action.slice(1) +
-            " is not built yet. Nothing was signed."
-        );
+        if (action === "buy") {
+          setStatus("Buy is not built yet. Nothing was signed.");
+          return;
+        }
       });
     }
 
@@ -3599,6 +4401,12 @@
       });
     }
 
+    var accountsBack = el("accounts-back");
+    if (accountsBack) {
+      accountsBack.addEventListener("click", function () {
+        go("home");
+      });
+    }
     var detailBack = el("detail-back");
     if (detailBack) {
       detailBack.addEventListener("click", function () {
@@ -3609,12 +4417,26 @@
     if (detailCopy) {
       detailCopy.addEventListener("click", copyDetailContract);
     }
+    function detailAsset(btn) {
+      var asset = btn.getAttribute("data-asset");
+      return asset === "native" ? null : asset;
+    }
     var detailBuy = el("detail-buy");
     if (detailBuy) {
       detailBuy.addEventListener("click", function () {
-        var chainId = Number(detailBuy.getAttribute("data-chain"));
-        var asset = detailBuy.getAttribute("data-asset");
-        openSwapFor(chainId, asset === "native" ? null : asset);
+        openSwapFor(Number(detailBuy.getAttribute("data-chain")), detailAsset(detailBuy), "to");
+      });
+    }
+    var detailSend = el("detail-send");
+    if (detailSend) {
+      detailSend.addEventListener("click", function () {
+        openSendFor(Number(detailSend.getAttribute("data-chain")), detailAsset(detailSend));
+      });
+    }
+    var detailSwap = el("detail-swap");
+    if (detailSwap) {
+      detailSwap.addEventListener("click", function () {
+        openSwapFor(Number(detailSwap.getAttribute("data-chain")), detailAsset(detailSwap), "from");
       });
     }
     var fxLive = el("fx-live");
@@ -3808,6 +4630,8 @@
     parseViewSession: parseViewSession,
     typedCreateConfirm: typedCreateConfirm,
     CREATE_CONFIRM: CREATE_CONFIRM,
+    WATCH_HELP_MS: WATCH_HELP_MS,
+    sessionCanSign: sessionCanSign,
     AUTOLOCK_OPTIONS: AUTOLOCK_OPTIONS,
     AUTOLOCK_DEFAULT: AUTOLOCK_DEFAULT,
     accountDotLabel: accountDotLabel,
@@ -3821,6 +4645,9 @@
     setAccount: setAccount,
     setStatus: setStatus,
     setWalletStatus: setWalletStatus,
+    withBusy: withBusy,
+    isBusy: isBusy,
+    BUSY_BUTTONS: BUSY_BUTTONS,
     setWalletValue: setWalletValue,
     setCurrency: setCurrency,
     renderTokens: renderTokens,

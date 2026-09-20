@@ -78,7 +78,7 @@ function readFile(rel) {
 
 test("ui.js exports the shell API", function () {
   const ui = require("./ui.js");
-  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings", "detail", "send", "receive", "airdrops"]);
+  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings", "accounts", "detail", "send", "receive", "airdrops"]);
   assert.strictEqual(typeof ui.renderTokens, "function");
   assert.strictEqual(typeof ui.setWalletValue, "function");
   assert.strictEqual(typeof ui.renderDetail, "function");
@@ -96,6 +96,7 @@ test("route parsing is strict and never throws", function () {
   assert.strictEqual(ui.parseRoute(null), "home");
   assert.strictEqual(ui.parseRoute("#/ACTIVITY?x=1"), "activity");
   assert.strictEqual(ui.parseRoute("#/settings"), "settings");
+  assert.strictEqual(ui.parseRoute("#/accounts"), "accounts");
 });
 
 test("account drawer labels and selectedIndex restore the last HD account", function () {
@@ -131,7 +132,94 @@ test("index.html ships the account drawer and receive/send screens", function ()
   assert.match(html, /data-screen="receive"/);
   assert.match(html, /data-screen="send"/);
   assert.match(html, /id="receive-copy"/);
-  assert.match(html, /Scratchpost has not published unsigned send calldata/);
+  assert.match(html, /id="send-chain"/);
+  assert.match(html, /id="receive-chain"/);
+});
+
+test("extra accounts are managed on their own form, not Home or Settings", function () {
+  const html = readFile("index.html");
+  const section = function (name) {
+    const re = new RegExp('<section[^>]*data-screen="' + name + '"[\\s\\S]*?<\\/section>');
+    const m = html.match(re);
+    assert.ok(m, "missing data-screen=" + name);
+    return m[0];
+  };
+  const accounts = section("accounts");
+  const home = section("home");
+  const settings = section("settings");
+  assert.ok(accounts.indexOf('id="add-account-form"') !== -1, "add-account form must live on Extra accounts");
+  assert.ok(accounts.indexOf("data-add-account") !== -1, "accounts form must offer derive");
+  assert.ok(home.indexOf('id="add-account-form"') === -1, "Home must not host extra-account management");
+  assert.ok(settings.indexOf('id="add-account-form"') === -1, "Settings must not host extra-account management");
+  assert.ok(settings.indexOf("data-add-account") === -1, "Settings must not offer add-account");
+  const ui = readFile("ui.js");
+  const addStart = ui.indexOf('el("account-drawer-add")');
+  assert.ok(addStart !== -1, "drawer + must be bound");
+  const addChunk = ui.slice(addStart, addStart + 400);
+  assert.ok(addChunk.indexOf('go("accounts")') !== -1, "drawer + opens Extra accounts");
+  assert.ok(addChunk.indexOf('go("settings")') === -1, "drawer + must not dump extra accounts into Settings");
+});
+
+test("Extra accounts Watch is one word with a 2s help bubble", function () {
+  const html = readFile("index.html");
+  const section = function (name) {
+    const re = new RegExp('<section[^>]*data-screen="' + name + '"[\\s\\S]*?<\\/section>');
+    const m = html.match(re);
+    assert.ok(m, "missing data-screen=" + name);
+    return m[0];
+  };
+  const accounts = section("accounts");
+  const home = section("home");
+  const settings = section("settings");
+  assert.ok(accounts.indexOf('id="watch-account-open"') !== -1, "Watch lives on Extra accounts");
+  assert.ok(
+    /id="watch-account-open"[^>]*>\s*Watch\s*</.test(accounts),
+    "visible label must be the single word Watch"
+  );
+  assert.ok(accounts.indexOf('id="watch-account-tip"') !== -1, "missing 2s help bubble");
+  assert.ok(accounts.indexOf('role="tooltip"') !== -1, "help bubble must be a tooltip");
+  assert.ok(
+    accounts.indexOf("wallet address") !== -1 && accounts.indexOf("cannot send") !== -1,
+    "bubble must explain paste-an-address and that it cannot send"
+  );
+  assert.ok(accounts.indexOf('id="watch-account-form"') !== -1, "Watch must reveal an address form");
+  assert.ok(accounts.indexOf('id="watch-account-address"') !== -1, "missing address field");
+  assert.ok(home.indexOf("watch-account-open") === -1, "Home must not host Watch");
+  assert.ok(settings.indexOf("watch-account-open") === -1, "Settings must not host Watch");
+  const uiMod = require("./ui.js");
+  assert.strictEqual(uiMod.WATCH_HELP_MS, 2000, "hover help waits 2 seconds");
+  assert.strictEqual(typeof uiMod.sessionCanSign, "function");
+  const prev = {
+    phrase: uiMod.session.phrase,
+    watch: uiMod.session.watch,
+    index: uiMod.session.index,
+  };
+  try {
+    uiMod.session.phrase = "x";
+    uiMod.session.watch = true;
+    uiMod.session.index = 0;
+    assert.strictEqual(uiMod.sessionCanSign(), false, "watch address must not sign");
+    uiMod.session.watch = false;
+    uiMod.session.index = 0;
+    assert.strictEqual(uiMod.sessionCanSign(), true, "HD account with a phrase may sign");
+    uiMod.session.phrase = null;
+    assert.strictEqual(uiMod.sessionCanSign(), false, "locked session must not sign");
+  } finally {
+    uiMod.session.phrase = prev.phrase;
+    uiMod.session.watch = prev.watch;
+    uiMod.session.index = prev.index;
+  }
+  const ui = readFile("ui.js");
+  assert.ok(ui.indexOf("function onAddWatchAccount") !== -1, "ui.js must wire watch add");
+  assert.ok(ui.indexOf("function bindWatchHelp") !== -1, "ui.js must delay the help bubble");
+  assert.ok(ui.indexOf("WATCH_HELP_MS") !== -1);
+  ["onSendSubmit", "onSwapSubmit", "onConnect", "onConfirmSign", "signBuiltTx"].forEach(function (name) {
+    const start = ui.indexOf("function " + name + "(");
+    assert.ok(start !== -1, "missing " + name);
+    const next = ui.indexOf("\n  function ", start + 10);
+    const body = ui.slice(start, next === -1 ? start + 2500 : next);
+    assert.ok(body.indexOf("sessionCanSign") !== -1, name + " must refuse a watch address");
+  });
 });
 
 test("token routes parse to a detail screen, and malformed ones fall home", function () {
@@ -169,7 +257,14 @@ test("Wallet value live FX, MXN, labeled token rows, and Buy Now", function () {
   assert.ok(html.indexOf("Held:") !== -1, "token rows label Held");
   assert.ok(html.indexOf("data-token-price") !== -1, "token rows show unit price");
   assert.ok(html.indexOf("data-token-asof") !== -1, "token rows show last update");
-  assert.ok(html.indexOf('id="detail-buy"') !== -1, "detail Buy Now");
+  assert.ok(html.indexOf('id="detail-buy"') !== -1, "detail Buy");
+  assert.ok(html.indexOf('id="detail-send"') !== -1, "detail Send");
+  assert.ok(html.indexOf('id="detail-swap"') !== -1, "detail Swap");
+  assert.ok(html.indexOf("Buy Now") === -1, "Buy Now was replaced by Buy/Send/Swap");
+  const uiSrc = readFile("ui.js");
+  assert.ok(uiSrc.indexOf('state.screen === "detail"') !== -1, "currency refresh must repaint the token card");
+  assert.ok(uiSrc.indexOf("openSendFor") !== -1, "Send from the card pre-fills chain and token");
+  assert.ok(uiSrc.indexOf('openSwapFor(chainId, asset, side)') !== -1 || uiSrc.indexOf('side === "to"') !== -1, "Buy pre-fills swap To");
   assert.ok(html.indexOf("lesou coming soon") !== -1, "lesou is disclosed as coming soon");
   assert.ok(html.indexOf('id="detail-eth-main"') !== -1, "ETH mainnet equivalent");
   const wallet = require("./wallet.js");
@@ -327,7 +422,7 @@ test("amount formatting: unknown renders an em dash, zero renders 0", function (
 test("shell structure: five screens, four nav entries, and drawer settings", function () {
   const html = readFile("index.html");
   assert.ok(html.indexOf('id="main"') !== -1, "missing main region");
-  ["home", "swap", "activity", "search", "settings"].forEach(function (screen) {
+  ["home", "swap", "activity", "search", "settings", "accounts"].forEach(function (screen) {
     assert.ok(html.indexOf('data-screen="' + screen + '"') !== -1, "missing screen " + screen);
   });
   ["home", "swap", "activity", "search"].forEach(function (screen) {
@@ -374,7 +469,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.17") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.20") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -445,7 +540,7 @@ test("wallet CLI routes commands and refuses secrets", function () {
   assert.strictEqual(open.lines[0], "unlocked.");
   assert.ok(open.lines[1].indexOf("0x2222") === 0);
   assert.ok(open.lines.join(" ").indexOf("22222222222222222222222222222222") === -1);
-  ["home", "settings", "swap", "activity"].forEach(function (screen) {
+  ["home", "settings", "accounts", "swap", "activity"].forEach(function (screen) {
     const go = ui.runCliCommand(screen);
     assert.deepStrictEqual(go.action, { type: "go", screen: screen });
     assert.strictEqual(go.lines[0], "opening " + screen + ".");
@@ -673,7 +768,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v15"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v17"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -1260,6 +1355,42 @@ test("crypto: accountsFromMnemonic lists public addresses only", function () {
   assert.strictEqual(c.nextAccountIndex(acc), 3);
   assert.strictEqual(c.nextAccountIndex(null), 0);
   assert.strictEqual(c.nextAccountIndex([]), 0);
+  assert.strictEqual(c.MAX_ACCOUNTS, 20);
+  assert.throws(function () { c.accountsFromMnemonic(phrase, 21); }, /invalid-count/);
+});
+
+test("crypto: parseEvmAddress checksums; watch rows are public and skipped by next index", function () {
+  const c = require("./crypto.js");
+  const hd0 = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94";
+  const hd1 = "0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0";
+  const other = "0x1111111111111111111111111111111111111111";
+  assert.strictEqual(c.parseEvmAddress(hd0.toLowerCase()), hd0);
+  assert.strictEqual(c.parseEvmAddress(hd0), hd0);
+  assert.throws(function () { c.parseEvmAddress("not-an-address"); }, /invalid-address/);
+  assert.throws(function () { c.parseEvmAddress("0x123"); }, /invalid-address/);
+  assert.throws(function () {
+    c.parseEvmAddress("0x9858EFFD232B4033E47d90003D41EC34EcaEda94");
+  }, /invalid-checksum/);
+  const watch = c.watchAccount(other.toLowerCase());
+  assert.strictEqual(watch.kind, "watch");
+  assert.strictEqual(watch.evmAddress, c.parseEvmAddress(other));
+  assert.strictEqual("i" in watch, false, "watch rows must not carry an HD index");
+  assert.strictEqual("path" in watch, false);
+  assert.ok(c.isWatchAccount(watch));
+  assert.ok(!c.isWatchAccount({ i: 0, path: "m/44'/60'/0'/0/0", evmAddress: hd0 }));
+  const mixed = [
+    { i: 0, path: "m/44'/60'/0'/0/0", evmAddress: hd0 },
+    watch,
+    { i: 2, path: "m/44'/60'/0'/0/2", evmAddress: hd1 },
+  ];
+  assert.strictEqual(c.nextAccountIndex(mixed), 3, "watch rows must not steal the next HD index");
+  assert.strictEqual(c.findAccountByAddress(mixed, other).kind, "watch");
+  assert.strictEqual(c.findAccountByAddress(mixed, hd0).i, 0);
+  assert.strictEqual(c.findAccountByAddress(mixed, "0x2222222222222222222222222222222222222222"), null);
+  assert.strictEqual(c.MAX_WATCH_ACCOUNTS, 20);
+  const blob = JSON.stringify(watch);
+  assert.ok(blob.indexOf("privateKey") === -1);
+  assert.ok(blob.indexOf("mnemonic") === -1);
 });
 
 test("crypto: wipeBytes zeros key material in place", function () {
@@ -1335,7 +1466,7 @@ test("create gate: generate, typed confirm, wipe; empty state offers Create", fu
   assert.ok(html.indexOf('id="create-priv"') !== -1, "Phantom-parity: EVM priv shown once");
   assert.ok(html.indexOf('id="create-confirm"') !== -1, "typed confirm input");
   assert.ok(html.indexOf("data-create") !== -1, "empty state must offer Create wallet");
-  assert.ok(html.indexOf('data-add-account') !== -1, "settings must offer add-account for HD index i");
+  assert.ok(html.indexOf('data-add-account') !== -1, "accounts form must offer add-account for HD index i");
   const ui = require("./ui.js");
   assert.strictEqual(typeof ui.typedCreateConfirm, "function");
   assert.strictEqual(ui.CREATE_CONFIRM, "I saved my recovery phrase");
@@ -1535,6 +1666,10 @@ test("holdings coverage is disclosed and a token can be added by address", funct
     "data-desk-tab=\"mine\"",
     "data-desk-tab=\"tokens\"",
     "data-desk-tab=\"airdrop\"",
+    "data-desk-tab=\"pools\"",
+    "id=\"pools-panel\"",
+    "id=\"send-chain\"",
+    "id=\"receive-chain\"",
     "id=\"airdrop-list\"",
   ].forEach(function (n) {
     assert.ok(html.indexOf(n) !== -1, "index.html must include " + n);
@@ -1546,7 +1681,12 @@ test("holdings coverage is disclosed and a token can be added by address", funct
   assert.ok(ui.indexOf("holdingsScopeText") !== -1, "the scope of the list must be stated");
   assert.ok(ui.indexOf("built-in tokens") === -1, "holdings must not advertise a 40-token catalogue cap");
   assert.ok(ui.indexOf("renderAirdrops") !== -1, "unpriced airdrops must be reachable from home");
-  assert.ok(ui.indexOf("setDeskTab") !== -1, "Mine/Tokens/Airdrop must switch in place");
+  assert.ok(ui.indexOf("setDeskTab") !== -1, "Mine/Tokens/Airdrop/Pools must switch in place");
+  assert.ok(ui.indexOf("onPoolAdd") !== -1, "pools can add liquidity");
+  assert.ok(ui.indexOf("onSendSubmit") !== -1, "send builds unsigned calldata");
+  assert.ok(wallet.indexOf("buildPool") !== -1, "wallet.js talks to pool build");
+  assert.ok(wallet.indexOf("buildSend") !== -1, "wallet.js talks to send build");
+  assert.ok(html.indexOf("Under construction") === -1, "send is no longer a stub");
   assert.ok(wallet.indexOf("splitHoldings: splitHoldings") !== -1, "wallet.js must export splitHoldings");
   assert.ok(wallet.indexOf("mineHoldings: mineHoldings") !== -1, "wallet.js must export mineHoldings");
   assert.ok(wallet.indexOf("tokenListRows: tokenListRows") !== -1, "wallet.js must export tokenListRows");
@@ -2144,6 +2284,122 @@ test("catalogue: a token is never listed on a chain it is not deployed on (the O
     0,
     "OP has no Ethereum mainnet deployment"
   );
+});
+
+test("Scratchpost waits show a busy strip and disable hammer buttons", function () {
+  const html = readFile("index.html");
+  const src = readFile("tools/src/app.css");
+  const uiSrc = readFile("ui.js");
+  const ui = require("./ui.js");
+  ["scratchpost-busy", "scratchpost-busy-label", "wallet-value-card"].forEach(function (id) {
+    assert.ok(html.indexOf('id="' + id + '"') !== -1, "missing #" + id);
+  });
+  assert.ok(/Talking to Scratchpost/.test(html), "busy strip must tell the operator we are waiting");
+  assert.ok(src.indexOf("@keyframes tkr-spin") !== -1, "spinner keyframes");
+  assert.ok(src.indexOf("@keyframes tkr-pulse") !== -1, "card pulse keyframes");
+  assert.ok(src.indexOf("prefers-reduced-motion") !== -1, "reduced motion must still show the strip");
+  assert.ok(src.indexOf("html.tkr-busy #swap-quote") !== -1, "Quote must not be clickable while busy");
+  assert.ok(uiSrc.indexOf("function withBusy") !== -1, "refcount wrapper");
+  [
+    "refreshBalances",
+    "refreshPrices",
+    "onSwapQuote",
+    "onSwapSubmit",
+    "onSendSubmit",
+    "onPoolBuild",
+    "onPoolSearch",
+    "addToken",
+  ].forEach(function (name) {
+    const idx = uiSrc.indexOf("function " + name + "(");
+    assert.ok(idx !== -1, "missing " + name);
+    const next = uiSrc.indexOf("\n  function ", idx + 10);
+    const slice = uiSrc.slice(idx, next === -1 ? idx + 5000 : next);
+    assert.ok(slice.indexOf("withBusy") !== -1, name + " must wrap the Scratchpost wait");
+  });
+  ui.BUSY_BUTTONS.forEach(function (id) {
+    assert.ok(html.indexOf('id="' + id + '"') !== -1, "busy target #" + id + " missing from the shell");
+  });
+});
+
+test("busy refcount stays on until overlapping Scratchpost waits finish", function () {
+  const ui = require("./ui.js");
+  const nodes = Object.create(null);
+  function makeNode() {
+    const attrs = { hidden: "" };
+    const classes = new Set();
+    return {
+      disabled: false,
+      textContent: "",
+      classList: {
+        add: function (c) { classes.add(c); },
+        remove: function (c) { classes.delete(c); },
+        contains: function (c) { return classes.has(c); },
+      },
+      setAttribute: function (k, v) { attrs[k] = String(v); },
+      removeAttribute: function (k) { delete attrs[k]; },
+      hasAttribute: function (k) { return Object.prototype.hasOwnProperty.call(attrs, k); },
+      getAttribute: function (k) {
+        return Object.prototype.hasOwnProperty.call(attrs, k) ? attrs[k] : null;
+      },
+    };
+  }
+  const htmlClasses = new Set();
+  const prev = global.document;
+  global.document = {
+    getElementById: function (id) {
+      if (!nodes[id]) {
+        nodes[id] = makeNode();
+      }
+      return nodes[id];
+    },
+    querySelectorAll: function () { return []; },
+    documentElement: {
+      classList: {
+        add: function (c) { htmlClasses.add(c); },
+        remove: function (c) { htmlClasses.delete(c); },
+        contains: function (c) { return htmlClasses.has(c); },
+        toggle: function (c, force) {
+          if (force === true) htmlClasses.add(c);
+          else if (force === false) htmlClasses.delete(c);
+          else if (htmlClasses.has(c)) htmlClasses.delete(c);
+          else htmlClasses.add(c);
+        },
+      },
+    },
+  };
+  assert.strictEqual(ui.isBusy(), false);
+  let resolveA;
+  let resolveB;
+  const a = ui.withBusy(new Promise(function (resolve) { resolveA = resolve; }), "one");
+  assert.strictEqual(ui.isBusy(), true);
+  assert.ok(htmlClasses.has("tkr-busy"));
+  assert.strictEqual(nodes.app.getAttribute("aria-busy"), "true");
+  assert.strictEqual(nodes["scratchpost-busy"].hasAttribute("hidden"), false);
+  assert.ok(nodes["wallet-value-card"].classList.contains("tkr-busy-pulse"));
+  assert.strictEqual(nodes["swap-quote"].disabled, true);
+  const b = ui.withBusy(new Promise(function (resolve) { resolveB = resolve; }), "two");
+  resolveA(1);
+  return a.then(function () {
+    assert.strictEqual(ui.isBusy(), true, "second wait still in flight");
+    assert.strictEqual(nodes["swap-quote"].disabled, true);
+    resolveB(2);
+    return b;
+  }).then(function () {
+    assert.strictEqual(ui.isBusy(), false);
+    assert.strictEqual(htmlClasses.has("tkr-busy"), false);
+    assert.strictEqual(nodes.app.hasAttribute("aria-busy"), false);
+    assert.strictEqual(nodes["scratchpost-busy"].hasAttribute("hidden"), true);
+    assert.strictEqual(nodes["swap-quote"].disabled, false);
+  }).then(function () {
+    return ui.withBusy(Promise.reject(new Error("nope")), "fail").then(
+      function () { throw new Error("withBusy must rethrow"); },
+      function () {
+        assert.strictEqual(ui.isBusy(), false, "a rejected wait still clears busy");
+      }
+    );
+  }).finally(function () {
+    global.document = prev;
+  });
 });
 
 test("every element ui.js reaches for actually exists in index.html", function () {

@@ -879,6 +879,59 @@
     fromAtomicAmount: fromAtomicAmount,
     quoteSwap: quoteSwap,
     buildSwap: buildSwap,
+    searchPools: function (payload, fetchFn) {
+      fetchFn = fetchFn || fetch;
+      return fetchFn(apiUrl("/api/wallet/pools/search"), {
+        method: "POST",
+        credentials: "include",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify(payload || {}),
+      }).then(function (res) {
+        return res.json();
+      });
+    },
+    listPositions: function (chainId, owner, fetchFn) {
+      fetchFn = fetchFn || fetch;
+      return fetchFn(
+        apiUrl("/api/wallet/pools/positions?chain_id=" + encodeURIComponent(chainId) + "&owner=" + encodeURIComponent(owner || "")),
+        { credentials: "include", headers: { accept: "application/json" } }
+      ).then(function (res) {
+        return res.json();
+      });
+    },
+    quotePool: function (payload, fetchFn) {
+      fetchFn = fetchFn || fetch;
+      return fetchFn(apiUrl("/api/wallet/pools/quote"), {
+        method: "POST",
+        credentials: "include",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify(payload || {}),
+      }).then(function (res) {
+        return res.json();
+      });
+    },
+    buildPool: function (payload, fetchFn) {
+      fetchFn = fetchFn || fetch;
+      return fetchFn(apiUrl("/api/wallet/pools/build"), {
+        method: "POST",
+        credentials: "include",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify(payload || {}),
+      }).then(function (res) {
+        return res.json();
+      });
+    },
+    buildSend: function (payload, fetchFn) {
+      fetchFn = fetchFn || fetch;
+      return fetchFn(apiUrl("/api/wallet/send/build"), {
+        method: "POST",
+        credentials: "include",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify(payload || {}),
+      }).then(function (res) {
+        return res.json();
+      });
+    },
     PREVIEW_HOLDINGS: PREVIEW_HOLDINGS,
     PREVIEW_PRICES: PREVIEW_PRICES,
   };
