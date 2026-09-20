@@ -578,7 +578,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.26") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.27") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -641,13 +641,19 @@ test("wallet CLI routes commands and refuses secrets", function () {
   assert.deepStrictEqual(q.lines, help.lines);
   assert.deepStrictEqual(ui.runCliCommand("").lines, []);
   const locked = ui.runCliCommand("status", { unlocked: false, address: "" });
-  assert.deepStrictEqual(locked.lines, ["locked.", "no account."]);
+  assert.deepStrictEqual(locked.lines, ["locked.", "no account.", "scratchpost disconnected."]);
   const open = ui.runCliCommand("status", {
     unlocked: true,
     address: "0x2222222222222222222222222222222222222222",
+    edgeConnected: true,
   });
   assert.strictEqual(open.lines[0], "unlocked.");
   assert.ok(open.lines[1].indexOf("0x2222") === 0);
+  assert.strictEqual(open.lines[2], "scratchpost connected.");
+  assert.deepStrictEqual(ui.runCliCommand("connect").action, { type: "connect" });
+  assert.deepStrictEqual(ui.runCliCommand("disconnect").action, { type: "disconnect" });
+  assert.deepStrictEqual(ui.runCliCommand("connect-at-launch on").action, { type: "connect-at-launch", on: true });
+  assert.deepStrictEqual(ui.runCliCommand("connect-at-launch off").action, { type: "connect-at-launch", on: false });
   assert.ok(open.lines.join(" ").indexOf("22222222222222222222222222222222") === -1);
   ["home", "settings", "accounts", "swap", "activity"].forEach(function (screen) {
     const go = ui.runCliCommand(screen);
@@ -949,7 +955,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v23"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v24"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -1700,6 +1706,13 @@ test("connect/sign: unlocked RAM holds the phrase; viewing session and IndexedDB
   assert.ok(save[0].indexOf("phrase") === -1, "viewing session must not mention the phrase");
   const html = readFile("index.html");
   assert.ok(html.indexOf("data-connect") !== -1, "settings must offer Connect");
+  assert.ok(html.indexOf("id=\"account-drawer-connect\"") !== -1, "drawer must offer Connect above Settings");
+  assert.ok(html.indexOf("id=\"connect-at-launch\"") !== -1, "settings must offer Connect at Launch");
+  assert.ok(html.indexOf("Connect at Launch") !== -1);
+  assert.ok(ui.indexOf("edgeConnected") !== -1, "green light is Scratchpost session, not local unlock");
+  assert.ok(ui.indexOf("maybeConnectAfterUnlock") !== -1);
+  assert.ok(ui.indexOf("dropEdgeSession") !== -1);
+  assert.ok(ui.indexOf("Connect to Scratchpost first") !== -1);
   assert.ok(html.indexOf("data-confirm-sign") !== -1, "settings must offer Sign pending request");
   assert.ok(ui.indexOf("onConfirmSign") !== -1, "ui.js must wire onConfirmSign");
   assert.ok(ui.indexOf("signAndBroadcastPayload") !== -1);

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.27 — 2026-09-20
+
+### Changed
+- The header dot is green only while Scratchpost has a session. Unlock is not
+  Connect. A Connect control sits in the account drawer above Settings.
+  Settings has **Connect at Launch** (off by default). Lock disconnects;
+  unlocking a wallet that was connected reconnects.
+
+### Fixed
+- Cross-chain Quote (`no_session`) after Connect: the origin session cookie is
+  `SameSite=None` so the extension can send it. Disconnect hits `/api/wallet/logout`.
+
 ## 0.10.26 — 2026-09-20
 
 ### Changed

@@ -19,6 +19,7 @@
   var CURRENCIES = ["usd", "cad", "mxn"];
   var STORAGE_KEY = "tkrwallet.currency";
   var AUTOLOCK_KEY = "tkrwallet.autolock";
+  var CONNECT_AT_LAUNCH_KEY = "tkrwallet.connectAtLaunch";
   var VIEW_SESSION_KEY = "tkrwallet.view-session";
   /* Auto-lock is a security floor, not a preference: it cannot be turned off
    * and the longest offered session is 1 hour. Default is 5 minutes. */
@@ -179,6 +180,9 @@
     "swap flip         flip You Pay and You Receive",
     "swap quote        quote first (also: quote)",
     "swap now          sign a live quote",
+    "connect           connect to Scratchpost",
+    "disconnect        end the Scratchpost session",
+    "connect-at-launch [on|off]  connect when the wallet unlocks",
     "lock              lock now",
     "dock              dock to the browser side panel",
     "clear             clear this log",
@@ -214,6 +218,30 @@
     }
     if (cmd === "close" || cmd === "exit") {
       out.action = { type: "close" };
+      return out;
+    }
+    if (cmd === "connect") {
+      out.action = { type: "connect" };
+      out.lines.push("connecting.");
+      return out;
+    }
+    if (cmd === "disconnect") {
+      out.action = { type: "disconnect" };
+      out.lines.push("disconnecting.");
+      return out;
+    }
+    if (cmd === "connect-at-launch") {
+      var flag = String(rest || "").trim().toLowerCase();
+      if (!flag) {
+        out.action = { type: "connect-at-launch-status" };
+        return out;
+      }
+      if (flag !== "on" && flag !== "off") {
+        out.lines.push("connect-at-launch on | off");
+        return out;
+      }
+      out.action = { type: "connect-at-launch", on: flag === "on" };
+      out.lines.push("connect at launch " + flag + ".");
       return out;
     }
     if (cmd === "lock") {
@@ -342,6 +370,7 @@
       var address = ctx && ctx.address ? String(ctx.address) : "";
       out.lines.push(unlocked ? "unlocked." : "locked.");
       out.lines.push(address ? shortAddress(address) : "no account.");
+      out.lines.push(ctx && ctx.edgeConnected ? "scratchpost connected." : "scratchpost disconnected.");
       return out;
     }
     out.lines.push("unknown command. type help.");
@@ -623,6 +652,23 @@
       lockNow();
       return;
     }
+    if (action.type === "connect") {
+      onConnect();
+      return;
+    }
+    if (action.type === "disconnect") {
+      onDisconnect();
+      return;
+    }
+    if (action.type === "connect-at-launch") {
+      setConnectAtLaunch(action.on);
+      appendTerminalLine("out", "connect at launch " + (action.on ? "on" : "off") + ".");
+      return;
+    }
+    if (action.type === "connect-at-launch-status") {
+      appendTerminalLine("out", "connect at launch " + (readStoredConnectAtLaunch() ? "on" : "off") + ".");
+      return;
+    }
     if (action.type === "dock") {
       dockWallet();
       return;
@@ -670,6 +716,7 @@
       runCliCommand(raw, {
         unlocked: !!(session.address && !session.locked),
         address: session.address || "",
+        edgeConnected: edgeConnected,
       })
     );
   }
@@ -1261,12 +1308,16 @@
 
   function setAccount(address, label) {
     var dot = el("account-dot");
-    var connected = Boolean(address);
-    setText(el("account-label"), connected ? shortAddress(address) : label || "No wallet");
-    setText(el("account-status"), connected ? "Wallet " + String(address) : "No wallet");
+    var unlocked = Boolean(address);
+    var live = unlocked && edgeConnected && !session.watch;
+    setText(el("account-label"), unlocked ? shortAddress(address) : label || "No wallet");
+    setText(
+      el("account-status"),
+      live ? "Connected to Scratchpost. " + String(address) : unlocked ? "Unlocked. Not connected to Scratchpost." : "No wallet"
+    );
     if (dot) {
       dot.classList.remove("bg-up-400", "bg-cream-500", "bg-ember-400");
-      dot.classList.add(connected ? "bg-up-400" : "bg-cream-500");
+      dot.classList.add(live ? "bg-up-400" : "bg-cream-500");
     }
   }
 
@@ -2856,6 +2907,8 @@
   /* ---- wallet gate: unlock with password, or import a recovery phrase ----- */
 
   var session = { vault: null, address: null, solAddress: null, tronAddress: null, locked: false, index: 0, phrase: null, accounts: [], watch: false, walletId: null, pendingWalletId: null };
+  var edgeConnected = false;
+  var reconnectOnUnlock = false;
   var pendingCreate = null;
   var watchHelpTimer = null;
   var pendingSwapQuote = null;
@@ -3122,6 +3175,7 @@
     renderReceive();
     renderAccountDrawer();
     renderAccountsManage();
+    maybeConnectAfterUnlock();
     return w;
   }
 
@@ -3172,6 +3226,54 @@
       }
     } catch (e) {
       /* non-fatal: the setting still applies for this session */
+    }
+  }
+
+  function readStoredConnectAtLaunch() {
+    try {
+      return root.localStorage && root.localStorage.getItem(CONNECT_AT_LAUNCH_KEY) === "1";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function setConnectAtLaunch(on) {
+    try {
+      if (root.localStorage) {
+        root.localStorage.setItem(CONNECT_AT_LAUNCH_KEY, on ? "1" : "0");
+      }
+    } catch (e) {
+      /* non-fatal */
+    }
+    renderConnectAtLaunch();
+  }
+
+  function renderConnectAtLaunch() {
+    var box = el("connect-at-launch");
+    if (box) {
+      box.checked = readStoredConnectAtLaunch();
+    }
+  }
+
+  function dropEdgeSession() {
+    var data = root.tkrWalletData;
+    edgeConnected = false;
+    if (session.address) {
+      setAccount(session.address);
+    }
+    if (data && typeof data.closeSession === "function") {
+      data.closeSession().catch(function () {
+        /* cookie may already be gone */
+      });
+    }
+  }
+
+  function maybeConnectAfterUnlock() {
+    if (!sessionCanSign() || session.watch) {
+      return;
+    }
+    if (readStoredConnectAtLaunch() || reconnectOnUnlock) {
+      onConnect();
     }
   }
 
@@ -3237,6 +3339,10 @@
     if (state.lockTimer) {
       clearTimeout(state.lockTimer);
       state.lockTimer = null;
+    }
+    if (edgeConnected) {
+      reconnectOnUnlock = true;
+      dropEdgeSession();
     }
     session.address = null;
     session.solAddress = null;
@@ -3785,6 +3891,9 @@
         if (!sess || sess.ok === false) {
           throw new Error((sess && sess.error) || "session-failed");
         }
+        edgeConnected = true;
+        reconnectOnUnlock = true;
+        setAccount(session.address);
         setWalletStatus("Connected as " + (sess.address || session.address) + ". Keys stayed on this device.");
         refreshPendingSigns();
       })
@@ -4517,6 +4626,9 @@
     if (fromSel.chainId === 900002 || fromSel.chainId === 900003) {
       return failQuote("This wallet cannot sign Sui or Stellar yet. Quote from Ethereum or Base.");
     }
+    if (!edgeConnected) {
+      return failQuote("Connect to Scratchpost first. Nothing was signed.");
+    }
     if (fromSel.chainId === 900001 && !session.solAddress) {
       return failQuote("Unlock the wallet first. Nothing was signed.");
     }
@@ -4724,6 +4836,11 @@
         var confirmSign = document.querySelector("[data-confirm-sign]");
         if (confirmSign) {
           confirmSign.hidden = true;
+        }
+        edgeConnected = false;
+        reconnectOnUnlock = false;
+        if (session.address) {
+          setAccount(session.address);
         }
         setWalletStatus("Disconnected from Scratchpost. Local wallet is still unlocked.");
       })
@@ -5090,10 +5207,16 @@
         onAddWatchAccount();
       });
     }
-    var connectBtn = document.querySelector("[data-connect]");
-    if (connectBtn) {
-      connectBtn.addEventListener("click", function () {
+    var connectBtns = document.querySelectorAll("[data-connect]");
+    for (var c = 0; c < connectBtns.length; c++) {
+      connectBtns[c].addEventListener("click", function () {
         onConnect();
+      });
+    }
+    var connectAtLaunch = el("connect-at-launch");
+    if (connectAtLaunch) {
+      connectAtLaunch.addEventListener("change", function (event) {
+        setConnectAtLaunch(!!event.currentTarget.checked);
       });
     }
     var confirmSign = document.querySelector("[data-confirm-sign]");
@@ -5281,6 +5404,7 @@
 
     state.autolockMinutes = readStoredAutolock();
     renderAutolock();
+    renderConnectAtLaunch();
     state.currency = readStoredCurrency();
     renderCurrency();
     showScreen(parseRoute(root.location && root.location.hash));
