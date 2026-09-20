@@ -170,8 +170,14 @@ test("wallets screen reuses create/import and has no Derive", function () {
   const importChunk = ui.slice(importStart, importStart + 250);
   assert.ok(importChunk.indexOf('openGate("import")') !== -1, "Import Wallet reuses the import gate");
   assert.ok(ui.indexOf("clearVault") !== -1, "Remove Wallet must wipe the local vault");
-  assert.ok(ui.indexOf("Remove it first, then create") !== -1, "create must not add extra HD accounts");
-  assert.ok(ui.indexOf("Remove it first, then import") !== -1, "import must not silently overwrite");
+  assert.ok(ui.indexOf("listVaults") !== -1, "Wallets must list every vault on this device");
+  assert.ok(ui.indexOf("function switchWallet") !== -1, "tapping a listed wallet must switch to it");
+  assert.ok(ui.indexOf("Remove it first") === -1, "New/Import must not refuse because one wallet exists");
+  assert.ok(ui.indexOf("wallet-duplicate") !== -1, "import must not duplicate an address already on device");
+  const storeSrc = readFile("store.js");
+  assert.ok(storeSrc.indexOf("DEFAULT_VAULT_ID") !== -1, "legacy default vault must still load");
+  assert.ok(storeSrc.indexOf("MAX_WALLETS") !== -1, "wallet cap must exist");
+  assert.ok(/store\.put\(vault,\s*id\)/.test(storeSrc) || storeSrc.indexOf("store.put(vault, id)") !== -1, "each wallet is its own IndexedDB key");
   const addStart = ui.indexOf('el("account-drawer-add")');
   assert.ok(addStart !== -1, "drawer + must be bound");
   const addChunk = ui.slice(addStart, addStart + 400);
@@ -337,6 +343,12 @@ test("parseViewSession restores a fresh viewing session and rejects an expired o
   assert.strictEqual(fresh.address, addr);
   assert.strictEqual(fresh.autolockMinutes, 5);
   assert.strictEqual(fresh.lastActivity, now - 60_000);
+  assert.strictEqual(fresh.walletId, null);
+  const withWallet = ui.parseViewSession(
+    JSON.stringify({ address: addr, lastActivity: now - 60_000, autolockMinutes: 5, walletId: "w-abc" }),
+    now
+  );
+  assert.strictEqual(withWallet.walletId, "w-abc");
 
   const expired = ui.parseViewSession(
     JSON.stringify({ address: addr, lastActivity: now - 6 * 60_000, autolockMinutes: 5 }),
@@ -493,7 +505,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.21") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.22") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -792,7 +804,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v18"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v19"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -1362,6 +1374,26 @@ test("crypto: HD address index i derives m/44'/60'/0'/0/{i} in the same seed", f
   assert.notStrictEqual(w0.evmAddress, w1.evmAddress);
   assert.throws(function () { c.importMnemonic(phrase, -1); }, /invalid-index/);
   assert.throws(function () { c.importMnemonic(phrase, 1.5); }, /invalid-index/);
+});
+
+test("store: multiple wallet ids; first stays default; later ones get a new id", function () {
+  const s = require("./store.js");
+  assert.strictEqual(s.DEFAULT_VAULT_ID, "default");
+  assert.strictEqual(s.MAX_WALLETS, 20);
+  assert.ok(/^w-[0-9a-f]{16}$/.test(s.newVaultId()));
+  assert.notStrictEqual(s.newVaultId(), s.newVaultId());
+  assert.strictEqual(s.assignVaultId({}, []), "default");
+  assert.strictEqual(s.assignVaultId({ id: "w-keep" }, ["default"]), "w-keep");
+  const second = s.assignVaultId({}, ["default"]);
+  assert.ok(second !== "default");
+  assert.ok(/^w-/.test(second));
+  const row = s.vaultPublicRow(
+    { accounts: [{ i: 0, evmAddress: "0xAbc" }] },
+    "default"
+  );
+  assert.strictEqual(row.id, "default");
+  assert.strictEqual(row.evmAddress, "0xAbc");
+  assert.strictEqual(row.accountCount, 1);
 });
 
 test("crypto: accountsFromMnemonic lists public addresses only", function () {
@@ -2262,7 +2294,7 @@ test("desk UX: airdrops submenu, receive QR, send contacts, live quote estimate"
   assert.ok(storeSrc.indexOf("listContacts") !== -1);
   assert.ok(storeSrc.indexOf("listRecentRecipients") !== -1);
   assert.ok(storeSrc.indexOf("rememberRecipient") !== -1);
-  assert.ok(storeSrc.indexOf("DB_VERSION = 2") !== -1);
+  assert.ok(storeSrc.indexOf("DB_VERSION = 3") !== -1, "IndexedDB v3 adds meta + several vault keys");
 });
 
 test("Send QR camera: popup cannot prompt; errors stay honest", function () {

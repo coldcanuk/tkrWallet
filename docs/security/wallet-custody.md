@@ -13,10 +13,13 @@ recovery phrase (BIP-39, 12/24 words)
         ├─ m/44'/60'/0'/0/{i} → secp256k1 → keccak → EVM address  [@noble/@scure]
         └─ m/44'/501'/0'/0' → ed25519 → base58 → Solana address
 
-at rest (IndexedDB):
+at rest (IndexedDB db `tkrwallet`, store `vault`):
+   one record per wallet, keyed by wallet id (`default` is the first/legacy)
    vault = AES-GCM( PBKDF2-SHA256(password, salt, 600000), mnemonic )
            + public accounts: [{ i, path, evmAddress } | { kind: "watch", evmAddress }]
              (never keys; watch rows cannot sign)
+   This is the browser vault, not HashiCorp Vault. Customer phrases never
+   leave the device.
 ```
 
 ## Invariants (asserted where testable)

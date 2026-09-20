@@ -252,12 +252,17 @@
     if (tronAddress && !/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(tronAddress)) {
       tronAddress = "";
     }
+    var walletId = String(parsed.walletId || "").trim();
+    if (walletId && !/^[A-Za-z0-9_-]{1,64}$/.test(walletId)) {
+      walletId = "";
+    }
     return {
       address: address,
       lastActivity: lastActivity,
       autolockMinutes: minutes,
       solAddress: solAddress || null,
       tronAddress: tronAddress || null,
+      walletId: walletId || null,
     };
   }
 
@@ -789,6 +794,21 @@
     });
   }
 
+  function switchWallet(id) {
+    if (!id) {
+      return;
+    }
+    if (session.walletId === id && session.phrase) {
+      return;
+    }
+    session.pendingWalletId = id;
+    var s = store();
+    if (s && typeof s.setActiveVault === "function") {
+      s.setActiveVault(id).catch(function () { /* non-fatal */ });
+    }
+    openGate("unlock");
+  }
+
   function renderAccountsManage() {
     var list = el("accounts-manage-list");
     if (!list) {
@@ -812,50 +832,85 @@
     if (watchSubmit) {
       watchSubmit.disabled = !!watchCap;
     }
-    if (!session.address || !accounts.length) {
-      var empty = document.createElement("p");
-      empty.className = "text-xs leading-relaxed text-cream-500";
-      empty.textContent = session.address
-        ? "This wallet is on this device."
-        : "Unlock the wallet to manage it, or create / import one.";
-      list.appendChild(empty);
+    var s = store();
+    function paintWatches() {
+      if (!session.phrase || !accounts.length) {
+        return;
+      }
+      var watchShown = 0;
+      accounts.forEach(function (acc) {
+        if (!isWatchRow(acc)) {
+          return;
+        }
+        watchShown += 1;
+        var btn = document.createElement("button");
+        var label = document.createElement("span");
+        var meta = document.createElement("span");
+        var mine =
+          acc &&
+          acc.evmAddress &&
+          session.address &&
+          String(acc.evmAddress).toLowerCase() === String(session.address).toLowerCase();
+        btn.type = "button";
+        btn.className =
+          "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-card bg-ink-950 px-4 text-left ring-1 ring-inset ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400";
+        label.className = "text-sm text-cream-100";
+        label.textContent = "Watch " + watchShown + (mine ? " (current)" : "");
+        meta.className = "tnum truncate text-xs text-cream-500";
+        meta.textContent = acc && acc.evmAddress ? shortAddress(acc.evmAddress) : "";
+        btn.appendChild(label);
+        btn.appendChild(meta);
+        btn.setAttribute("aria-current", mine ? "true" : "false");
+        btn.addEventListener("click", function () {
+          switchToAccount(acc);
+        });
+        list.appendChild(btn);
+      });
+      if (watchCap) {
+        showGateError("watch-account-error", "This vault already has the maximum of 20 watch addresses.");
+      }
+    }
+    if (!s || typeof s.listVaults !== "function") {
+      paintWatches();
       return;
     }
-    var watchShown = 0;
-    accounts.forEach(function (acc, n) {
-      var btn = document.createElement("button");
-      var label = document.createElement("span");
-      var meta = document.createElement("span");
-      var watch = isWatchRow(acc);
-      if (watch) {
-        watchShown += 1;
-      }
-      var idx = acc && acc.i != null ? Number(acc.i) : n;
-      var mine =
-        acc &&
-        acc.evmAddress &&
-        session.address &&
-        String(acc.evmAddress).toLowerCase() === String(session.address).toLowerCase();
-      btn.type = "button";
-      btn.className =
-        "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-card bg-ink-950 px-4 text-left ring-1 ring-inset ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400";
-      label.className = "text-sm text-cream-100";
-      label.textContent = watch
-        ? "Watch " + watchShown + (mine ? " (current)" : "")
-        : "Account " + (idx + 1) + (mine ? " (current)" : "");
-      meta.className = "tnum truncate text-xs text-cream-500";
-      meta.textContent = acc && acc.evmAddress ? shortAddress(acc.evmAddress) : "";
-      btn.appendChild(label);
-      btn.appendChild(meta);
-      btn.setAttribute("aria-current", mine ? "true" : "false");
-      btn.addEventListener("click", function () {
-        switchToAccount(acc);
+    s.listVaults()
+      .then(function (rows) {
+        if (!list) {
+          return;
+        }
+        if (!rows || !rows.length) {
+          var empty = document.createElement("p");
+          empty.className = "text-xs leading-relaxed text-cream-500";
+          empty.textContent = "No wallet on this device yet. New Wallet or Import Wallet adds one.";
+          list.appendChild(empty);
+          return;
+        }
+        rows.forEach(function (row, n) {
+          var btn = document.createElement("button");
+          var label = document.createElement("span");
+          var meta = document.createElement("span");
+          var current = row && row.id && session.walletId && String(row.id) === String(session.walletId);
+          btn.type = "button";
+          btn.className =
+            "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-card bg-ink-950 px-4 text-left ring-1 ring-inset ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400";
+          label.className = "text-sm text-cream-100";
+          label.textContent = "Wallet " + (n + 1) + (current ? " (current)" : "");
+          meta.className = "tnum truncate text-xs text-cream-500";
+          meta.textContent = row && row.evmAddress ? shortAddress(row.evmAddress) : "";
+          btn.appendChild(label);
+          btn.appendChild(meta);
+          btn.setAttribute("aria-current", current ? "true" : "false");
+          btn.addEventListener("click", function () {
+            switchWallet(row.id);
+          });
+          list.appendChild(btn);
+        });
+        paintWatches();
+      })
+      .catch(function () {
+        paintWatches();
       });
-      list.appendChild(btn);
-    });
-    if (watchCap) {
-      showGateError("watch-account-error", "This vault already has the maximum of 20 watch addresses.");
-    }
   }
 
   function setDrawerOpen(open) {
@@ -895,7 +950,7 @@
     if (!s) {
       return;
     }
-    s.loadVault()
+    s.loadVault(session.walletId)
       .then(function (vault) {
         if (!vault) {
           return;
@@ -915,7 +970,7 @@
     if (!s) {
       return;
     }
-    s.loadVault()
+    s.loadVault(session.walletId)
       .then(function (vault) {
         if (!vault) {
           return;
@@ -2485,7 +2540,7 @@
 
   /* ---- wallet gate: unlock with password, or import a recovery phrase ----- */
 
-  var session = { vault: null, address: null, solAddress: null, tronAddress: null, locked: false, index: 0, phrase: null, accounts: [], watch: false };
+  var session = { vault: null, address: null, solAddress: null, tronAddress: null, locked: false, index: 0, phrase: null, accounts: [], watch: false, walletId: null, pendingWalletId: null };
   var pendingCreate = null;
   var watchHelpTimer = null;
   var pendingSwapQuote = null;
@@ -2535,6 +2590,7 @@
           tronAddress: session.tronAddress || null,
           lastActivity: state.lastActivity,
           autolockMinutes: state.autolockMinutes,
+          walletId: session.walletId || null,
         })
       );
     } catch (e) {
@@ -2614,6 +2670,17 @@
     };
     setText(el("gate-title"), titles[mode] || titles.unlock);
     setText(el("gate-subtitle"), subtitles[mode] || subtitles.unlock);
+    if (mode === "unlock") {
+      var sHint = store();
+      if (sHint && typeof sHint.loadVault === "function") {
+        sHint.loadVault(session.pendingWalletId || session.walletId).then(function (vault) {
+          var addr = vault && vault.accounts && vault.accounts[0] && vault.accounts[0].evmAddress;
+          if (addr) {
+            setText(el("gate-subtitle"), "Unlock " + shortAddress(addr) + ". Each wallet has its own password.");
+          }
+        }).catch(function () { /* keep default subtitle */ });
+      }
+    }
     var navBtns = document.querySelectorAll("[data-gate-nav]");
     for (var n = 0; n < navBtns.length; n++) {
       var nav = navBtns[n].getAttribute("data-gate-nav");
@@ -2655,6 +2722,16 @@
     var s = store();
     if (!s) {
       showGateForm("create");
+      return;
+    }
+    if (typeof s.listVaults === "function") {
+      s.listVaults()
+        .then(function (rows) {
+          showGateForm(rows && rows.length ? "unlock" : "create");
+        })
+        .catch(function () {
+          showGateForm("create");
+        });
       return;
     }
     s.loadVault()
@@ -2854,6 +2931,7 @@
     session.watch = false;
     session.vault = null;
     session.accounts = [];
+    session.pendingWalletId = session.walletId || session.pendingWalletId;
     session.locked = session.locked || wasUnlocked;
     clearViewSession();
     pendingSwapQuote = null;
@@ -2890,7 +2968,7 @@
       showGateError("gate-error", "Wallet storage unavailable in this browser.");
       return;
     }
-    s.loadVault()
+    s.loadVault(session.pendingWalletId || session.walletId)
       .then(function (vault) {
         if (!vault) {
           // No wallet on this device. Move to import and say why — a silent
@@ -2905,6 +2983,11 @@
       })
       .then(function (unlocked) {
         session.vault = null;
+        session.walletId = unlocked.vault && unlocked.vault.id ? unlocked.vault.id : session.walletId;
+        session.pendingWalletId = null;
+        if (s && typeof s.setActiveVault === "function" && session.walletId) {
+          s.setActiveVault(session.walletId).catch(function () { /* non-fatal */ });
+        }
         session.accounts =
           unlocked.vault && unlocked.vault.accounts && unlocked.vault.accounts.length
             ? unlocked.vault.accounts.slice()
@@ -2953,11 +3036,19 @@
       showGateError("gate-import-error", "That phrase is not a valid recovery phrase.");
       return;
     }
-    s.loadVault()
-      .then(function (existing) {
-        if (existing) {
-          showGateError("gate-import-error", "A wallet already exists on this device. Remove it first, then import.");
-          throw new Error("vault-exists");
+    var listed = typeof s.listVaults === "function" ? s.listVaults() : Promise.resolve([]);
+    listed
+      .then(function (rows) {
+        var max = typeof s.MAX_WALLETS === "number" ? s.MAX_WALLETS : 20;
+        if (rows && rows.length >= max) {
+          throw new Error("wallet-cap");
+        }
+        var want = String(wallet.evmAddress || "").toLowerCase();
+        var i;
+        for (i = 0; i < (rows || []).length; i++) {
+          if (String((rows[i] && rows[i].evmAddress) || "").toLowerCase() === want) {
+            throw new Error("wallet-duplicate");
+          }
         }
         return c.encryptVault(phrase, password);
       })
@@ -2966,13 +3057,20 @@
         vault.selectedIndex = 0;
         return s.saveVault(vault);
       })
-      .then(function () {
+      .then(function (vault) {
+        session.walletId = vault && vault.id ? vault.id : session.walletId;
+        session.pendingWalletId = null;
         session.accounts = c.accountsFromMnemonic(phrase, 1);
         revealAccount(phrase, 0);
         closeGate();
       })
       .catch(function (err) {
-        if (err && err.message === "vault-exists") {
+        if (err && err.message === "wallet-cap") {
+          showGateError("gate-import-error", "This device already has the maximum of 20 wallets.");
+          return;
+        }
+        if (err && err.message === "wallet-duplicate") {
+          showGateError("gate-import-error", "That wallet is already on this device.");
           return;
         }
         showGateError("gate-import-error", "Could not store the wallet on this device.");
@@ -3059,11 +3157,12 @@
     }
     var phrase = pendingCreate.mnemonic;
     var password = pendingCreate.password;
-    s.loadVault()
-      .then(function (existing) {
-        if (existing) {
-          showGateError("gate-create-error", "A wallet already exists on this device. Remove it first, then create a new one.");
-          throw new Error("vault-exists");
+    var listed = typeof s.listVaults === "function" ? s.listVaults() : Promise.resolve([]);
+    listed
+      .then(function (rows) {
+        var max = typeof s.MAX_WALLETS === "number" ? s.MAX_WALLETS : 20;
+        if (rows && rows.length >= max) {
+          throw new Error("wallet-cap");
         }
         return c.encryptVault(phrase, password);
       })
@@ -3072,14 +3171,17 @@
         vault.selectedIndex = 0;
         return s.saveVault(vault);
       })
-      .then(function () {
+      .then(function (vault) {
+        session.walletId = vault && vault.id ? vault.id : session.walletId;
+        session.pendingWalletId = null;
         session.accounts = c.accountsFromMnemonic(phrase, 1);
         revealAccount(phrase, 0);
         wipeSecrets();
         closeGate();
       })
       .catch(function (err) {
-        if (err && err.message === "vault-exists") {
+        if (err && err.message === "wallet-cap") {
+          showGateError("gate-create-error", "This device already has the maximum of 20 wallets.");
           return;
         }
         showGateError("gate-create-error", "Could not store the wallet on this device.");
@@ -3134,12 +3236,24 @@
       showGateError("wallet-action-error", "Wallet storage unavailable in this browser.");
       return;
     }
-    s.clearVault()
+    var id = session.walletId || session.pendingWalletId;
+    s.clearVault(id)
       .then(function () {
+        return typeof s.listVaults === "function" ? s.listVaults() : Promise.resolve([]);
+      })
+      .then(function (rows) {
         hideWalletRemoveForm();
+        session.walletId = rows && rows[0] ? rows[0].id : null;
+        session.pendingWalletId = session.walletId;
         lockNow("removed");
-        setWalletStatus("Wallet removed from this device. The recovery phrase is the only backup.");
-        go("home");
+        if (!rows || !rows.length) {
+          setWalletStatus("Wallet removed from this device. The recovery phrase is the only backup.");
+          go("home");
+          return;
+        }
+        setWalletStatus("Wallet removed. " + rows.length + " left on this device.");
+        go("accounts");
+        renderAccountsManage();
       })
       .catch(function () {
         showGateError("wallet-action-error", "Could not remove the wallet from this device.");
@@ -3220,7 +3334,7 @@
       );
       return;
     }
-    s.loadVault()
+    s.loadVault(session.walletId)
       .then(function (vault) {
         if (!vault) {
           throw new Error("no vault");
@@ -4511,6 +4625,7 @@
         session.address = restored.address;
         session.solAddress = restored.solAddress || null;
         session.tronAddress = restored.tronAddress || null;
+        session.walletId = restored.walletId || session.walletId;
         session.locked = false;
         state.lastActivity = restored.lastActivity;
         state.autolockMinutes = restored.autolockMinutes;
@@ -4529,12 +4644,16 @@
     // If a wallet is already on this device and no viewing session restored,
     // prompt for the password on boot — but not in preview mode.
     if (!session.address && !uiData.lastHoldings && store()) {
-      store()
-        .loadVault()
-        .then(function (vault) {
-          if (vault) {
+      var boot = store();
+      var listed = typeof boot.listVaults === "function" ? boot.listVaults() : boot.loadVault().then(function (v) { return v ? [v] : []; });
+      listed
+        .then(function (rows) {
+          if (rows && rows.length) {
             // A wallet exists on this device: it starts locked, not absent.
             session.locked = true;
+            if (!session.walletId && rows[0] && rows[0].id) {
+              session.walletId = rows[0].id;
+            }
             openGate("unlock");
           }
         })
