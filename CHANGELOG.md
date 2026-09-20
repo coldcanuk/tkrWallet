@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.25 — 2026-09-20
+
+### Changed
+- Swap is a Phantom-style split: **You Pay** on top, **You Receive** below.
+  You Pay has `25%` / `50%` / `75%` / `Max` of spendable balance plus a typed
+  amount, and USD / CAD / MXN with a live fiat equivalent. You Receive is
+  filled from the Scratchpost quote (quote first, then Swap Now). Native
+  Max leaves a gas buffer (ETH 0.003, Base/Robinhood 0.0002, SOL 0.01,
+  TRX 15).
+- In-wallet CLI can set currency, pick the pair, fill amount/percent, quote,
+  and Swap Now. Bare `swap` still only opens the screen.
+
 ## 0.10.24 — 2026-09-20
 
 ### Added

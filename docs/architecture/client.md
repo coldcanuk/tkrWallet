@@ -74,7 +74,7 @@ retry. This is the client half of the edge contract in
 | Hash | Screen |
 |---|---|
 | `#/home` | wallet value, actions, holdings |
-| `#/swap` | same-chain plus Ethereum/Base ↔ Solana, Sui, TRON, Stellar |
+| `#/swap` | You Pay / You Receive; quote then Swap Now; Ethereum/Base ↔ Solana, Sui, TRON, Stellar |
 | `#/activity` | device-local placeholder |
 | `#/search` | catalogue search |
 | `#/settings` | auto-lock, currency, lock now |

@@ -257,6 +257,11 @@
 
   html.tkr-busy #swap-quote,
   html.tkr-busy #swap-submit,
+  html.tkr-busy #swap-flip,
+  html.tkr-busy #swap-amount,
+  html.tkr-busy #swap-from,
+  html.tkr-busy #swap-to,
+  html.tkr-busy [data-swap-pct],
   html.tkr-busy #send-submit,
   html.tkr-busy #pool-add,
   html.tkr-busy #pool-search,

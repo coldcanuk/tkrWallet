@@ -101,12 +101,84 @@
     return "The camera could not be opened.";
   }
 
+  /* Native Max/percent leave a fee buffer. Tokens (USDC, etc.) reserve 0. */
+  var SWAP_GAS_RESERVE = {
+    1: 0.003,
+    8453: 0.0002,
+    4663: 0.0002,
+    900001: 0.01,
+    728126428: 15,
+  };
+  var SWAP_PCT_CMD = /^(25|50|75)%$/;
+
+  function nativeGasReserve(chainId, isNative) {
+    if (!isNative) {
+      return 0;
+    }
+    var n = SWAP_GAS_RESERVE[Number(chainId)];
+    return typeof n === "number" && isFinite(n) ? n : 0;
+  }
+
+  function spendableAmount(balance, chainId, isNative) {
+    if (balance === null || balance === undefined || balance === "") {
+      return null;
+    }
+    var b = Number(balance);
+    if (!isFinite(b) || b < 0) {
+      return null;
+    }
+    var spend = b - nativeGasReserve(chainId, isNative);
+    return spend > 0 ? spend : 0;
+  }
+
+  function percentOfSpendable(balance, pct, chainId, isNative) {
+    var spend = spendableAmount(balance, chainId, isNative);
+    if (spend == null) {
+      return null;
+    }
+    var p = Number(pct);
+    if (!isFinite(p) || p <= 0) {
+      return null;
+    }
+    return spend * (p / 100);
+  }
+
+  /** Plain decimal for #swap-amount. Never grouping separators (toAtomicAmount). */
+  function formatSwapInput(value, maxDigits) {
+    var n = Number(value);
+    if (!isFinite(n) || n <= 0) {
+      return "";
+    }
+    var digits = maxDigits == null ? 8 : Number(maxDigits);
+    if (!isFinite(digits) || digits < 0) {
+      digits = 8;
+    }
+    if (digits > 18) {
+      digits = 18;
+    }
+    var s = n.toFixed(digits);
+    if (s.indexOf(".") !== -1) {
+      s = s.replace(/0+$/, "").replace(/\.$/, "");
+    }
+    return s;
+  }
+
   var CLI_HELP = [
     "tkrWallet CLI. Secrets are never printed.",
     "help              this list",
     "status            lock state and public account",
     "home | search | settings | accounts | swap | activity",
     "search <query>    open token search",
+    "currency usd|cad|mxn  display currency (also: usd, cad, mxn)",
+    "swap              open swap",
+    "swap from <id>    You Pay token (chain:asset)",
+    "swap to <id>      You Receive token",
+    "swap amount <n>   You Pay amount",
+    "swap 25%|50%|75%|max  spendable fraction (also: 25%, max)",
+    "swap dest <addr>  Sui/Stellar destination",
+    "swap flip         flip You Pay and You Receive",
+    "swap quote        quote first (also: quote)",
+    "swap now          sign a live quote",
     "lock              lock now",
     "dock              dock to the browser side panel",
     "clear             clear this log",
@@ -153,9 +225,111 @@
       out.action = { type: "dock" };
       return out;
     }
-    if (cmd === "home" || cmd === "settings" || cmd === "accounts" || cmd === "swap" || cmd === "activity") {
+    if (cmd === "home" || cmd === "settings" || cmd === "accounts" || cmd === "activity") {
       out.action = { type: "go", screen: cmd };
       out.lines.push("opening " + cmd + ".");
+      return out;
+    }
+    if (cmd === "usd" || cmd === "cad" || cmd === "mxn") {
+      out.action = { type: "currency", currency: cmd };
+      out.lines.push("currency " + cmd.toUpperCase() + ".");
+      return out;
+    }
+    if (cmd === "currency") {
+      var cur = String(rest || "").trim().toLowerCase();
+      if (cur === "mxd") {
+        cur = "mxn";
+      }
+      if (CURRENCIES.indexOf(cur) === -1) {
+        out.lines.push("currency usd | cad | mxn");
+        return out;
+      }
+      out.action = { type: "currency", currency: cur };
+      out.lines.push("currency " + cur.toUpperCase() + ".");
+      return out;
+    }
+    if (SWAP_PCT_CMD.test(cmd)) {
+      out.action = { type: "swap-pct", pct: Number(cmd.slice(0, -1)) };
+      out.lines.push("swap " + cmd + " of spendable.");
+      return out;
+    }
+    if (cmd === "max") {
+      out.action = { type: "swap-pct", pct: 100 };
+      out.lines.push("swap max of spendable.");
+      return out;
+    }
+    if (cmd === "quote") {
+      out.action = { type: "swap-quote" };
+      out.lines.push("quoting.");
+      return out;
+    }
+    if (cmd === "swap") {
+      if (!rest) {
+        out.action = { type: "go", screen: "swap" };
+        out.lines.push("opening swap.");
+        return out;
+      }
+      var subParts = rest.split(/\s+/);
+      var sub = subParts[0].toLowerCase();
+      var subRest = subParts.slice(1).join(" ");
+      if (sub === "from") {
+        if (!subRest) {
+          out.lines.push("swap from <chain:asset>");
+          return out;
+        }
+        out.action = { type: "swap-from", value: subRest };
+        out.lines.push("you pay " + subRest + ".");
+        return out;
+      }
+      if (sub === "to") {
+        if (!subRest) {
+          out.lines.push("swap to <chain:asset>");
+          return out;
+        }
+        out.action = { type: "swap-to", value: subRest };
+        out.lines.push("you receive " + subRest + ".");
+        return out;
+      }
+      if (sub === "amount") {
+        if (!subRest) {
+          out.lines.push("swap amount <n>");
+          return out;
+        }
+        out.action = { type: "swap-amount", amount: subRest };
+        out.lines.push("amount " + subRest + ".");
+        return out;
+      }
+      if (sub === "dest") {
+        out.action = { type: "swap-dest", value: subRest };
+        out.lines.push(subRest ? "destination set." : "destination cleared.");
+        return out;
+      }
+      if (SWAP_PCT_CMD.test(sub)) {
+        out.action = { type: "swap-pct", pct: Number(sub.slice(0, -1)) };
+        out.lines.push("swap " + sub + " of spendable.");
+        return out;
+      }
+      if (sub === "max") {
+        out.action = { type: "swap-pct", pct: 100 };
+        out.lines.push("swap max of spendable.");
+        return out;
+      }
+      if (sub === "quote") {
+        out.action = { type: "swap-quote" };
+        out.lines.push("quoting.");
+        return out;
+      }
+      if (sub === "now" || sub === "submit") {
+        out.action = { type: "swap-now" };
+        out.lines.push("swap now.");
+        return out;
+      }
+      if (sub === "flip") {
+        out.action = { type: "swap-flip" };
+        out.lines.push("flipping pair.");
+        return out;
+      }
+      out.lines.push("unknown swap command. type help.");
       return out;
     }
     if (cmd === "search") {
@@ -467,6 +641,19 @@
         searchResults(input.value);
         input.focus();
       }
+      return;
+    }
+    if (action.type === "currency") {
+      setCurrency(action.currency);
+      refreshPrices();
+      return;
+    }
+    if (action.type === "swap-from" || action.type === "swap-to" || action.type === "swap-amount" || action.type === "swap-dest" || action.type === "swap-pct" || action.type === "swap-quote" || action.type === "swap-now" || action.type === "swap-flip") {
+      showScreen("swap");
+      if (root.location && root.location.hash !== "#/swap") {
+        root.location.hash = "#/swap";
+      }
+      applySwapCliAction(action);
     }
   }
 
@@ -606,6 +793,7 @@
     }
     if (next === "swap") {
       fillSwapPairs();
+      paintSwapPanel();
     }
     if (next === "accounts") {
       renderAccountsManage();
@@ -1159,6 +1347,7 @@
   var BUSY_BUTTONS = [
     "swap-quote",
     "swap-submit",
+    "swap-flip",
     "send-submit",
     "pool-add",
     "pool-search",
@@ -1223,7 +1412,7 @@
       }
     }
     if (typeof document !== "undefined" && document.querySelectorAll) {
-      extras = document.querySelectorAll("[data-currency]");
+      extras = document.querySelectorAll("[data-currency], [data-swap-pct]");
       for (i = 0; i < extras.length; i++) {
         extras[i].disabled = on;
         if (on) {
@@ -2001,6 +2190,9 @@
     if (state.screen === "send") {
       paintSendContacts();
     }
+    if (state.screen === "swap") {
+      paintSwapPanel();
+    }
   }
 
   function refreshValue() {
@@ -2071,6 +2263,14 @@
     addKey("8453:native");
     addKey("1:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
     addKey("8453:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
+    var swapFrom = selectedSwapToken(el("swap-from"));
+    var swapTo = selectedSwapToken(el("swap-to"));
+    if (swapFrom) {
+      addKey(swapFrom.chainId + ":" + (swapFrom.mint || "native"));
+    }
+    if (swapTo) {
+      addKey(swapTo.chainId + ":" + (swapTo.mint || "native"));
+    }
     return Object.keys(keys);
   }
 
@@ -4076,57 +4276,260 @@
     }
   }
 
-  function onSwapQuote() {
+  function swapPriceProbe(sel) {
+    if (!sel) {
+      return null;
+    }
+    return {
+      chain_id: sel.chainId,
+      address: sel.mint && sel.mint !== "native" ? sel.mint : null,
+      symbol: sel.token && sel.token.symbol,
+      state: "ok",
+      amount: 0,
+    };
+  }
+
+  function invalidateSwapQuote() {
+    pendingSwapQuote = null;
+    clearQuoteTimer();
+    hideSwapEstimate();
+    closeQuoteDialog();
+    setText(el("swap-receive-amount"), "\u2014");
+    setText(el("swap-receive-fiat"), "\u2014");
+    setText(el("swap-out"), "");
+  }
+
+  function paintSwapPanel() {
+    var fromSel = selectedSwapToken(el("swap-from"));
+    var amountEl = el("swap-amount");
+    var amount = amountEl ? String(amountEl.value || "").trim() : "";
+    var n = Number(amount);
+    var fromHold = fromSel
+      ? holdingFor(fromSel.chainId, fromSel.mint === "native" ? null : fromSel.mint)
+      : null;
+    var symbol = (fromHold && fromHold.symbol) || (fromSel && fromSel.token && fromSel.token.symbol) || "";
+    var balText = "Balance \u2014";
+    if (fromHold && fromHold.state === "ok" && fromHold.amount != null) {
+      balText = "Balance " + formatHeld(fromHold.amount) + (symbol ? " " + symbol : "");
+    }
+    setText(el("swap-pay-balance"), balText);
+    var payFiat = null;
+    if (amount && isFinite(n) && n > 0 && fromSel) {
+      var unit = unitPriceFor(swapPriceProbe(fromSel), uiData.lastPrices);
+      if (unit != null) {
+        payFiat = n * unit;
+      }
+    }
+    setText(el("swap-pay-fiat"), formatFiat(payFiat, state.currency));
+    if (quoteStillLive() && pendingSwapQuote && pendingSwapQuote.human) {
+      setText(el("swap-receive-amount"), pendingSwapQuote.human);
+      var recvUnit = unitPriceFor(swapPriceProbe(pendingSwapQuote.to), uiData.lastPrices);
+      var recvN = Number(pendingSwapQuote.human);
+      var recvFiat = recvUnit != null && isFinite(recvN) ? recvN * recvUnit : null;
+      setText(el("swap-receive-fiat"), formatFiat(recvFiat, state.currency));
+    } else if (!quoteStillLive()) {
+      setText(el("swap-receive-amount"), "\u2014");
+      setText(el("swap-receive-fiat"), "\u2014");
+    }
+    syncSwapDest();
+  }
+
+  function applySwapSelect(selectEl, value) {
+    fillSwapPairs();
+    if (!selectEl || value == null || String(value).trim() === "") {
+      return false;
+    }
+    var want = String(value).trim();
+    var opts = selectEl.options;
+    var i;
+    for (i = 0; i < opts.length; i++) {
+      if (String(opts[i].value).toLowerCase() === want.toLowerCase()) {
+        selectEl.value = opts[i].value;
+        return true;
+      }
+    }
+    var needle = want.toLowerCase();
+    for (i = 0; i < opts.length; i++) {
+      if (String(opts[i].textContent || "").toLowerCase().indexOf(needle) !== -1) {
+        selectEl.value = opts[i].value;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function applySwapPercent(pct) {
+    fillSwapPairs();
+    var fromSel = selectedSwapToken(el("swap-from"));
+    if (!fromSel) {
+      setText(el("swap-note"), "Pick a token to pay.");
+      return;
+    }
+    var isNative = fromSel.mint === "native";
+    var hold = holdingFor(fromSel.chainId, isNative ? null : fromSel.mint);
+    if (!hold || hold.state !== "ok" || hold.amount == null) {
+      setText(el("swap-note"), "Balance is unknown. Type an amount.");
+      return;
+    }
+    var part = percentOfSpendable(hold.amount, pct, fromSel.chainId, isNative);
+    if (part == null) {
+      setText(el("swap-note"), "Balance is unknown. Type an amount.");
+      return;
+    }
+    if (!(part > 0)) {
+      setText(
+        el("swap-note"),
+        isNative ? "All of this native balance is reserved for gas." : "No balance to swap."
+      );
+      return;
+    }
+    var decimals = fromSel.token && fromSel.token.decimals != null ? fromSel.token.decimals : 18;
+    var amountEl = el("swap-amount");
+    if (amountEl) {
+      amountEl.value = formatSwapInput(part, Math.min(8, decimals));
+    }
+    invalidateSwapQuote();
+    paintSwapPanel();
+    setText(
+      el("swap-note"),
+      Number(pct) >= 100 ? "Max spendable filled. Quote to continue." : pct + "% of spendable filled. Quote to continue."
+    );
+  }
+
+  function flipSwapPair() {
+    var from = el("swap-from");
+    var to = el("swap-to");
+    if (!from || !to) {
+      return;
+    }
+    var a = from.value;
+    from.value = to.value;
+    to.value = a;
+    var amount = el("swap-amount");
+    if (amount) {
+      amount.value = "";
+    }
+    invalidateSwapQuote();
+    paintSwapPanel();
+    setText(el("swap-note"), "Pair flipped. Enter an amount and Quote.");
+  }
+
+  function applySwapCliAction(action) {
+    if (!action || !action.type) {
+      return;
+    }
+    fillSwapPairs();
+    if (action.type === "swap-from") {
+      if (!applySwapSelect(el("swap-from"), action.value)) {
+        appendTerminalLine("out", "unknown you-pay token.");
+        return;
+      }
+      invalidateSwapQuote();
+      paintSwapPanel();
+      return;
+    }
+    if (action.type === "swap-to") {
+      if (!applySwapSelect(el("swap-to"), action.value)) {
+        appendTerminalLine("out", "unknown you-receive token.");
+        return;
+      }
+      invalidateSwapQuote();
+      paintSwapPanel();
+      return;
+    }
+    if (action.type === "swap-amount") {
+      var amountEl = el("swap-amount");
+      if (amountEl) {
+        amountEl.value = String(action.amount || "");
+      }
+      invalidateSwapQuote();
+      paintSwapPanel();
+      return;
+    }
+    if (action.type === "swap-dest") {
+      var destEl = el("swap-dest");
+      if (destEl) {
+        destEl.value = String(action.value || "");
+      }
+      invalidateSwapQuote();
+      paintSwapPanel();
+      return;
+    }
+    if (action.type === "swap-pct") {
+      applySwapPercent(action.pct);
+      return;
+    }
+    if (action.type === "swap-flip") {
+      flipSwapPair();
+      return;
+    }
+    if (action.type === "swap-quote") {
+      onSwapQuote({ openDialog: false }).then(function (q) {
+        if (q && q.human) {
+          var sym = q.to && q.to.token && q.to.token.symbol ? q.to.token.symbol : "";
+          appendTerminalLine(
+            "out",
+            "you receive about " + q.human + (sym ? " " + sym : "") + ". swap now to sign."
+          );
+        }
+      });
+      return;
+    }
+    if (action.type === "swap-now") {
+      onSwapSubmit();
+    }
+  }
+
+  function onSwapQuote(opts) {
+    opts = opts || {};
+    var openDialog = opts.openDialog !== false;
     var wallet = root.tkrWalletData;
     pendingSwapQuote = null;
     clearQuoteTimer();
     hideSwapEstimate();
     closeQuoteDialog();
     setText(el("swap-out"), "");
+    setText(el("swap-receive-amount"), "\u2014");
+    setText(el("swap-receive-fiat"), "\u2014");
+    function failQuote(message) {
+      setText(el("swap-note"), message);
+      return Promise.resolve(null);
+    }
     if (!wallet || typeof wallet.quoteSwap !== "function") {
-      setText(el("swap-note"), "Swap is unavailable in this browser.");
-      return;
+      return failQuote("Swap is unavailable in this browser.");
     }
     var fromSel = selectedSwapToken(el("swap-from"));
     var toSel = selectedSwapToken(el("swap-to"));
     if (!fromSel || !toSel || (fromSel.chainId === toSel.chainId && fromSel.mint === toSel.mint)) {
-      setText(el("swap-note"), "Pick two different assets.");
-      return;
+      return failQuote("Pick two different assets.");
     }
     if (fromSel.chainId !== toSel.chainId && !isEthBaseForeignPair(fromSel.chainId, toSel.chainId)) {
-      setText(
-        el("swap-note"),
+      return failQuote(
         "Pick two assets on the same chain, or Ethereum/Base to or from Solana, Sui, TRON, or Stellar."
       );
-      return;
     }
     if (fromSel.chainId === 900002 || fromSel.chainId === 900003) {
-      setText(el("swap-note"), "This wallet cannot sign Sui or Stellar yet. Quote from Ethereum or Base.");
-      return;
+      return failQuote("This wallet cannot sign Sui or Stellar yet. Quote from Ethereum or Base.");
     }
     if (fromSel.chainId === 900001 && !session.solAddress) {
-      setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
-      return;
+      return failQuote("Unlock the wallet first. Nothing was signed.");
     }
     if (fromSel.chainId === 728126428 && !session.tronAddress) {
-      setText(el("swap-note"), "Unlock the wallet first. Nothing was signed.");
-      return;
+      return failQuote("Unlock the wallet first. Nothing was signed.");
     }
     var dest = destAddressFor(toSel);
     if (isForeignChain(toSel.chainId) && !dest) {
-      setText(el("swap-note"), "Enter the destination address on that chain. Nothing was signed.");
-      return;
+      return failQuote("Enter the destination address on that chain. Nothing was signed.");
     }
     var amount = wallet.toAtomicAmount(
       (el("swap-amount") || {}).value,
       fromSel.token && fromSel.token.decimals != null ? fromSel.token.decimals : 18
     );
     if (!amount) {
-      setText(el("swap-note"), "Enter an amount greater than zero.");
-      return;
+      return failQuote("Enter an amount greater than zero.");
     }
     setText(el("swap-note"), "Asking Scratchpost for a quote\u2026");
-    withBusy(function () {
+    return withBusy(function () {
       return wallet.quoteSwap({
         chain_id: fromSel.chainId,
         from_chain_id: fromSel.chainId,
@@ -4169,11 +4572,16 @@
           "Estimate from Scratchpost. The final amount may vary slightly. Tap the number for details and Swap Now."
         );
         startQuoteTimer();
-        openQuoteDialog();
+        paintSwapPanel();
+        if (openDialog) {
+          openQuoteDialog();
+        }
+        return pendingSwapQuote;
       })
       .catch(function (err) {
         pendingSwapQuote = null;
         hideSwapEstimate();
+        paintSwapPanel();
         var why = err && err.message ? String(err.message) : "";
         setText(
           el("swap-note"),
@@ -4182,6 +4590,7 @@
             : "No quote. Scratchpost did not publish one. Nothing was signed."
         );
         setWalletStatus("Quote failed. Nothing was signed.");
+        return null;
       });
   }
 
@@ -4284,6 +4693,7 @@
           closeQuoteDialog();
           setText(el("swap-note"), "Broadcast " + (sent.tx_hash || "") + ". Key stayed on this device.");
           setWalletStatus("Swap broadcast. Key stayed on this device.");
+          paintSwapPanel();
           return refreshBalances();
         });
     }, "Building unsigned swap\u2026").catch(function () {
@@ -4443,9 +4853,45 @@
     if (poolRefresh) {
       poolRefresh.addEventListener("click", refreshPoolPositions);
     }
+    var swapFrom = el("swap-from");
+    if (swapFrom) {
+      swapFrom.addEventListener("change", function () {
+        invalidateSwapQuote();
+        paintSwapPanel();
+      });
+    }
     var swapTo = el("swap-to");
     if (swapTo) {
-      swapTo.addEventListener("change", syncSwapDest);
+      swapTo.addEventListener("change", function () {
+        invalidateSwapQuote();
+        paintSwapPanel();
+      });
+    }
+    var swapAmount = el("swap-amount");
+    if (swapAmount) {
+      swapAmount.addEventListener("input", function () {
+        invalidateSwapQuote();
+        paintSwapPanel();
+      });
+    }
+    var swapDest = el("swap-dest");
+    if (swapDest) {
+      swapDest.addEventListener("input", function () {
+        invalidateSwapQuote();
+      });
+    }
+    var pctBtns = document.querySelectorAll("[data-swap-pct]");
+    var pi;
+    for (pi = 0; pi < pctBtns.length; pi++) {
+      pctBtns[pi].addEventListener("click", function (event) {
+        applySwapPercent(Number(event.currentTarget.getAttribute("data-swap-pct")));
+      });
+    }
+    var swapFlip = el("swap-flip");
+    if (swapFlip) {
+      swapFlip.addEventListener("click", function () {
+        flipSwapPair();
+      });
     }
     var swapQuote = el("swap-quote");
     if (swapQuote) {
@@ -4959,6 +5405,10 @@
     wantsAutoScan: wantsAutoScan,
     sendCameraErrorText: sendCameraErrorText,
     parseCurrency: parseCurrency,
+    nativeGasReserve: nativeGasReserve,
+    spendableAmount: spendableAmount,
+    percentOfSpendable: percentOfSpendable,
+    formatSwapInput: formatSwapInput,
     formatHeld: formatHeld,
     formatAsOf: formatAsOf,
     fetchLiveFx: fetchLiveFx,

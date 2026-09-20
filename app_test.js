@@ -578,7 +578,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.24") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.25") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -668,6 +668,78 @@ test("wallet CLI routes commands and refuses secrets", function () {
     assert.ok(/never prints keys/.test(refused.lines.join(" ")));
   });
   assert.strictEqual(ui.runCliCommand("nonsense").lines[0], "unknown command. type help.");
+});
+
+test("native gas reserve and spendable percent math", function () {
+  const ui = require("./ui.js");
+  assert.strictEqual(ui.nativeGasReserve(1, true), 0.003);
+  assert.strictEqual(ui.nativeGasReserve(8453, true), 0.0002);
+  assert.strictEqual(ui.nativeGasReserve(4663, true), 0.0002);
+  assert.strictEqual(ui.nativeGasReserve(900001, true), 0.01);
+  assert.strictEqual(ui.nativeGasReserve(728126428, true), 15);
+  assert.strictEqual(ui.nativeGasReserve(1, false), 0);
+  assert.strictEqual(ui.spendableAmount(16, 728126428, true), 1);
+  assert.strictEqual(ui.spendableAmount(0.001, 1, true), 0);
+  assert.strictEqual(ui.spendableAmount(null, 1, true), null);
+  assert.strictEqual(ui.percentOfSpendable(10, 50, 8453, false), 5);
+  assert.strictEqual(ui.percentOfSpendable(15, 100, 728126428, true), 0);
+  assert.strictEqual(ui.formatSwapInput(0.24925, 8), "0.24925");
+  assert.strictEqual(ui.formatSwapInput(1, 8), "1");
+  assert.strictEqual(ui.formatSwapInput(0, 8), "");
+});
+
+test("swap CLI verbs cover You Pay controls; bare swap still navigates", function () {
+  const ui = require("./ui.js");
+  assert.deepStrictEqual(ui.runCliCommand("swap").action, { type: "go", screen: "swap" });
+  assert.deepStrictEqual(ui.runCliCommand("swap from 8453:native").action, { type: "swap-from", value: "8453:native" });
+  assert.deepStrictEqual(ui.runCliCommand("swap to 8453:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").action, {
+    type: "swap-to",
+    value: "8453:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  });
+  assert.deepStrictEqual(ui.runCliCommand("swap amount 0.02").action, { type: "swap-amount", amount: "0.02" });
+  assert.deepStrictEqual(ui.runCliCommand("swap 25%").action, { type: "swap-pct", pct: 25 });
+  assert.deepStrictEqual(ui.runCliCommand("50%").action, { type: "swap-pct", pct: 50 });
+  assert.deepStrictEqual(ui.runCliCommand("75%").action, { type: "swap-pct", pct: 75 });
+  assert.deepStrictEqual(ui.runCliCommand("swap max").action, { type: "swap-pct", pct: 100 });
+  assert.deepStrictEqual(ui.runCliCommand("max").action, { type: "swap-pct", pct: 100 });
+  assert.deepStrictEqual(ui.runCliCommand("swap quote").action, { type: "swap-quote" });
+  assert.deepStrictEqual(ui.runCliCommand("quote").action, { type: "swap-quote" });
+  assert.deepStrictEqual(ui.runCliCommand("swap now").action, { type: "swap-now" });
+  assert.deepStrictEqual(ui.runCliCommand("swap flip").action, { type: "swap-flip" });
+  assert.deepStrictEqual(ui.runCliCommand("swap dest GDEST").action, { type: "swap-dest", value: "GDEST" });
+  assert.deepStrictEqual(ui.runCliCommand("usd").action, { type: "currency", currency: "usd" });
+  assert.deepStrictEqual(ui.runCliCommand("currency cad").action, { type: "currency", currency: "cad" });
+  assert.deepStrictEqual(ui.runCliCommand("currency mxn").action, { type: "currency", currency: "mxn" });
+  assert.strictEqual(ui.runCliCommand("currency eur").action, null);
+  const help = ui.runCliCommand("help");
+  assert.ok(help.lines.some(function (line) { return /swap quote/.test(line); }));
+  assert.ok(help.lines.some(function (line) { return /25%/.test(line); }));
+  assert.ok(help.lines.some(function (line) { return /currency usd/.test(line); }));
+});
+
+test("swap screen is You Pay / You Receive with percent chips and currency", function () {
+  const html = readFile("index.html");
+  const swapSection = html.split('data-screen="swap"')[1].split('data-screen="receive"')[0];
+  assert.ok(swapSection.indexOf("You Pay") !== -1, "You Pay");
+  assert.ok(swapSection.indexOf("You Receive") !== -1, "You Receive");
+  assert.ok(swapSection.indexOf('data-swap-pct="25"') !== -1);
+  assert.ok(swapSection.indexOf('data-swap-pct="50"') !== -1);
+  assert.ok(swapSection.indexOf('data-swap-pct="75"') !== -1);
+  assert.ok(swapSection.indexOf('data-swap-pct="100"') !== -1);
+  assert.ok(swapSection.indexOf(">Max<") !== -1 || /\bMax\b/.test(swapSection));
+  assert.ok(swapSection.indexOf('data-currency="usd"') !== -1);
+  assert.ok(swapSection.indexOf('data-currency="cad"') !== -1);
+  assert.ok(swapSection.indexOf('data-currency="mxn"') !== -1);
+  assert.ok(swapSection.indexOf('id="swap-pay-fiat"') !== -1);
+  assert.ok(swapSection.indexOf('id="swap-receive-amount"') !== -1);
+  assert.ok(swapSection.indexOf('id="swap-receive-fiat"') !== -1);
+  assert.ok(swapSection.indexOf('id="swap-amount"') !== -1);
+  assert.ok(swapSection.indexOf('id="swap-quote"') !== -1);
+  assert.ok(swapSection.indexOf('id="swap-flip"') !== -1);
+  assert.ok(!/<input[^>]*id="swap-receive-amount"/.test(swapSection), "You Receive is quote output, not an input");
+  const uiSrc = readFile("ui.js");
+  assert.ok(uiSrc.indexOf("openDialog") !== -1, "CLI quote can skip the human modal");
+  assert.ok(uiSrc.indexOf("paintSwapPanel") !== -1);
 });
 
 test("Prime Directive lives in AGENTS.md", function () {
@@ -877,7 +949,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v21"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v22"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -2353,7 +2425,8 @@ test("desk UX: airdrops submenu, receive QR, send contacts, live quote estimate"
   assert.ok(html.indexOf("This is an estimate from Scratchpost") !== -1);
   assert.ok(html.indexOf("Tap the number for details and Swap Now") !== -1);
   assert.ok(ui.indexOf("openQuoteDialog") !== -1);
-  assert.ok(/startQuoteTimer\(\);\s*openQuoteDialog\(\);/.test(ui), "a live quote must open the Swap Now modal");
+  assert.ok(ui.indexOf("startQuoteTimer") !== -1);
+  assert.ok(ui.indexOf("openQuoteDialog") !== -1, "a live human quote still opens the Swap Now modal");
   assert.ok(ui.indexOf("quoteStillLive") !== -1);
   assert.ok(html.indexOf("media-src 'self' blob:") !== -1, "camera needs media-src");
   const nginx = readFile("deploy/nginx/tkrwallet-edge.conf.template");
