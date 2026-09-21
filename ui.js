@@ -303,6 +303,12 @@
   ];
   var CLI_REFUSE = /^(seed|mnemonic|phrase|secret|private|privkey|password|passwd|export|backup)$/i;
 
+  function formatConnectIp(ipv4, ipv6) {
+    var v4 = ipv4 ? String(ipv4) : "\u2014";
+    var v6 = ipv6 ? String(ipv6) : "\u2014";
+    return "Connect: " + v4 + "," + v6;
+  }
+
   /**
    * Wallet CLI. Pure — tests call this without a DOM.
    * Returns { lines, action, refuse }. Never includes key material.
@@ -969,6 +975,9 @@
     }
     if (next === "consolidate") {
       paintConsolidateVaults();
+    }
+    if (next === "settings") {
+      refreshConnectIp();
     }
 
     var tabs = document.querySelectorAll("[data-nav]");
@@ -4114,9 +4123,33 @@
     }
   }
 
+  function paintConnectIp(ipv4, ipv6) {
+    setText(el("connect-ip"), formatConnectIp(ipv4, ipv6));
+  }
+
+  function refreshConnectIp() {
+    if (!edgeConnected) {
+      paintConnectIp("", "");
+      return;
+    }
+    var data = root.tkrWalletData;
+    if (!data || typeof data.getSessionMe !== "function") {
+      return;
+    }
+    data.getSessionMe().then(function (me) {
+      if (!me || me.ok === false) {
+        return;
+      }
+      paintConnectIp(me.ipv4, me.ipv6);
+    }).catch(function () {
+      /* keep last painted line */
+    });
+  }
+
   function dropEdgeSession() {
     var data = root.tkrWalletData;
     edgeConnected = false;
+    paintConnectIp("", "");
     if (session.address) {
       setAccount(session.address);
     }
@@ -4756,6 +4789,8 @@
         edgeConnected = true;
         reconnectOnUnlock = true;
         setAccount(session.address);
+        paintConnectIp(sess.ipv4, sess.ipv6);
+        refreshConnectIp();
         setWalletStatus("Connected as " + (sess.address || session.address) + ". Keys stayed on this device.");
         refreshPendingSigns();
         if (consolidateJob) {
@@ -5724,6 +5759,7 @@
         }
         edgeConnected = false;
         reconnectOnUnlock = false;
+        paintConnectIp("", "");
         if (session.address) {
           setAccount(session.address);
         }
@@ -6506,6 +6542,7 @@
     fetchLiveFx: fetchLiveFx,
     openSwapFor: openSwapFor,
     runCliCommand: runCliCommand,
+    formatConnectIp: formatConnectIp,
     parseAutolockMinutes: parseAutolockMinutes,
     parseViewSession: parseViewSession,
     typedCreateConfirm: typedCreateConfirm,

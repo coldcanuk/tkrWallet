@@ -330,6 +330,38 @@
 
   /* Clear the Scratchpost edge session cookie (docs/specs/edge-server.md §3.1).
    * Distinct from Lock: vault stays on device; only the HttpOnly session ends. */
+  function sessionMe(path, fetchFn) {
+    fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
+    if (!fetchFn) {
+      return Promise.resolve({ ok: false, error: "no-fetch" });
+    }
+    return fetchFn(apiUrl(path), {
+      method: "GET",
+      credentials: "include",
+      headers: { accept: "application/json" },
+    }).then(function (res) {
+      return res.json().then(function (body) {
+        if (!res.ok) {
+          return { ok: false, error: (body && body.error) || "session-failed" };
+        }
+        return {
+          ok: true,
+          address: body && body.address,
+          ipv4: body && body.ipv4 ? body.ipv4 : null,
+          ipv6: body && body.ipv6 ? body.ipv6 : null,
+        };
+      });
+    });
+  }
+
+  function getSessionMe(fetchFn) {
+    return sessionMe("/api/wallet/me", fetchFn);
+  }
+
+  function getClientIp(fetchFn) {
+    return sessionMe("/api/wallet/ip", fetchFn);
+  }
+
   function closeSession(fetchFn) {
     fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
     if (!fetchFn) {
@@ -895,6 +927,8 @@
     getBalances: getBalances,
     requestNonce: requestNonce,
     openSession: openSession,
+    getSessionMe: getSessionMe,
+    getClientIp: getClientIp,
     closeSession: closeSession,
     listPendingSigns: listPendingSigns,
     broadcastRaw: broadcastRaw,
