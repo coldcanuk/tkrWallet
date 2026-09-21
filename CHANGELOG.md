@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.39 — 2026-09-21
+
+### Fixed
+- Swap Now shows **Quote → Accept → Build → Sign → Broadcast** and the real
+  failure step/error instead of a generic “did not broadcast”.
+
 ## 0.10.38 — 2026-09-21
 
 ### Fixed

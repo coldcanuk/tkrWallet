@@ -2589,6 +2589,7 @@ test("desk UX: airdrops submenu, receive QR, send contacts, live quote estimate"
     "id=\"swap-quote-dialog\"",
     "id=\"swap-quote-timer\"",
     "id=\"swap-quote-accept\"",
+    "id=\"swap-progress\"",
   ].forEach(function (n) {
     assert.ok(html.indexOf(n) !== -1, "index.html must include " + n);
   });
@@ -2599,6 +2600,9 @@ test("desk UX: airdrops submenu, receive QR, send contacts, live quote estimate"
   assert.ok(ui.indexOf("openQuoteDialog") !== -1);
   assert.ok(ui.indexOf("startQuoteTimer") !== -1);
   assert.ok(ui.indexOf("acceptSwapQuote") !== -1, "quote sheet must gate Swap Now behind Accept");
+  assert.ok(ui.indexOf("paintSwapProgress") !== -1, "swap steps must be visible");
+  assert.ok(ui.indexOf("Swap failed at ") !== -1, "swap failures must name the step and error");
+  assert.ok(ui.indexOf("Swap did not broadcast. The key did not leave this device.") === -1);
   assert.ok(ui.indexOf("quoteStillLive") !== -1);
   assert.ok(ui.indexOf("accepted: false") !== -1);
   assert.ok(html.indexOf("media-src 'self' blob:") !== -1, "camera needs media-src");

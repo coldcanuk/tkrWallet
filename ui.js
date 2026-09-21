@@ -3780,6 +3780,55 @@
   var sendCameraStream = null;
   var sendScanTimer = null;
   var QUOTE_TTL_MS = 15000;
+  var swapProgressStep = "";
+
+  function hideSwapProgress() {
+    var ol = el("swap-progress");
+    swapProgressStep = "";
+    if (!ol) {
+      return;
+    }
+    ol.textContent = "";
+    ol.hidden = true;
+    ol.setAttribute("hidden", "");
+  }
+
+  function paintSwapProgress(active, detail) {
+    var ol = el("swap-progress");
+    if (!ol || typeof document === "undefined" || !document.createElement) {
+      return;
+    }
+    var order = ["quote", "accept", "build", "sign", "broadcast"];
+    var labels = {
+      quote: "Quote",
+      accept: "Accept quote",
+      build: "Build unsigned tx",
+      sign: "Sign on this device",
+      broadcast: "Broadcast",
+    };
+    if (active && active !== "fail") {
+      swapProgressStep = active;
+    }
+    var idx = order.indexOf(swapProgressStep);
+    if (active === "done") {
+      idx = order.length;
+    }
+    ol.hidden = false;
+    ol.removeAttribute("hidden");
+    ol.textContent = "";
+    var i;
+    for (i = 0; i < order.length; i++) {
+      var li = document.createElement("li");
+      var mark = i < idx ? "done" : i === idx ? "now" : "wait";
+      li.textContent = (mark === "done" ? "done · " : mark === "now" ? "now · " : "wait · ") + labels[order[i]];
+      ol.appendChild(li);
+    }
+    if (detail) {
+      var extra = document.createElement("li");
+      extra.textContent = String(detail);
+      ol.appendChild(extra);
+    }
+  }
 
   function chromeExtensionDocument() {
     try {
@@ -5271,6 +5320,7 @@
     closeQuoteDialog();
     applyQuoteExpiryUi();
     paintSwapPanel();
+    paintSwapProgress("accept", "Accepted. Swap Now before the quote expires.");
     setText(el("swap-note"), "Quote accepted. Swap Now before it expires. Nothing signed yet.");
     var submit = el("swap-submit");
     if (submit && typeof submit.focus === "function") {
@@ -5364,6 +5414,7 @@
     pendingSwapQuote = null;
     clearQuoteTimer();
     hideSwapEstimate();
+    hideSwapProgress();
     closeQuoteDialog();
     setText(el("swap-receive-amount"), "\u2014");
     setText(el("swap-receive-fiat"), "\u2014");
@@ -5558,6 +5609,7 @@
     pendingSwapQuote = null;
     clearQuoteTimer();
     hideSwapEstimate();
+    hideSwapProgress();
     closeQuoteDialog();
     setText(el("swap-out"), "");
     setText(el("swap-receive-amount"), "\u2014");
@@ -5601,6 +5653,7 @@
       return failQuote("Enter an amount greater than zero.");
     }
     setText(el("swap-note"), "Asking Scratchpost for a quote\u2026");
+    paintSwapProgress("quote", "Asking Scratchpost\u2026");
     return withBusy(function () {
       return wallet.quoteSwap({
         chain_id: fromSel.chainId,
@@ -5644,6 +5697,7 @@
           el("swap-note"),
           "Quote ready. Review and Accept quote, then Swap Now before it expires."
         );
+        paintSwapProgress("accept", "Review the quote, then Accept.");
         startQuoteTimer();
         paintSwapPanel();
         if (openDialog) {
@@ -5656,6 +5710,7 @@
         hideSwapEstimate();
         paintSwapPanel();
         var why = err && err.message ? String(err.message) : "";
+        paintSwapProgress("fail", why ? "Quote failed: " + why : "Quote failed.");
         setText(
           el("swap-note"),
           why && why !== "quote-failed"
@@ -5700,21 +5755,26 @@
     var chainId = pendingSwapQuote.chainId;
     var activeQuote = pendingSwapQuote.body.quote;
     setText(el("swap-note"), "Building unsigned swap\u2026");
+    paintSwapProgress("build", "Building unsigned swap\u2026");
     function signBuilt(built) {
       if (!built || built.ok === false) {
         throw new Error((built && built.error) || "build-failed");
       }
       var signChain = Number(built.chain_id || chainId);
       if (built.needs_approval && built.tx) {
+        paintSwapProgress("sign", "Approve token, then swap.");
         var approved = c.signAndBroadcastPayload(session.phrase, session.index, built.tx);
+        paintSwapProgress("broadcast", "Broadcasting approval\u2026");
         return wallet.broadcastRaw({ raw: approved.raw, chain_id: approved.chainId }).then(function (sent) {
           if (!sent || sent.ok === false) {
             throw new Error((sent && sent.error) || "broadcast");
           }
+          paintSwapProgress("build", "Building swap after approval\u2026");
           return wallet.buildSwap({ chain_id: signChain, quote: activeQuote });
         }).then(signBuilt);
       }
       var signed;
+      paintSwapProgress("sign", "Signing on this device. The key stays here.");
       if (signChain === 900001) {
         if (!built.unsigned_tx || typeof c.signSolanaVersionedTx !== "function") {
           throw new Error("build-failed");
@@ -5732,6 +5792,7 @@
         }
         signed = c.signAndBroadcastPayload(session.phrase, session.index, tx);
       }
+      paintSwapProgress("broadcast", "Broadcasting\u2026");
       return wallet.broadcastRaw({ raw: signed.raw, chain_id: signed.chainId });
     }
     function buildStep(quote, stepChain) {
@@ -5779,13 +5840,26 @@
           clearQuoteTimer();
           hideSwapEstimate();
           closeQuoteDialog();
+          paintSwapProgress("done", "Broadcast " + (sent.tx_hash || "") + ". Key stayed on this device.");
           setText(el("swap-note"), "Broadcast " + (sent.tx_hash || "") + ". Key stayed on this device.");
           setWalletStatus("Swap broadcast. Key stayed on this device.");
           paintSwapPanel();
           return refreshAfterSwap(chainId, destChain, destMint);
         });
-    }, "Building unsigned swap\u2026").catch(function () {
-      setText(el("swap-note"), "Swap did not broadcast. The key did not leave this device.");
+    }, "Building unsigned swap\u2026").catch(function (err) {
+      var why = err && err.message ? String(err.message) : "broadcast";
+      if (why === "broadcast") {
+        why = "broadcast-failed";
+      }
+      paintSwapProgress("fail", "Failed at " + (swapProgressStep || "broadcast") + ": " + why);
+      setText(
+        el("swap-note"),
+        "Swap failed at " +
+          (swapProgressStep || "broadcast") +
+          " (" +
+          why +
+          "). The key did not leave this device."
+      );
       setWalletStatus("Swap failed. The key did not leave this device.");
     });
   }
