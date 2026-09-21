@@ -161,6 +161,48 @@
     return spend > 0 ? spend : 0;
   }
 
+  function isMaxAmount(raw) {
+    return String(raw || "").trim().toLowerCase() === "max";
+  }
+
+  function isNativeSendToken(token) {
+    var t = String(token || "").trim();
+    return !t || t.toLowerCase() === "native" || t.toUpperCase() === "ETH";
+  }
+
+  /** Tokens with a positive known balance, native last. Unknown/zero skipped. */
+  function planEmptyChain(holdings, chainId) {
+    var cid = Number(chainId);
+    var tokens = [];
+    var native = null;
+    (holdings || []).forEach(function (h) {
+      if (!h || Number(h.chain_id) !== cid) {
+        return;
+      }
+      if (h.state && h.state !== "ok") {
+        return;
+      }
+      if (!(Number(h.amount) > 0)) {
+        return;
+      }
+      var nativeHold = !h.address || String(h.address).toLowerCase() === "native";
+      var item = {
+        token: nativeHold ? "native" : String(h.address),
+        symbol: h.symbol || "",
+        native: nativeHold,
+      };
+      if (nativeHold) {
+        native = item;
+      } else {
+        tokens.push(item);
+      }
+    });
+    if (native) {
+      tokens.push(native);
+    }
+    return tokens;
+  }
+
   function percentOfSpendable(balance, pct, chainId, isNative) {
     var spend = spendableAmount(balance, chainId, isNative);
     if (spend == null) {
@@ -209,6 +251,9 @@
     "swap flip         flip You Pay and You Receive",
     "swap quote        quote first (also: quote)",
     "swap now          sign a live quote",
+    "send              open send",
+    "send 25%|50%|75%|max  fill amount (max empties after gas)",
+    "send empty        empty this chain (tap again to confirm)",
     "connect           connect to Scratchpost",
     "disconnect        end the Scratchpost session",
     "connect-at-launch [on|off]  connect when the wallet unlocks",
@@ -387,6 +432,31 @@
         return out;
       }
       out.lines.push("unknown swap command. type help.");
+      return out;
+    }
+    if (cmd === "send") {
+      if (!rest) {
+        out.action = { type: "go", screen: "send" };
+        out.lines.push("opening send.");
+        return out;
+      }
+      var sendSub = rest.split(/\s+/)[0].toLowerCase();
+      if (SWAP_PCT_CMD.test(sendSub)) {
+        out.action = { type: "send-pct", pct: Number(sendSub.slice(0, -1)) };
+        out.lines.push("send " + sendSub + " of spendable.");
+        return out;
+      }
+      if (sendSub === "max") {
+        out.action = { type: "send-pct", pct: 100 };
+        out.lines.push("send max remaining after gas.");
+        return out;
+      }
+      if (sendSub === "empty" || sendSub === "empty-chain") {
+        out.action = { type: "send-empty-chain" };
+        out.lines.push("empty this chain. tap again to confirm.");
+        return out;
+      }
+      out.lines.push("send | send 25%|50%|75%|max | send empty");
       return out;
     }
     if (cmd === "search") {
@@ -729,6 +799,13 @@
         root.location.hash = "#/swap";
       }
       applySwapCliAction(action);
+    }
+    if (action.type === "send-pct" || action.type === "send-empty-chain") {
+      showScreen("send");
+      if (root.location && root.location.hash !== "#/send") {
+        root.location.hash = "#/send";
+      }
+      applySendCliAction(action);
     }
   }
 
@@ -1573,6 +1650,7 @@
     "swap-submit",
     "swap-flip",
     "send-submit",
+    "send-empty-chain",
     "pool-add",
     "pool-search",
     "pool-refresh",
@@ -1636,7 +1714,7 @@
       }
     }
     if (typeof document !== "undefined" && document.querySelectorAll) {
-      extras = document.querySelectorAll("[data-currency], [data-swap-pct]");
+      extras = document.querySelectorAll("[data-currency], [data-swap-pct], [data-send-pct]");
       for (i = 0; i < extras.length; i++) {
         extras[i].disabled = on;
         if (on) {
@@ -2092,6 +2170,51 @@
     });
   }
 
+  function sendTokenDecimals(chainId, token) {
+    if (Number(chainId) === 900001) {
+      return 9;
+    }
+    var asset = isNativeSendToken(token) ? null : token;
+    var hold = holdingFor(chainId, asset);
+    if (hold && typeof hold.decimals === "number") {
+      return hold.decimals;
+    }
+    var meta = metaFor(chainId, asset);
+    if (meta && typeof meta.decimals === "number") {
+      return meta.decimals;
+    }
+    return 18;
+  }
+
+  function broadcastSend(chainId, to, atomic, token) {
+    var wallet = root.tkrWalletData;
+    var from = Number(chainId) === 900001 ? session.solAddress : session.address;
+    return wallet
+      .buildSend({ chain_id: chainId, from: from, to: to, amount: atomic, token: token })
+      .then(function (body) {
+        if (!body || body.ok === false) {
+          throw new Error((body && body.error) || "build");
+        }
+        if (Number(chainId) === 900001) {
+          return signBuiltTx({ tx_b64: body.tx_b64 }, 900001);
+        }
+        return signBuiltTx(body.tx, body.chain_id);
+      })
+      .then(function (sent) {
+        if (!sent || sent.ok === false) {
+          throw new Error("broadcast");
+        }
+        noteBroadcast(sent, "send", {
+          chain_id: chainId,
+          amount: atomic,
+          symbol: isNativeSendToken(token) ? "" : token,
+        });
+        return sent;
+      });
+  }
+
+  var pendingEmpty = null;
+
   function onSendSubmit() {
     var wallet = root.tkrWalletData;
     var c = crypto();
@@ -2111,32 +2234,158 @@
     var to = String((el("send-to") || {}).value || "").trim();
     var amountHuman = String((el("send-amount") || {}).value || "").trim();
     var token = String((el("send-token") || {}).value || "native");
-    var atomic = wallet.toAtomicAmount(amountHuman, chainId === 900001 ? 9 : 18);
-    var from = chainId === 900001 ? session.solAddress : session.address;
+    if (!to) {
+      setText(el("send-note"), "Enter a destination address.");
+      return;
+    }
+    var atomic;
+    if (isMaxAmount(amountHuman)) {
+      atomic = "max";
+    } else {
+      atomic = wallet.toAtomicAmount(amountHuman, sendTokenDecimals(chainId, token));
+    }
+    if (!atomic) {
+      setText(el("send-note"), "Enter an amount, or Max.");
+      return;
+    }
+    pendingEmpty = null;
     setText(el("send-note"), "Building send\u2026");
     withBusy(function () {
-      return wallet
-        .buildSend({ chain_id: chainId, from: from, to: to, amount: atomic, token: token })
-        .then(function (body) {
-          if (!body || body.ok === false) {
-            throw new Error((body && body.error) || "build");
-          }
-          if (chainId === 900001) {
-            return signBuiltTx({ tx_b64: body.tx_b64 }, 900001);
-          }
-          return signBuiltTx(body.tx, body.chain_id);
-        })
-        .then(function (sent) {
-          if (!sent || sent.ok === false) {
-            throw new Error("broadcast");
-          }
-          setText(el("send-note"), "Broadcast " + (sent.tx_hash || "") + ".");
-          setWalletStatus("Sent. Key stayed on this device.");
-          noteBroadcast(sent, "send", { chain_id: chainId, amount: atomic, symbol: token === "native" ? "" : token });
-        });
+      return broadcastSend(chainId, to, atomic, token).then(function (sent) {
+        setText(el("send-note"), "Broadcast " + (sent.tx_hash || "") + ".");
+        setWalletStatus("Sent. Key stayed on this device.");
+      });
     }, "Building send on Scratchpost\u2026").catch(function () {
       setText(el("send-note"), "Send failed. Nothing was signed off-device.");
     });
+  }
+
+  function applySendPercent(pct) {
+    var chainId = Number((el("send-chain") || {}).value || 1);
+    var token = String((el("send-token") || {}).value || "native");
+    var amountEl = el("send-amount");
+    var native = isNativeSendToken(token);
+    if (Number(pct) >= 100) {
+      if (amountEl) {
+        amountEl.value = "max";
+      }
+      setText(
+        el("send-note"),
+        native
+          ? "Max remaining after gas. Scratchpost will empty this native balance."
+          : "Max token balance. Native gas is still required."
+      );
+      return;
+    }
+    var hold = holdingFor(chainId, native ? null : token);
+    if (!hold || hold.state !== "ok" || hold.amount == null) {
+      setText(el("send-note"), "Balance is unknown. Type an amount.");
+      return;
+    }
+    var part = percentOfSpendable(hold.amount, pct, chainId, native);
+    if (part == null) {
+      setText(el("send-note"), "Balance is unknown. Type an amount.");
+      return;
+    }
+    if (!(part > 0)) {
+      setText(el("send-note"), native ? "All of this native balance is reserved for gas." : "No balance to send.");
+      return;
+    }
+    if (amountEl) {
+      amountEl.value = formatSwapInput(part, Math.min(8, sendTokenDecimals(chainId, token)));
+    }
+    setText(el("send-note"), pct + "% of spendable filled.");
+  }
+
+  function onEmptyChain() {
+    var wallet = root.tkrWalletData;
+    var c = crypto();
+    if (!wallet || typeof wallet.buildSend !== "function" || !c) {
+      setText(el("send-note"), "Send is unavailable.");
+      return;
+    }
+    if (!sessionCanSign()) {
+      if (session.watch) {
+        setText(el("send-note"), "This is a watch address. tkrWallet does not hold its key. Nothing was signed.");
+        return;
+      }
+      openGate("unlock");
+      return;
+    }
+    var chainId = Number((el("send-chain") || {}).value || 1);
+    var to = String((el("send-to") || {}).value || "").trim();
+    if (!to) {
+      pendingEmpty = null;
+      setText(el("send-note"), "Enter a destination, then Empty this chain.");
+      return;
+    }
+    var plan = planEmptyChain(uiData.lastHoldings, chainId);
+    if (!plan.length) {
+      pendingEmpty = null;
+      setText(el("send-note"), "No holdings on this chain to empty.");
+      return;
+    }
+    var key = Number(chainId) + ":" + to.toLowerCase();
+    if (!pendingEmpty || pendingEmpty.key !== key) {
+      pendingEmpty = { key: key, chainId: chainId, to: to, plan: plan };
+      var names = plan
+        .map(function (p) {
+          return p.symbol || p.token;
+        })
+        .join(", ");
+      setText(
+        el("send-note"),
+        "Tap Empty this chain again to send " +
+          plan.length +
+          " holding" +
+          (plan.length === 1 ? "" : "s") +
+          " (" +
+          names +
+          ") to " +
+          shortAddress(to) +
+          ". Tokens first, then native. This cannot be undone."
+      );
+      return;
+    }
+    var steps = pendingEmpty.plan.slice();
+    var dest = pendingEmpty.to;
+    var cid = pendingEmpty.chainId;
+    pendingEmpty = null;
+    var i = 0;
+    function next() {
+      if (i >= steps.length) {
+        setText(
+          el("send-note"),
+          "Emptied " + steps.length + " holding" + (steps.length === 1 ? "" : "s") + " on this chain."
+        );
+        setWalletStatus("Sent. Key stayed on this device.");
+        refreshBalances();
+        return;
+      }
+      var step = steps[i];
+      i += 1;
+      setText(
+        el("send-note"),
+        "Emptying " + i + " of " + steps.length + " (" + (step.symbol || step.token) + ")\u2026"
+      );
+      return broadcastSend(cid, dest, "max", step.token).then(next);
+    }
+    withBusy(next, "Emptying this chain on Scratchpost\u2026").catch(function () {
+      setText(el("send-note"), "Empty this chain stopped. Nothing further was signed off-device.");
+    });
+  }
+
+  function applySendCliAction(action) {
+    if (!action || !action.type) {
+      return;
+    }
+    if (action.type === "send-pct") {
+      applySendPercent(action.pct);
+      return;
+    }
+    if (action.type === "send-empty-chain") {
+      onEmptyChain();
+    }
   }
 
   function onPoolAdd() {
@@ -5205,6 +5454,34 @@
         onSendSubmit();
       });
     }
+    var sendEmpty = el("send-empty-chain");
+    if (sendEmpty) {
+      sendEmpty.addEventListener("click", function () {
+        var to = String((el("send-to") || {}).value || "").trim();
+        var s = store();
+        if (looksLikeSendAddress(to) && s && typeof s.rememberRecipient === "function") {
+          s.rememberRecipient(to).catch(function () {});
+        }
+        onEmptyChain();
+      });
+    }
+    var sendPctBtns = document.querySelectorAll("[data-send-pct]");
+    Array.prototype.forEach.call(sendPctBtns, function (btn) {
+      btn.addEventListener("click", function (event) {
+        applySendPercent(Number(event.currentTarget.getAttribute("data-send-pct")));
+      });
+    });
+    var sendChain = el("send-chain");
+    if (sendChain) {
+      sendChain.addEventListener("change", function () {
+        pendingEmpty = null;
+      });
+    }
+    if (sendTo) {
+      sendTo.addEventListener("input", function () {
+        pendingEmpty = null;
+      });
+    }
     var receiveChain = el("receive-chain");
     if (receiveChain) {
       receiveChain.addEventListener("change", function () {
@@ -5787,6 +6064,8 @@
     explorerAddressUrl: explorerAddressUrl,
     explorerTxUrl: explorerTxUrl,
     spendableAmount: spendableAmount,
+    isMaxAmount: isMaxAmount,
+    planEmptyChain: planEmptyChain,
     percentOfSpendable: percentOfSpendable,
     formatSwapInput: formatSwapInput,
     formatHeld: formatHeld,

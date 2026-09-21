@@ -39,6 +39,8 @@ and remediations): [`docs/reviews/2026-09-14-technical-review.md`](docs/reviews/
 
 - Mobile-first shell: wallet value (USD/CAD), Send/Swap/Receive/Buy row, token
   list, four-tab navigation (Home/Swap/Activity/Search) plus a Settings screen.
+  Send has 25/50/75/Max (Max empties the selected asset after gas) and
+  **Empty this chain** (tokens first, then native, tap twice).
 - **Self-custody create / import / unlock**: create a new 12-word BIP-39
   wallet (phrase + Ethereum private key shown once, typed confirm
   `I saved my recovery phrase`, then wipe), import an existing phrase, or
@@ -150,7 +152,7 @@ Then chrome://extensions and brave://extensions → Remove tkrWallet →
 Load unpacked → `/home/chuck/tkrWallet-unpacked`. Do not pick `/opt/repo`
 in the file dialog.
 
-The home card must read **tkrWallet 0.10.31**. If it does not, the browser
+The home card must read **tkrWallet 0.10.32**. If it does not, the browser
 is not this tree. Site access for `tkrwallet.scratchpost.ai` must not be
 “On click”.
 
