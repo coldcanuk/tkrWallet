@@ -5135,13 +5135,18 @@
     return Boolean(pendingSwapQuote && pendingSwapQuote.expiresAt && Date.now() < pendingSwapQuote.expiresAt);
   }
 
+  function quoteIsAccepted() {
+    return Boolean(pendingSwapQuote && pendingSwapQuote.accepted);
+  }
+
   function applyQuoteExpiryUi() {
     var live = quoteStillLive();
+    var ready = live && quoteIsAccepted();
     var buttons = document.querySelectorAll("#swap-submit, [data-swap-now]");
     var i;
     for (i = 0; i < buttons.length; i++) {
-      buttons[i].disabled = !live;
-      if (live) {
+      buttons[i].disabled = !ready;
+      if (ready) {
         buttons[i].removeAttribute("aria-disabled");
       } else {
         buttons[i].setAttribute("aria-disabled", "true");
@@ -5155,6 +5160,9 @@
     } else {
       var sec = Math.max(0, Math.ceil((pendingSwapQuote.expiresAt - Date.now()) / 1000));
       remain = "Expires in " + sec + "s";
+      if (!pendingSwapQuote.accepted) {
+        remain = "Accept quote · " + remain;
+      }
     }
     setText(el("swap-quote-timer"), remain);
     setText(el("swap-estimate-timer"), remain);
@@ -5190,9 +5198,11 @@
 
   function closeQuoteDialog() {
     var dlg = el("swap-quote-dialog");
-    if (dlg && dlg.open && typeof dlg.close === "function") {
-      dlg.close();
+    if (!dlg) {
+      return;
     }
+    dlg.setAttribute("hidden", "");
+    dlg.hidden = true;
   }
 
   function openQuoteDialog() {
@@ -5228,30 +5238,47 @@
         "."
     );
     applyQuoteExpiryUi();
-    var mode = parseShellMode(root.location && root.location.search, root.location && root.location.protocol);
-    if (mode === "popup") {
-      /* Native <dialog>.showModal() paints in the browser top layer, outside
-       * the 432×600 popup. Swap Now stays on the Swap screen. */
-      return;
-    }
+    /* In-app sheet only — never native top-layer dialogs. Chrome MV3 popup is
+     * 432×600; browser top-layer UI paints outside the extension window. */
     var dlg = el("swap-quote-dialog");
     if (!dlg) {
       return;
     }
-    try {
-      if (typeof dlg.showModal === "function") {
-        if (!dlg.open) {
-          dlg.showModal();
-        }
-        return;
+    dlg.hidden = false;
+    dlg.removeAttribute("hidden");
+    var accept = el("swap-quote-accept");
+    if (accept && typeof accept.focus === "function") {
+      try {
+        accept.focus();
+      } catch (e) {
+        /* ignore */
       }
-    } catch (e) {
-      /* popup / overflow ancestors can reject showModal; fall through */
     }
-    if (typeof dlg.show === "function" && !dlg.open) {
-      dlg.show();
-    } else {
-      dlg.setAttribute("open", "");
+  }
+
+  function acceptSwapQuote() {
+    if (!pendingSwapQuote || !pendingSwapQuote.body) {
+      setText(el("swap-note"), "Quote first. Nothing was signed.");
+      return;
+    }
+    if (!quoteStillLive()) {
+      applyQuoteExpiryUi();
+      setText(el("swap-note"), "Quote expired. Request a new quote. Nothing was signed.");
+      closeQuoteDialog();
+      return;
+    }
+    pendingSwapQuote.accepted = true;
+    closeQuoteDialog();
+    applyQuoteExpiryUi();
+    paintSwapPanel();
+    setText(el("swap-note"), "Quote accepted. Swap Now before it expires. Nothing signed yet.");
+    var submit = el("swap-submit");
+    if (submit && typeof submit.focus === "function") {
+      try {
+        submit.focus();
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
 
@@ -5609,20 +5636,18 @@
           body: body,
           human: human,
           expiresAt: expiresAt,
+          accepted: false,
         };
         showSwapEstimate(human, toSel.token.symbol);
         setText(el("swap-out"), "");
         setText(
           el("swap-note"),
-          "Estimate from Scratchpost. The final amount may vary slightly. Tap the number for details and Swap Now."
+          "Quote ready. Review and Accept quote, then Swap Now before it expires."
         );
         startQuoteTimer();
         paintSwapPanel();
         if (openDialog) {
-          var mode = parseShellMode(root.location && root.location.search, root.location && root.location.protocol);
-          if (mode !== "popup") {
-            openQuoteDialog();
-          }
+          openQuoteDialog();
         }
         return pendingSwapQuote;
       })
@@ -5652,6 +5677,11 @@
     if (!quoteStillLive()) {
       applyQuoteExpiryUi();
       setText(el("swap-note"), "Quote expired. Request a new quote. Nothing was signed.");
+      return;
+    }
+    if (!quoteIsAccepted()) {
+      setText(el("swap-note"), "Accept the quote first. Nothing was signed.");
+      openQuoteDialog();
       return;
     }
     if (!sessionCanSign()) {
@@ -6011,10 +6041,24 @@
         openQuoteDialog();
       });
     }
+    var swapQuoteAccept = el("swap-quote-accept");
+    if (swapQuoteAccept) {
+      swapQuoteAccept.addEventListener("click", function () {
+        acceptSwapQuote();
+      });
+    }
     var swapQuoteClose = el("swap-quote-close");
     if (swapQuoteClose) {
       swapQuoteClose.addEventListener("click", function () {
         closeQuoteDialog();
+      });
+    }
+    var swapQuoteSheet = el("swap-quote-dialog");
+    if (swapQuoteSheet) {
+      swapQuoteSheet.addEventListener("click", function (event) {
+        if (event.target === swapQuoteSheet) {
+          closeQuoteDialog();
+        }
       });
     }
     var swapNowBtns = document.querySelectorAll("#swap-submit, [data-swap-now]");

@@ -2149,7 +2149,9 @@ test("swap screen quotes same-chain swaps through the wallet edge, never a vendo
   assert.ok(ui.indexOf("from_chain_id") !== -1);
   assert.ok(ui.indexOf("to_chain_id") !== -1);
   assert.ok(ui.indexOf("isScratchpostSwapPair") !== -1);
-  assert.ok(ui.indexOf('mode !== "popup"') !== -1, "extension popup must not showModal the quote dialog");
+  assert.ok(ui.indexOf("showModal") === -1, "quote confirmation must not use top-layer showModal (breaks MV3 popup)");
+  assert.ok(ui.indexOf("acceptSwapQuote") !== -1, "human must Accept quote before Swap Now");
+  assert.ok(ui.indexOf("quoteIsAccepted") !== -1);
   const activity = html.split('data-screen="activity"')[1].split('data-screen="search"')[0];
   assert.ok(activity.indexOf("id=\"activity-explorers\"") !== -1);
   assert.ok(activity.indexOf("id=\"activity-list\"") !== -1);
@@ -2586,16 +2588,19 @@ test("desk UX: airdrops submenu, receive QR, send contacts, live quote estimate"
     "id=\"swap-estimate-timer\"",
     "id=\"swap-quote-dialog\"",
     "id=\"swap-quote-timer\"",
+    "id=\"swap-quote-accept\"",
   ].forEach(function (n) {
     assert.ok(html.indexOf(n) !== -1, "index.html must include " + n);
   });
   assert.ok(html.indexOf("Swap Now") !== -1);
+  assert.ok(html.indexOf("Accept quote") !== -1);
   assert.ok(html.indexOf("This is an estimate from Scratchpost") !== -1);
-  assert.ok(html.indexOf("Tap the number for details and Swap Now") !== -1);
+  assert.ok(html.indexOf("Tap to review and Accept quote") !== -1);
   assert.ok(ui.indexOf("openQuoteDialog") !== -1);
   assert.ok(ui.indexOf("startQuoteTimer") !== -1);
-  assert.ok(ui.indexOf("openQuoteDialog") !== -1, "a live human quote still opens the Swap Now modal");
+  assert.ok(ui.indexOf("acceptSwapQuote") !== -1, "quote sheet must gate Swap Now behind Accept");
   assert.ok(ui.indexOf("quoteStillLive") !== -1);
+  assert.ok(ui.indexOf("accepted: false") !== -1);
   assert.ok(html.indexOf("media-src 'self' blob:") !== -1, "camera needs media-src");
   const nginx = readFile("deploy/nginx/tkrwallet-edge.conf.template");
   assert.ok(nginx.indexOf("media-src 'self' blob:") !== -1, "edge nginx must allow camera blobs");

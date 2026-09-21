@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.38 — 2026-09-21
+
+### Fixed
+- Swap confirmation is an **in-app sheet** (not a top-layer browser dialog), so
+  the Chrome extension popup can show it. Pipeline is Quote → **Accept quote**
+  → **Swap Now**; Swap Now stays disabled until Accept.
+
 ## 0.10.37 — 2026-09-21
 
 ### Changed
