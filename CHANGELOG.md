@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.32 — 2026-09-20
+
+### Added
+- Send has 25% / 50% / 75% / **Max**. Max asks Scratchpost for the remaining
+  balance after gas (`amount: "max"`) so native can land at 0.
+- **Empty this chain** sends every known holding on the selected chain to To
+  (tokens first, native last). Tap twice to confirm. Watch-only cannot send.
+
 ## 0.10.31 — 2026-09-20
 
 ### Added
