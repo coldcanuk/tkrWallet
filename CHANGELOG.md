@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.33 — 2026-09-20
+
+### Changed
+- Activity lists this device's broadcasts plus Base history from Scratchpost
+  (desk uses the CDP secret REST path). The PWA never calls Coinbase.
+
 ## 0.10.32 — 2026-09-20
 
 ### Added
