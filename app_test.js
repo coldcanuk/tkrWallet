@@ -717,7 +717,7 @@ test("native gas reserve and spendable percent math", function () {
   assert.strictEqual(ui.nativeGasReserve(1, true), 0.003);
   assert.strictEqual(ui.nativeGasReserve(8453, true), 0.0002);
   assert.strictEqual(ui.nativeGasReserve(4663, true), 0.0002);
-  assert.strictEqual(ui.nativeGasReserve(900001, true), 0.01);
+  assert.strictEqual(ui.nativeGasReserve(900001, true), 0.05);
   assert.strictEqual(ui.nativeGasReserve(728126428, true), 15);
   assert.strictEqual(ui.nativeGasReserve(1, false), 0);
   assert.strictEqual(ui.spendableAmount(16, 728126428, true), 1);
@@ -731,8 +731,23 @@ test("native gas reserve and spendable percent math", function () {
   ui.setLeaveGasBuffer(false);
   assert.strictEqual(ui.nativeGasReserve(1, true), 0.001);
   assert.strictEqual(ui.nativeGasReserve(8453, true), 0.00005);
+  assert.strictEqual(ui.nativeGasReserve(900001, true), 0.02);
   assert.ok(ui.nativeGasReserve(1, true) < 0.003);
   ui.setLeaveGasBuffer(true);
+});
+
+test("after a swap, dest-wait does not refetch prices, and nested busy keeps the outer strip", function () {
+  const ui = readFile("ui.js");
+  assert.ok(ui.indexOf("refreshBalances({ skipPrices: true })") !== -1, "cross-chain dest wait must skip prices");
+  assert.ok(/if \(opts\.skipPrices\)/.test(ui), "refreshBalances must honor skipPrices");
+  assert.ok(
+    /label && on && message && busyCount === 1/.test(ui),
+    "nested withBusy must not overwrite the busy-strip label"
+  );
+  assert.ok(
+    /if \(!sent \|\| sent\.ok === false\) \{\s*throw new Error/.test(ui),
+    "failed broadcast must not start dest wait"
+  );
 });
 
 test("Send Max is the literal max; empty-this-chain sends tokens then native", function () {
@@ -2114,7 +2129,7 @@ test("tapping a coin opens the detail screen instead of a dead click", function 
 
 test("a failed read is retryable and never rendered as an empty wallet", function () {
   const ui = readFile("ui.js");
-  const rb = ui.match(/function refreshBalances\(\) \{[\s\S]*?\n  \}/);
+  const rb = ui.match(/function refreshBalances\((opts)?\) \{[\s\S]*?\n  \}/);
   assert.ok(rb, "refreshBalances must exist");
   assert.ok(/res\.state === "ok"/.test(rb[0]), "the ok state is handled");
   assert.ok(/res\.state === "partial"/.test(rb[0]), "the partial state keeps its rows and discloses the gap");
