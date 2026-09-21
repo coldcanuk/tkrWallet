@@ -557,7 +557,12 @@ test("auto-lock settings: fixed options only, never off, longest is 1 hour", fun
   const options = Array.from(html.matchAll(/data-autolock="(\d+)"/g)).map((m) => Number(m[1]));
   assert.deepStrictEqual(options, [1, 5, 15, 30, 60], "exactly the five offered options");
   assert.ok(options.every((m) => m >= 1 && m <= 60), "no off option, nothing past an hour");
-  assert.ok(html.indexOf('id="autolock-feedback"') !== -1, "auto-lock must show visible save feedback");
+  assert.ok(html.indexOf('id="settings-save"') !== -1, "settings must offer Save");
+  assert.ok(/>\s*Save\s*</.test(html), "Save button label");
+  assert.ok(html.indexOf('id="settings-save-status"') !== -1, "Save must show visible confirmation");
+  assert.ok(html.indexOf("Connect to Scratchpost") !== -1);
+  assert.ok(/>\s*Disconnect\s*</.test(html), "Disconnect button label");
+  assert.ok(!/log\s*in|log\s*out|login|logout/i.test(html), "settings and shell must not say login/logout");
   assert.ok(html.indexOf('id="app-version"') !== -1, "settings must show the running client version");
   assert.ok(html.indexOf("cannot be turned off") !== -1, "settings must say auto-lock cannot be disabled");
   assert.ok(html.indexOf("1 hour") !== -1, "settings must state the one-hour cap");
@@ -587,7 +592,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.36") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.37") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -1027,7 +1032,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v33"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v34"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -1064,9 +1069,11 @@ test("the injected-provider connect path is gone — self-custody only", functio
   ["connectWallet", "isExtension", "window.ethereum", "provider"].forEach(function (s) {
     assert.ok(ui.indexOf(s) === -1, "ui.js must not reference " + s);
   });
-  ["connect", "listHoldings", "findProvider", "hexToAmount", "padAddress", "BALANCE_SELECTOR", "eth_requestAccounts", "eth_getBalance"].forEach(function (s) {
+  ["listHoldings", "findProvider", "hexToAmount", "padAddress", "BALANCE_SELECTOR", "eth_requestAccounts", "eth_getBalance"].forEach(function (s) {
     assert.ok(wallet.indexOf(s) === -1, "wallet.js must not reference " + s);
   });
+  assert.ok(wallet.indexOf("/api/wallet/connect") !== -1, "Scratchpost Connect is the wallet-edge path");
+  assert.ok(wallet.indexOf("eth_requestAccounts") === -1);
   const html = readFile("index.html");
   assert.ok(html.indexOf("Connect a wallet") === -1, "index.html must not ask to connect a wallet");
   assert.ok(html.indexOf("Not connected") === -1, "index.html must not show 'Not connected'");
@@ -1792,7 +1799,10 @@ test("connect/sign: unlocked RAM holds the phrase; viewing session and IndexedDB
   assert.ok(ui.indexOf("signPersonal") !== -1, "connect signs locally");
   const wallet = readFile("wallet.js");
   assert.ok(wallet.indexOf("/api/wallet/nonce") !== -1, "wallet.js requests a nonce from the same origin");
-  assert.ok(wallet.indexOf("/api/wallet/session") !== -1, "wallet.js posts the signature to the same origin");
+  assert.ok(wallet.indexOf("/api/wallet/connect") !== -1, "wallet.js posts the signature to /connect");
+  assert.ok(wallet.indexOf("/api/wallet/disconnect") !== -1, "wallet.js disconnects, it does not log out");
+  assert.ok(wallet.indexOf("/api/wallet/logout") === -1, "no logout path");
+  assert.ok(wallet.indexOf("/api/wallet/session") === -1, "connect, not session");
   assert.ok(wallet.indexOf("/api/wallet/broadcast") !== -1, "wallet.js broadcasts raw to the same origin");
   assert.ok(wallet.indexOf("/api/wallet/pending-signs") !== -1, "wallet.js polls IcePike-requested unsigned txs");
   assert.ok(wallet.indexOf("/api/wallet/me") !== -1, "wallet.js reads Connect IPs from /me");
@@ -2255,7 +2265,7 @@ test("quoteSwap and buildSwap POST the real edge paths and return the quote body
 test("crypto: signPersonal signs a connect statement and recovers the HD address", function () {
   const c = require("./crypto.js");
   const phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-  const statement = "Sign in to tkrWallet.\nNonce: aabbcc";
+  const statement = "Connect to tkrWallet.\nNonce: aabbcc";
   const signed = c.signPersonal(phrase, 0, statement);
   assert.strictEqual(signed.address, "0x9858EfFD232B4033E47d90003D41EC34EcaEda94");
   assert.ok(/^0x[0-9a-f]{130}$/.test(signed.signature));

@@ -567,7 +567,7 @@ function nonceHandler(req) {
   const nonce = nodeCrypto.randomBytes(32).toString("hex");
   const issued = Date.now();
   const expires = issued + NONCE_TTL_MS;
-  const statement = "Sign in to tkrWallet.\nNonce: " + nonce;
+  const statement = "Connect to tkrWallet.\nNonce: " + nonce;
   nonces.set(nonce, { statement: statement, issued_at: issued, expires_at: expires });
   return json(200, {
     nonce: nonce,
@@ -580,7 +580,7 @@ function nonceHandler(req) {
 function sessionHandler(req) {
   const method = (req && req.method) || "POST";
   if (method !== "POST") {
-    return httpError(405, "method_not_allowed", "POST /api/wallet/session");
+    return httpError(405, "method_not_allowed", "POST /api/wallet/connect");
   }
   let body = {};
   try {
@@ -616,8 +616,11 @@ function route(url, fetchFn, method, body) {
   if (url.pathname === "/api/wallet/nonce") {
     return nonceHandler({ method: verb, body: body });
   }
-  if (url.pathname === "/api/wallet/session") {
+  if (url.pathname === "/api/wallet/connect" || url.pathname === "/api/wallet/session") {
     return sessionHandler({ method: verb, body: body });
+  }
+  if (url.pathname === "/api/wallet/disconnect") {
+    return json(200, { ok: true });
   }
   if (url.pathname === "/api/wallet/balances") {
     return balancesHandler(url, fetchFn);

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.37 — 2026-09-21
+
+### Changed
+- Settings: **Save** writes auto-lock and Connect at Launch, then shows
+  Saved. Connect / Disconnect stay actions (not login / logout).
+- Scratchpost session is `POST /api/wallet/connect` and
+  `POST /api/wallet/disconnect`. No logout path.
+
 ## 0.10.36 — 2026-09-21
 
 ### Added
