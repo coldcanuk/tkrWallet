@@ -977,6 +977,7 @@
       paintConsolidateVaults();
     }
     if (next === "settings") {
+      beginSettingsDraft();
       refreshConnectIp();
     }
 
@@ -3896,8 +3897,8 @@
       create: "Create a new wallet",
     };
     var subtitles = {
-      unlock: "Sign in to the wallet already on this device.",
-      import: "Restore from a 12 or 24-word recovery phrase (sign-in from another device).",
+      unlock: "Unlock the wallet already on this device.",
+      import: "Restore from a 12 or 24-word recovery phrase (from another device).",
       create: "Make a new wallet on this device. You will write down the recovery phrase once.",
     };
     setText(el("gate-title"), titles[mode] || titles.unlock);
@@ -4097,6 +4098,30 @@
     }
   }
 
+  var settingsDraft = {
+    autolockMinutes: null,
+    connectAtLaunch: false,
+  };
+
+  function beginSettingsDraft() {
+    settingsDraft.autolockMinutes = state.autolockMinutes;
+    settingsDraft.connectAtLaunch = readStoredConnectAtLaunch();
+    renderAutolock();
+    renderConnectAtLaunch();
+    setText(el("settings-save-status"), "");
+  }
+
+  function saveSettings() {
+    state.autolockMinutes = parseAutolockMinutes(settingsDraft.autolockMinutes);
+    storeAutolock(state.autolockMinutes);
+    setConnectAtLaunch(settingsDraft.connectAtLaunch);
+    renderAutolock();
+    scheduleLock();
+    saveViewSession();
+    setText(el("settings-save-status"), "Saved.");
+    setWalletStatus("Saved.");
+  }
+
   function readStoredConnectAtLaunch() {
     try {
       return root.localStorage && root.localStorage.getItem(CONNECT_AT_LAUNCH_KEY) === "1";
@@ -4119,7 +4144,10 @@
   function renderConnectAtLaunch() {
     var box = el("connect-at-launch");
     if (box) {
-      box.checked = readStoredConnectAtLaunch();
+      box.checked =
+        settingsDraft.autolockMinutes != null
+          ? settingsDraft.connectAtLaunch
+          : readStoredConnectAtLaunch();
     }
   }
 
@@ -4153,8 +4181,8 @@
     if (session.address) {
       setAccount(session.address);
     }
-    if (data && typeof data.closeSession === "function") {
-      data.closeSession().catch(function () {
+    if (data && typeof data.disconnectSession === "function") {
+      data.disconnectSession().catch(function () {
         /* cookie may already be gone */
       });
     }
@@ -4170,27 +4198,19 @@
   }
 
   function renderAutolock() {
+    var minutes =
+      settingsDraft.autolockMinutes != null ? settingsDraft.autolockMinutes : state.autolockMinutes;
     var buttons = document.querySelectorAll("[data-autolock]");
     for (var i = 0; i < buttons.length; i++) {
-      var active = Number(buttons[i].getAttribute("data-autolock")) === state.autolockMinutes;
+      var active = Number(buttons[i].getAttribute("data-autolock")) === minutes;
       buttons[i].setAttribute("aria-pressed", active ? "true" : "false");
     }
   }
 
   function setAutolock(minutes) {
-    state.autolockMinutes = parseAutolockMinutes(minutes);
-    storeAutolock(state.autolockMinutes);
+    settingsDraft.autolockMinutes = parseAutolockMinutes(minutes);
     renderAutolock();
-    scheduleLock();
-    saveViewSession();
-    var label =
-      "Auto-lock set to " +
-      state.autolockMinutes +
-      " minute" +
-      (state.autolockMinutes === 1 ? "" : "s") +
-      " of inactivity. Saved.";
-    setWalletStatus(label);
-    setText(el("autolock-feedback"), label);
+    setText(el("settings-save-status"), "");
   }
 
   function resetActivity() {
@@ -5742,16 +5762,16 @@
 
   function onDisconnect() {
     var data = root.tkrWalletData;
-    if (!data || typeof data.closeSession !== "function") {
+    if (!data || typeof data.disconnectSession !== "function") {
       setWalletStatus("Disconnect is unavailable in this browser.");
       return;
     }
     withBusy(function () {
-      return data.closeSession();
+      return data.disconnectSession();
     }, "Disconnecting from Scratchpost\u2026")
       .then(function (out) {
         if (!out || out.ok === false) {
-          throw new Error((out && out.error) || "logout-failed");
+          throw new Error((out && out.error) || "disconnect-failed");
         }
         var confirmSign = document.querySelector("[data-confirm-sign]");
         if (confirmSign) {
@@ -6137,6 +6157,12 @@
         setAutolock(event.currentTarget.getAttribute("data-autolock"));
       });
     }
+    var settingsSave = el("settings-save");
+    if (settingsSave) {
+      settingsSave.addEventListener("click", function () {
+        saveSettings();
+      });
+    }
 
     var walletNew = el("wallet-new");
     if (walletNew) {
@@ -6208,7 +6234,8 @@
     var connectAtLaunch = el("connect-at-launch");
     if (connectAtLaunch) {
       connectAtLaunch.addEventListener("change", function (event) {
-        setConnectAtLaunch(!!event.currentTarget.checked);
+        settingsDraft.connectAtLaunch = !!event.currentTarget.checked;
+        setText(el("settings-save-status"), "");
       });
     }
     var confirmSign = document.querySelector("[data-confirm-sign]");
@@ -6586,6 +6613,7 @@
     showGateForm: showGateForm,
     lockNow: lockNow,
     setAutolock: setAutolock,
+    saveSettings: saveSettings,
     session: session,
     uiData: uiData,
     bind: bind,

@@ -313,7 +313,7 @@
     if (!fetchFn) {
       return Promise.resolve({ ok: false, error: "no-fetch" });
     }
-    return fetchFn(apiUrl("/api/wallet/session"), {
+    return fetchFn(apiUrl("/api/wallet/connect"), {
       method: "POST",
       credentials: "include",
       headers: { accept: "application/json", "content-type": "application/json" },
@@ -362,12 +362,12 @@
     return sessionMe("/api/wallet/ip", fetchFn);
   }
 
-  function closeSession(fetchFn) {
+  function disconnectSession(fetchFn) {
     fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
     if (!fetchFn) {
       return Promise.resolve({ ok: false, error: "no-fetch" });
     }
-    return fetchFn(apiUrl("/api/wallet/logout"), {
+    return fetchFn(apiUrl("/api/wallet/disconnect"), {
       method: "POST",
       credentials: "include",
       headers: { accept: "application/json" },
@@ -378,10 +378,10 @@
       return res
         .json()
         .then(function (body) {
-          return { ok: false, error: (body && body.error) || "logout-failed" };
+          return { ok: false, error: (body && body.error) || "disconnect-failed" };
         })
         .catch(function () {
-          return { ok: false, error: "logout-failed" };
+          return { ok: false, error: "disconnect-failed" };
         });
     });
   }
@@ -929,7 +929,7 @@
     openSession: openSession,
     getSessionMe: getSessionMe,
     getClientIp: getClientIp,
-    closeSession: closeSession,
+    disconnectSession: disconnectSession,
     listPendingSigns: listPendingSigns,
     broadcastRaw: broadcastRaw,
     getTokenMeta: getTokenMeta,
