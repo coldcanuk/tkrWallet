@@ -586,7 +586,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.33") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.34") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -746,6 +746,9 @@ test("Send Max is the literal max; empty-this-chain sends tokens then native", f
   assert.ok(uiSrc.indexOf('atomic = "max"') !== -1);
   assert.ok(uiSrc.indexOf("onEmptyChain") !== -1);
   assert.ok(uiSrc.indexOf('"send-empty-chain"') !== -1, "empty-chain must join the busy list");
+  assert.ok(uiSrc.indexOf("Connect to Scratchpost first") !== -1, "empty-chain must require Connect like Swap");
+  assert.ok(uiSrc.indexOf("on \" + chainName") !== -1, "confirm must name the selected chain");
+  assert.ok(uiSrc.indexOf("no_session") !== -1, "empty-chain must explain a missing Scratchpost session");
 });
 
 test("swap CLI verbs cover You Pay controls; bare swap still navigates", function () {
@@ -1009,7 +1012,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v30"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v31"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
