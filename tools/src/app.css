@@ -174,10 +174,9 @@
       transform: none;
     }
   }
-  #swap-quote-dialog {
-    width: min(24rem, calc(100% - 1.5rem));
-    max-height: 28rem;
-    margin: auto;
+  /* In-app quote sheet (div overlay). Layout comes from Tailwind utilities. */
+  #swap-quote-dialog:not([hidden]) {
+    animation: tkr-dialog-in 180ms ease-out;
   }
   .desk-tab[aria-pressed="true"] {
     background-color: var(--color-ember-400);
