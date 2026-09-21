@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.35 — 2026-09-20
+
+### Added
+- Swap **Leave extra gas** (default on). Off uses a tight native Max so leftover is only this swap’s gas.
+- **Consolidate** (Wallets / Settings): pick sources on this device (or import), dest vault or pasted address. One currency send, or swap-on-source then send. Each source unlocks in turn.
+
 ## 0.10.34 — 2026-09-20
 
 ### Fixed
