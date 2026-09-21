@@ -140,7 +140,7 @@ test("left drawer lists IndexedDB wallets, not only HD Account 1 of the unlocked
   const body = ui.slice(start, next === -1 ? start + 2500 : next);
   assert.ok(body.indexOf("listVaults") !== -1, "drawer must read every wallet on this device");
   assert.ok(body.indexOf("switchWallet") !== -1, "drawer dots must switch wallets");
-  assert.ok(body.indexOf("Wallet ") !== -1, "drawer captions are Wallet N, not only Account 1");
+  assert.ok(body.indexOf("accountCaption") !== -1, "drawer captions use the account label, not a hard-coded Wallet N");
   const html = readFile("index.html");
   assert.ok(html.indexOf('id="account-drawer-title">Wallets') !== -1, "drawer is the wallet switcher");
 });
@@ -149,7 +149,7 @@ test("index.html ships the account drawer and receive/send screens", function ()
   const html = readFile("index.html");
   assert.match(html, /id="account-drawer"/);
   assert.match(html, /id="account-list"/);
-  assert.match(html, /w-20/);
+  assert.match(html, /w-24/);
   assert.match(html, /aria-expanded="false"/);
   assert.match(html, /data-screen="receive"/);
   assert.match(html, /data-screen="send"/);
@@ -256,6 +256,19 @@ test("wallets screen reuses create/import and has no Derive", function () {
   assert.ok(ui.indexOf("function switchWallet") !== -1, "tapping a listed wallet must switch to it");
   assert.ok(ui.indexOf("Remove it first") === -1, "New/Import must not refuse because one wallet exists");
   assert.ok(ui.indexOf("wallet-duplicate") !== -1, "import must not duplicate an address already on device");
+  assert.ok(accounts.indexOf('id="create-label"') === -1, "create label lives on the gate, not the Wallets list");
+  assert.ok(html.indexOf('id="create-label"') !== -1, "New Wallet must accept a label");
+  assert.ok(html.indexOf('id="import-label"') !== -1, "Import Wallet must accept a label");
+  assert.ok(accounts.indexOf('id="watch-account-label"') !== -1, "Watch must accept a label");
+  assert.ok(accounts.indexOf('id="account-group-filter"') !== -1, "Wallets must filter by group");
+  assert.ok(accounts.indexOf('id="account-group-create"') !== -1, "Wallets must create a group");
+  assert.ok(accounts.indexOf('id="account-group-name"') !== -1, "new groups must be labelled");
+  assert.ok(accounts.indexOf('id="account-group-delete"') !== -1, "Wallets must delete a group");
+  assert.ok(ui.indexOf("function onCreateGroup") !== -1, "ui.js must wire group create");
+  assert.ok(ui.indexOf("function onDeleteGroup") !== -1, "ui.js must wire group delete");
+  assert.ok(ui.indexOf("activeGroupId") !== -1, "launch group must be tracked");
+  const uiModGroups = require("./ui.js");
+  assert.strictEqual(uiModGroups.session.activeGroupId, "unassigned");
   const storeSrc = readFile("store.js");
   assert.ok(storeSrc.indexOf("DEFAULT_VAULT_ID") !== -1, "legacy default vault must still load");
   assert.ok(storeSrc.indexOf("MAX_WALLETS") !== -1, "wallet cap must exist");
@@ -567,6 +580,12 @@ test("auto-lock settings: fixed options only, never off, longest is 1 hour", fun
   assert.ok(html.indexOf("cannot be turned off") !== -1, "settings must say auto-lock cannot be disabled");
   assert.ok(html.indexOf("1 hour") !== -1, "settings must state the one-hour cap");
   assert.ok(html.indexOf('data-action="lock"') !== -1, "settings must offer Lock now");
+  assert.ok(html.indexOf('id="settings-config-backup"') !== -1, "settings must offer an explicit YAML config download");
+  assert.ok(html.indexOf("Download configuration") !== -1, "config backup is a labelled control, not automatic");
+  const uiSrc = readFile("ui.js");
+  assert.ok(uiSrc.indexOf("function downloadConfigBackup") !== -1, "config backup must be an explicit function");
+  assert.ok(uiSrc.indexOf("buildConfigBackup") !== -1, "settings backup must emit YAML from store");
+  assert.ok(uiSrc.indexOf('download = "tkrwallet-config.yaml"') !== -1 || uiSrc.indexOf('download = "tkrwallet-config.yml"') !== -1, "backup file is YAML");
   const ui = readFile("ui.js");
   ["lockNow", "scheduleLock", "resetActivity", "visibilitychange", "readStoredAutolock"].forEach(function (fn) {
     assert.ok(ui.indexOf(fn) !== -1, "ui.js must implement " + fn);
@@ -592,8 +611,10 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.37") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.40") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
+  assert.ok(/width:\s*540px/.test(css), "toolbar popup width is 432px + 25%");
+  assert.ok(!/width:\s*432px/.test(css), "432px popup width must be gone");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
     "PWA/tab document must not scroll under #main"
@@ -1032,7 +1053,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v34"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v35"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -1624,6 +1645,125 @@ test("store: multiple wallet ids; first stays default; later ones get a new id",
   assert.strictEqual(row.id, "default");
   assert.strictEqual(row.evmAddress, "0xAbc");
   assert.strictEqual(row.accountCount, 1);
+  assert.strictEqual(row.label, "");
+  assert.strictEqual(row.groupId, s.UNASSIGNED_GROUP_ID);
+});
+
+test("store: account labels trim, cap, and fall back to Account N", function () {
+  const s = require("./store.js");
+  assert.strictEqual(s.normalizeLabel("  Ops desk  "), "Ops desk");
+  assert.strictEqual(s.normalizeLabel("x".repeat(80)).length, 64);
+  assert.strictEqual(s.normalizeLabel("   "), "");
+  assert.strictEqual(s.displayAccountLabel({ label: "Treasury" }, 0), "Treasury");
+  assert.strictEqual(s.displayAccountLabel({ label: "" }, 0), "Account 1");
+  assert.strictEqual(s.displayAccountLabel({}, 3), "Account 4");
+  const labelled = s.vaultPublicRow(
+    { label: "  Cold  ", groupId: "g-aa", accounts: [{ i: 0, evmAddress: "0xAbc" }] },
+    "w-1"
+  );
+  assert.strictEqual(labelled.label, "Cold");
+  assert.strictEqual(labelled.groupId, "g-aa");
+});
+
+test("store: groups always include unassigned; one membership; delete reassigns", function () {
+  const s = require("./store.js");
+  assert.strictEqual(s.UNASSIGNED_GROUP_ID, "unassigned");
+  const empty = s.ensureGroups([]);
+  assert.strictEqual(empty.length, 1);
+  assert.strictEqual(empty[0].id, "unassigned");
+  assert.strictEqual(empty[0].label, "unassigned");
+  const created = s.createGroup([], "  Personal  ");
+  assert.strictEqual(created.length, 2);
+  assert.strictEqual(created[0].id, "unassigned");
+  assert.strictEqual(created[1].label, "Personal");
+  assert.ok(/^g-[0-9a-f]{16}$/.test(created[1].id));
+  assert.throws(function () { s.createGroup([], ""); }, /bad-group-label/);
+  assert.throws(function () { s.createGroup([], "unassigned"); }, /reserved-group/);
+  assert.throws(function () { s.deleteGroup(created, "unassigned"); }, /reserved-group/);
+  const afterDelete = s.deleteGroup(created, created[1].id);
+  assert.strictEqual(afterDelete.length, 1);
+  assert.strictEqual(afterDelete[0].id, "unassigned");
+  assert.strictEqual(s.assignAccountGroup("nope", created), "unassigned");
+  assert.strictEqual(s.assignAccountGroup(created[1].id, created), created[1].id);
+  assert.strictEqual(s.assignAccountGroup("", created), "unassigned");
+  const rows = [
+    { id: "a", groupId: created[1].id },
+    { id: "b", groupId: "unassigned" },
+  ];
+  const moved = s.reassignGroupMembers(rows, created[1].id);
+  assert.strictEqual(moved[0].groupId, "unassigned");
+  assert.strictEqual(moved[1].groupId, "unassigned");
+  const filtered = s.filterAccountsByGroup(
+    [{ id: "a", groupId: "g-1" }, { id: "b", groupId: "" }],
+    "unassigned"
+  );
+  assert.deepStrictEqual(filtered.map(function (r) { return r.id; }), ["b"]);
+});
+
+test("store: YAML config backup is public-only and includes labels, groups, prefs", function () {
+  const s = require("./store.js");
+  const yaml = s.buildConfigBackup({
+    exportedAt: "2026-09-21T12:00:00.000Z",
+    preferences: {
+      autolock_minutes: 15,
+      connect_at_launch: true,
+      currency: "cad",
+      leave_gas_buffer: false,
+    },
+    groups: [{ id: "g-1", label: "Ops" }],
+    accounts: [
+      {
+        id: "default",
+        label: "Treasury",
+        groupId: "g-1",
+        evmAddress: "0xAbc",
+        watches: [{ label: "Cold", evmAddress: "0x1111111111111111111111111111111111111111" }],
+      },
+    ],
+  });
+  assert.ok(yaml.indexOf("tkrwallet_config: 1") !== -1);
+  assert.ok(yaml.indexOf("exported_at:") !== -1);
+  assert.ok(yaml.indexOf("autolock_minutes: 15") !== -1);
+  assert.ok(yaml.indexOf("connect_at_launch: true") !== -1);
+  assert.ok(yaml.indexOf("currency:") !== -1);
+  assert.ok(yaml.indexOf("leave_gas_buffer: false") !== -1);
+  assert.ok(yaml.indexOf("unassigned") !== -1);
+  assert.ok(yaml.indexOf("Ops") !== -1);
+  assert.ok(yaml.indexOf("Treasury") !== -1);
+  assert.ok(yaml.indexOf("0xAbc") !== -1);
+  assert.ok(yaml.indexOf("Cold") !== -1);
+  assert.ok(yaml.indexOf("ciphertext") === -1);
+  assert.ok(yaml.indexOf("mnemonic") === -1);
+  assert.ok(yaml.indexOf("privateKey") === -1);
+  assert.ok(yaml.indexOf("password") === -1);
+  const dirty = s.buildConfigBackup({
+    preferences: {},
+    groups: [],
+    accounts: s.configAccountsFromVaults([
+      {
+        id: "default",
+        label: "Main",
+        groupId: "",
+        ciphertext: "SHOULD-NOT-LEAK",
+        salt: "SHOULD-NOT-LEAK",
+        iv: "SHOULD-NOT-LEAK",
+        mnemonic: "abandon abandon abandon",
+        password: "secret",
+        privateKey: "0xdead",
+        accounts: [
+          { i: 0, evmAddress: "0x9858EfFD232B4033E47d90003D41EC34EcaEda94" },
+          { kind: "watch", label: "Watched", evmAddress: "0x1111111111111111111111111111111111111111" },
+        ],
+      },
+    ]),
+  });
+  assert.ok(dirty.indexOf("SHOULD-NOT-LEAK") === -1);
+  assert.ok(dirty.indexOf("abandon") === -1);
+  assert.ok(dirty.indexOf("secret") === -1);
+  assert.ok(dirty.indexOf("0xdead") === -1);
+  assert.ok(dirty.indexOf("0x9858EfFD232B4033E47d90003D41EC34EcaEda94") !== -1);
+  assert.ok(dirty.indexOf("Watched") !== -1);
+  assert.ok(dirty.indexOf("Main") !== -1);
 });
 
 test("crypto: accountsFromMnemonic lists public addresses only", function () {
@@ -1880,10 +2020,11 @@ test("dev-edge nonce is single-use and session recovers the signer", function ()
 });
 
 test("plaintext mnemonic is never written to IndexedDB or sessionStorage", function () {
-  const storeSave = readFile("store.js").match(/function saveVault\(vault\) \{[\s\S]*?\n  \}/);
-  assert.ok(storeSave, "saveVault must exist");
+  const storeSave = readFile("store.js").match(/function writeVault\(vault, opts\) \{[\s\S]*?\n  \}/);
+  assert.ok(storeSave, "writeVault must persist the vault blob");
   assert.ok(storeSave[0].indexOf("store.put(vault") !== -1, "IndexedDB holds the vault blob only");
-  assert.ok(storeSave[0].indexOf("mnemonic") === -1, "saveVault must not mention the recovery phrase");
+  assert.ok(storeSave[0].indexOf("mnemonic") === -1, "vault persist must not mention the recovery phrase");
+  assert.ok(readFile("store.js").indexOf("function saveVault") !== -1, "saveVault must still exist");
   const save = readFile("ui.js").match(/function saveViewSession\(\) \{[\s\S]*?\n  \}/);
   assert.ok(save[0].indexOf("mnemonic") === -1, "viewing session must never mention the recovery phrase");
   assert.ok(save[0].indexOf("privateKey") === -1, "viewing session must never mention a private key");
@@ -2637,6 +2778,7 @@ test("Send QR camera: popup cannot prompt; errors stay honest", function () {
   assert.ok(src.indexOf("getUserMedia({ video: true, audio: false })") !== -1);
   assert.ok(src.indexOf("chrome.tabs.create") !== -1, "toolbar popup must open a tab to request camera");
   assert.strictEqual(ui.cameraShellCannotPrompt("", "chrome-extension:", 432), true);
+  assert.strictEqual(ui.cameraShellCannotPrompt("", "chrome-extension:", 540), true);
   assert.strictEqual(ui.cameraShellCannotPrompt("", "chrome-extension:", 1200), false);
   assert.strictEqual(ui.cameraShellCannotPrompt("?mode=panel", "chrome-extension:", 1200), true);
   assert.strictEqual(ui.cameraShellCannotPrompt("", "https:", 432), false);

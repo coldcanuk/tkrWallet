@@ -84,9 +84,9 @@
 
   html.extension-popup,
   html.extension-popup body {
-    width: 432px;
-    min-width: 432px;
-    max-width: 432px;
+    width: 540px;
+    min-width: 540px;
+    max-width: 540px;
     /* 580, not 600: Chromium clamps the action window near 600 and a
      * 600px document plus chrome produces the outer scrollbar. */
     height: 580px;

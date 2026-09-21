@@ -76,7 +76,7 @@
       return true;
     }
     var w = Number(innerWidth);
-    return isFinite(w) && w > 0 && w <= 520;
+    return isFinite(w) && w > 0 && w <= 600;
   }
 
   function wantsAutoScan(search) {
@@ -1055,6 +1055,55 @@
     return "A" + String(n + 1);
   }
 
+  function unassignedGroupId() {
+    var s = store();
+    return (s && s.UNASSIGNED_GROUP_ID) || "unassigned";
+  }
+
+  function activeGroupId() {
+    return session.activeGroupId || unassignedGroupId();
+  }
+
+  function accountCaption(row, index) {
+    var s = store();
+    if (s && typeof s.displayAccountLabel === "function") {
+      return s.displayAccountLabel(row, index);
+    }
+    return "Account " + (Number(index) + 1);
+  }
+
+  function readAccountLabelField(id) {
+    var s = store();
+    var raw = ((el(id) || {}).value || "");
+    if (s && typeof s.normalizeLabel === "function") {
+      return s.normalizeLabel(raw);
+    }
+    return String(raw).trim().slice(0, 64);
+  }
+
+  function fillGroupSelect(sel, groups, selected) {
+    if (!sel) {
+      return;
+    }
+    while (sel.firstChild) {
+      sel.removeChild(sel.firstChild);
+    }
+    var i;
+    var g;
+    var opt;
+    for (i = 0; i < (groups || []).length; i++) {
+      g = groups[i];
+      if (!g) {
+        continue;
+      }
+      opt = document.createElement("option");
+      opt.value = g.id;
+      opt.textContent = g.label || g.id;
+      sel.appendChild(opt);
+    }
+    sel.value = selected;
+  }
+
   function isWatchRow(acc) {
     var c = crypto();
     if (c && typeof c.isWatchAccount === "function") {
@@ -1187,7 +1236,11 @@
       list.removeChild(list.firstChild);
     }
     var s = store();
-    function paintWatches(startN) {
+    var groupId = activeGroupId();
+    function paintWatches(startN, show) {
+      if (!show) {
+        return;
+      }
       var accounts = session.accounts || [];
       var watchN = 0;
       var n = startN || 0;
@@ -1201,12 +1254,13 @@
           acc.evmAddress &&
           session.address &&
           String(acc.evmAddress).toLowerCase() === String(session.address).toLowerCase();
+        var caption = accountCaption(acc, watchN - 1);
         appendDrawerDot(list, {
           n: n,
           current: mine,
           dot: "W" + watchN,
-          label: "Watch " + watchN,
-          caption: "Watch " + watchN,
+          label: caption,
+          caption: caption,
           onClick: function () {
             switchToAccount(acc);
           },
@@ -1214,44 +1268,71 @@
         n += 1;
       });
     }
-    function paintWalletRows(rows) {
+    function paintWalletRows(rows, groups) {
+      var visible =
+        s && typeof s.filterAccountsByGroup === "function"
+          ? s.filterAccountsByGroup(rows, groupId)
+          : rows;
+      var groupLabel = unassignedGroupId();
+      var g;
+      for (g = 0; g < (groups || []).length; g++) {
+        if (groups[g] && groups[g].id === groupId) {
+          groupLabel = groups[g].label || groups[g].id;
+          break;
+        }
+      }
+      setText(el("account-drawer-group"), groupLabel);
       var n = 0;
-      (rows || []).forEach(function (row, i) {
+      var currentVisible = false;
+      (visible || []).forEach(function (row) {
+        var allIndex = (rows || []).indexOf(row);
+        if (allIndex < 0) {
+          allIndex = n;
+        }
         var current = row && row.id && session.walletId && String(row.id) === String(session.walletId);
+        if (current) {
+          currentVisible = true;
+        }
+        var caption = accountCaption(row, allIndex);
         appendDrawerDot(list, {
           n: n,
-          current: current || (!session.walletId && i === 0 && session.address && row.evmAddress && String(row.evmAddress).toLowerCase() === String(session.address).toLowerCase()),
-          dot: accountDotLabel(i),
-          label: "Wallet " + (i + 1),
-          caption: "Wallet " + (i + 1),
+          current: current || (!session.walletId && allIndex === 0 && session.address && row.evmAddress && String(row.evmAddress).toLowerCase() === String(session.address).toLowerCase()),
+          dot: accountDotLabel(allIndex),
+          label: caption,
+          caption: caption,
           onClick: function () {
             switchWallet(row.id);
           },
         });
         n += 1;
       });
-      paintWatches(n);
+      paintWatches(n, currentVisible);
     }
     if (!s || typeof s.listVaults !== "function") {
-      paintWatches(0);
+      setText(el("account-drawer-group"), unassignedGroupId());
+      paintWatches(0, true);
       return;
     }
-    s.listVaults()
-      .then(function (rows) {
+    var groupsP = typeof s.listGroups === "function" ? s.listGroups() : Promise.resolve([]);
+    Promise.all([s.listVaults(), groupsP])
+      .then(function (pair) {
         if (!list || list !== el("account-list")) {
           return;
         }
         while (list.firstChild) {
           list.removeChild(list.firstChild);
         }
+        var rows = pair[0];
+        var groups = pair[1];
         if (!rows || !rows.length) {
-          paintWatches(0);
+          setText(el("account-drawer-group"), unassignedGroupId());
+          paintWatches(0, true);
           return;
         }
-        paintWalletRows(rows);
+        paintWalletRows(rows, groups);
       })
       .catch(function () {
-        paintWatches(0);
+        paintWatches(0, true);
       });
   }
 
@@ -1295,8 +1376,9 @@
       watchSubmit.disabled = !!watchCap;
     }
     var s = store();
-    function paintWatches() {
-      if (!session.phrase || !accounts.length) {
+    var groupId = activeGroupId();
+    function paintWatches(show) {
+      if (!show || !session.phrase || !accounts.length) {
         return;
       }
       var watchShown = 0;
@@ -1317,7 +1399,7 @@
         btn.className =
           "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-card bg-ink-950 px-4 text-left ring-1 ring-inset ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400";
         label.className = "text-sm text-cream-100";
-        label.textContent = "Watch " + watchShown + (mine ? " (current)" : "");
+        label.textContent = accountCaption(acc, watchShown - 1) + (mine ? " (current)" : "");
         meta.className = "tnum truncate text-xs text-cream-500";
         meta.textContent = acc && acc.evmAddress ? shortAddress(acc.evmAddress) : "";
         btn.appendChild(label);
@@ -1332,46 +1414,209 @@
         showGateError("watch-account-error", "This vault already has the maximum of 20 watch addresses.");
       }
     }
+    function paintWalletCard(row, allIndex, groups, current) {
+      var wrap = document.createElement("div");
+      var labelInput = document.createElement("input");
+      var groupSel = document.createElement("select");
+      var switchBtn = document.createElement("button");
+      var meta = document.createElement("p");
+      wrap.className = "mt-2 rounded-card bg-ink-950 px-3 py-3 ring-1 ring-inset ring-white/10";
+      labelInput.type = "text";
+      labelInput.maxLength = 64;
+      labelInput.value = (row && row.label) || "";
+      labelInput.placeholder = accountCaption(row, allIndex);
+      labelInput.setAttribute("aria-label", "Account label");
+      labelInput.className =
+        "min-h-11 w-full rounded-full bg-ink-900 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none";
+      labelInput.addEventListener("change", function () {
+        if (!s || typeof s.patchVaultMeta !== "function") {
+          return;
+        }
+        s.patchVaultMeta(row.id, { label: labelInput.value })
+          .then(function () {
+            renderAccountsManage();
+            renderAccountDrawer();
+          })
+          .catch(function () {
+            showGateError("account-group-error", "Could not save that label.");
+          });
+      });
+      groupSel.setAttribute("aria-label", "Account group");
+      groupSel.className =
+        "mt-2 min-h-11 w-full rounded-full bg-ink-900 px-4 text-sm text-cream-100 ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-ember-400 focus:outline-none";
+      fillGroupSelect(
+        groupSel,
+        groups,
+        s && typeof s.assignAccountGroup === "function"
+          ? s.assignAccountGroup(row && row.groupId, groups)
+          : unassignedGroupId()
+      );
+      groupSel.addEventListener("change", function () {
+        if (!s || typeof s.patchVaultMeta !== "function") {
+          return;
+        }
+        s.patchVaultMeta(row.id, { groupId: groupSel.value })
+          .then(function () {
+            renderAccountsManage();
+            renderAccountDrawer();
+          })
+          .catch(function () {
+            showGateError("account-group-error", "Could not move that account.");
+          });
+      });
+      switchBtn.type = "button";
+      switchBtn.className =
+        "mt-2 min-h-11 w-full rounded-full bg-ink-900 text-sm font-medium text-ember-400 ring-1 ring-inset ring-white/10 hover:ring-ember-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400";
+      switchBtn.textContent = current ? "Current" : "Switch";
+      switchBtn.addEventListener("click", function () {
+        switchWallet(row.id);
+      });
+      meta.className = "mt-2 tnum truncate text-xs text-cream-500";
+      meta.textContent = row && row.evmAddress ? shortAddress(row.evmAddress) : "";
+      wrap.appendChild(labelInput);
+      wrap.appendChild(groupSel);
+      wrap.appendChild(switchBtn);
+      wrap.appendChild(meta);
+      list.appendChild(wrap);
+    }
     if (!s || typeof s.listVaults !== "function") {
-      paintWatches();
+      paintWatches(true);
       return;
     }
-    s.listVaults()
-      .then(function (rows) {
+    var groupsP = typeof s.listGroups === "function" ? s.listGroups() : Promise.resolve([]);
+    Promise.all([s.listVaults(), groupsP])
+      .then(function (pair) {
         if (!list) {
           return;
         }
-        if (!rows || !rows.length) {
+        var rows = pair[0] || [];
+        var groups = pair[1] || [];
+        fillGroupSelect(el("account-group-filter"), groups, groupId);
+        var del = el("account-group-delete");
+        if (del) {
+          del.disabled = groupId === unassignedGroupId();
+        }
+        var visible =
+          typeof s.filterAccountsByGroup === "function"
+            ? s.filterAccountsByGroup(rows, groupId)
+            : rows;
+        if (!rows.length) {
           var empty = document.createElement("p");
           empty.className = "text-xs leading-relaxed text-cream-500";
           empty.textContent = "No wallet on this device yet. New Wallet or Import Wallet adds one.";
           list.appendChild(empty);
           return;
         }
-        rows.forEach(function (row, n) {
-          var btn = document.createElement("button");
-          var label = document.createElement("span");
-          var meta = document.createElement("span");
+        if (!visible.length) {
+          var none = document.createElement("p");
+          none.className = "text-xs leading-relaxed text-cream-500";
+          none.textContent = "No accounts in this group. Move an account here or create a new wallet.";
+          list.appendChild(none);
+          return;
+        }
+        var currentVisible = false;
+        visible.forEach(function (row) {
+          var allIndex = rows.indexOf(row);
+          if (allIndex < 0) {
+            allIndex = 0;
+          }
           var current = row && row.id && session.walletId && String(row.id) === String(session.walletId);
-          btn.type = "button";
-          btn.className =
-            "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-card bg-ink-950 px-4 text-left ring-1 ring-inset ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-400";
-          label.className = "text-sm text-cream-100";
-          label.textContent = "Wallet " + (n + 1) + (current ? " (current)" : "");
-          meta.className = "tnum truncate text-xs text-cream-500";
-          meta.textContent = row && row.evmAddress ? shortAddress(row.evmAddress) : "";
-          btn.appendChild(label);
-          btn.appendChild(meta);
-          btn.setAttribute("aria-current", current ? "true" : "false");
-          btn.addEventListener("click", function () {
-            switchWallet(row.id);
-          });
-          list.appendChild(btn);
+          if (current) {
+            currentVisible = true;
+          }
+          paintWalletCard(row, allIndex, groups, current);
         });
-        paintWatches();
+        paintWatches(currentVisible);
       })
       .catch(function () {
-        paintWatches();
+        paintWatches(true);
+      });
+  }
+
+  function onGroupFilterChange() {
+    var sel = el("account-group-filter");
+    session.activeGroupId = (sel && sel.value) || unassignedGroupId();
+    showGateError("account-group-error", null);
+    renderAccountsManage();
+    renderAccountDrawer();
+  }
+
+  function onCreateGroup() {
+    var s = store();
+    if (!s || typeof s.createGroup !== "function" || typeof s.saveGroups !== "function") {
+      showGateError("account-group-error", "Groups are unavailable in this browser.");
+      return;
+    }
+    var name = ((el("account-group-name") || {}).value || "");
+    s.listGroups()
+      .then(function (groups) {
+        var next = s.createGroup(groups, name);
+        return s.saveGroups(next).then(function (saved) {
+          session.activeGroupId = saved[saved.length - 1].id;
+          var input = el("account-group-name");
+          if (input) {
+            input.value = "";
+          }
+          showGateError("account-group-error", null);
+          renderAccountsManage();
+          renderAccountDrawer();
+        });
+      })
+      .catch(function (err) {
+        var msg = "Could not create that group.";
+        if (err && err.message === "bad-group-label") {
+          msg = "Enter a group label.";
+        } else if (err && err.message === "reserved-group") {
+          msg = "unassigned already exists and cannot be created again.";
+        } else if (err && err.message === "group-cap") {
+          msg = "This device already has the maximum of 20 groups.";
+        }
+        showGateError("account-group-error", msg);
+      });
+  }
+
+  function onDeleteGroup() {
+    var s = store();
+    var id = activeGroupId();
+    if (!s || typeof s.deleteGroup !== "function") {
+      showGateError("account-group-error", "Groups are unavailable in this browser.");
+      return;
+    }
+    if (id === unassignedGroupId()) {
+      showGateError("account-group-error", "unassigned cannot be deleted.");
+      return;
+    }
+    s.listGroups()
+      .then(function (groups) {
+        var next = s.deleteGroup(groups, id);
+        return s.listVaults().then(function (rows) {
+          var chain = Promise.resolve();
+          (rows || []).forEach(function (row) {
+            if (!row || s.normalizeGroupId(row.groupId) !== id) {
+              return;
+            }
+            chain = chain.then(function () {
+              return s.patchVaultMeta(row.id, { groupId: unassignedGroupId() });
+            });
+          });
+          return chain.then(function () {
+            return s.saveGroups(next);
+          });
+        });
+      })
+      .then(function () {
+        session.activeGroupId = unassignedGroupId();
+        showGateError("account-group-error", null);
+        renderAccountsManage();
+        renderAccountDrawer();
+      })
+      .catch(function (err) {
+        showGateError(
+          "account-group-error",
+          err && err.message === "reserved-group"
+            ? "unassigned cannot be deleted."
+            : "Could not delete that group."
+        );
       });
   }
 
@@ -3771,7 +4016,7 @@
 
   /* ---- wallet gate: unlock with password, or import a recovery phrase ----- */
 
-  var session = { vault: null, address: null, solAddress: null, tronAddress: null, locked: false, index: 0, phrase: null, accounts: [], watch: false, walletId: null, pendingWalletId: null };
+  var session = { vault: null, address: null, solAddress: null, tronAddress: null, locked: false, index: 0, phrase: null, accounts: [], watch: false, walletId: null, pendingWalletId: null, activeGroupId: "unassigned" };
   var edgeConnected = false;
   var reconnectOnUnlock = false;
   var pendingCreate = null;
@@ -4171,6 +4416,59 @@
     setWalletStatus("Saved.");
   }
 
+  function collectConfigBackup() {
+    var s = store();
+    if (!s || typeof s.buildConfigBackup !== "function") {
+      return Promise.reject(new Error("no-store"));
+    }
+    var groupsP = typeof s.listGroups === "function" ? s.listGroups() : Promise.resolve([]);
+    var vaultsP = typeof s.listVaults === "function" ? s.listVaults() : Promise.resolve([]);
+    return Promise.all([groupsP, vaultsP]).then(function (pair) {
+      return s.buildConfigBackup({
+        preferences: {
+          autolock_minutes: state.autolockMinutes,
+          connect_at_launch: readStoredConnectAtLaunch(),
+          currency: state.currency,
+          leave_gas_buffer: readLeaveGasBuffer(),
+        },
+        groups: pair[0],
+        accounts: typeof s.configAccountsFromVaults === "function" ? s.configAccountsFromVaults(pair[1]) : [],
+      });
+    });
+  }
+
+  function downloadConfigBackup() {
+    setText(el("settings-config-backup-status"), "Preparing YAML\u2026");
+    return collectConfigBackup()
+      .then(function (yaml) {
+        if (typeof document !== "undefined" && yaml) {
+          var blob = new Blob([yaml], { type: "text/yaml" });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.href = url;
+          a.download = "tkrwallet-config.yaml";
+          a.rel = "noopener";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(function () {
+            try {
+              URL.revokeObjectURL(url);
+            } catch (e) {
+              /* ignore */
+            }
+          }, 1000);
+        }
+        setText(el("settings-config-backup-status"), "Downloaded tkrwallet-config.yaml.");
+        setWalletStatus("Configuration YAML downloaded. Keys were not included.");
+        return yaml;
+      })
+      .catch(function () {
+        setText(el("settings-config-backup-status"), "Could not build the configuration file.");
+        setWalletStatus("Configuration download failed.");
+      });
+  }
+
   function readStoredConnectAtLaunch() {
     try {
       return root.localStorage && root.localStorage.getItem(CONNECT_AT_LAUNCH_KEY) === "1";
@@ -4437,6 +4735,8 @@
       .then(function (vault) {
         vault.accounts = c.accountsFromMnemonic(phrase, 1);
         vault.selectedIndex = 0;
+        vault.label = readAccountLabelField("import-label");
+        vault.groupId = activeGroupId();
         return s.saveVault(vault);
       })
       .then(function (vault) {
@@ -4444,6 +4744,10 @@
         session.pendingWalletId = null;
         session.accounts = c.accountsFromMnemonic(phrase, 1);
         revealAccount(phrase, 0);
+        var importLabel = el("import-label");
+        if (importLabel) {
+          importLabel.value = "";
+        }
         closeGate();
       })
       .catch(function (err) {
@@ -4551,6 +4855,8 @@
       .then(function (vault) {
         vault.accounts = c.accountsFromMnemonic(phrase, 1);
         vault.selectedIndex = 0;
+        vault.label = readAccountLabelField("create-label");
+        vault.groupId = activeGroupId();
         return s.saveVault(vault);
       })
       .then(function (vault) {
@@ -4558,6 +4864,10 @@
         session.pendingWalletId = null;
         session.accounts = c.accountsFromMnemonic(phrase, 1);
         revealAccount(phrase, 0);
+        var createLabel = el("create-label");
+        if (createLabel) {
+          createLabel.value = "";
+        }
         wipeSecrets();
         closeGate();
       })
@@ -4743,6 +5053,7 @@
           showGateError("watch-account-error", "This vault already has the maximum of 20 watch addresses.");
           return;
         }
+        row.label = readAccountLabelField("watch-account-label");
         accounts.push(row);
         vault.accounts = accounts;
         vault.selectedKind = "watch";
@@ -4752,6 +5063,10 @@
           var input = el("watch-account-address");
           if (input) {
             input.value = "";
+          }
+          var watchLabel = el("watch-account-label");
+          if (watchLabel) {
+            watchLabel.value = "";
           }
           showGateError("watch-account-error", null);
           revealWatchAccount(row.evmAddress);
@@ -5288,7 +5603,7 @@
     );
     applyQuoteExpiryUi();
     /* In-app sheet only — never native top-layer dialogs. Chrome MV3 popup is
-     * 432×600; browser top-layer UI paints outside the extension window. */
+     * 540×580; browser top-layer UI paints outside the extension window. */
     var dlg = el("swap-quote-dialog");
     if (!dlg) {
       return;
@@ -6281,6 +6596,28 @@
         saveSettings();
       });
     }
+    var settingsBackup = el("settings-config-backup");
+    if (settingsBackup) {
+      settingsBackup.addEventListener("click", function () {
+        downloadConfigBackup();
+      });
+    }
+    var groupFilter = el("account-group-filter");
+    if (groupFilter) {
+      groupFilter.addEventListener("change", onGroupFilterChange);
+    }
+    var groupCreate = el("account-group-create");
+    if (groupCreate) {
+      groupCreate.addEventListener("click", function () {
+        onCreateGroup();
+      });
+    }
+    var groupDelete = el("account-group-delete");
+    if (groupDelete) {
+      groupDelete.addEventListener("click", function () {
+        onDeleteGroup();
+      });
+    }
 
     var walletNew = el("wallet-new");
     if (walletNew) {
@@ -6732,6 +7069,8 @@
     lockNow: lockNow,
     setAutolock: setAutolock,
     saveSettings: saveSettings,
+    downloadConfigBackup: downloadConfigBackup,
+    collectConfigBackup: collectConfigBackup,
     session: session,
     uiData: uiData,
     bind: bind,
