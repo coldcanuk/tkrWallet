@@ -1544,7 +1544,7 @@
           chain_id: 8453,
           tx_hash: cr.tx_hash,
           kind: "base",
-          at: 0,
+          at: Number(cr.at) || 0,
           source: "chain",
         });
       }
