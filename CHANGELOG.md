@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.31 — 2026-09-20
+
+### Added
+- Activity merges Scratchpost Base chain txs (`cdp_listAddressTransactions`
+  on the desk) with local broadcasts. The PWA never calls Coinbase.
+
 ## 0.10.30 — 2026-09-20
 
 ### Fixed

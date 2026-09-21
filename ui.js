@@ -1420,56 +1420,88 @@
       a.textContent = spec.name + " explorer";
       explorers.appendChild(a);
     }
-    if (session.watch) {
-      var watchNote = document.createElement("p");
-      watchNote.className = "px-4 py-3 text-sm text-cream-500";
-      watchNote.textContent = "Watch address. This device does not broadcast.";
-      list.appendChild(watchNote);
-      return;
-    }
-    var s = store();
-    if (!s || typeof s.listActivity !== "function" || !session.walletId) {
-      var empty = document.createElement("p");
-      empty.className = "px-4 py-3 text-sm text-cream-500";
-      empty.textContent = "No broadcasts from this device yet.";
-      list.appendChild(empty);
-      return;
-    }
-    s.listActivity(session.walletId)
-      .then(function (rows) {
-        list.textContent = "";
-        if (!rows || !rows.length) {
-          var none = document.createElement("p");
-          none.className = "px-4 py-3 text-sm text-cream-500";
-          none.textContent = "No broadcasts from this device yet.";
-          list.appendChild(none);
-          return;
+    var data = root.tkrWalletData;
+    var localP =
+      session.watch || !session.walletId
+        ? Promise.resolve([])
+        : store() && typeof store().listActivity === "function"
+          ? store().listActivity(session.walletId).catch(function () {
+              return [];
+            })
+          : Promise.resolve([]);
+    var chainP =
+      data && typeof data.getBaseActivity === "function"
+        ? data.getBaseActivity(addr).then(function (r) {
+            return r && r.state === "ok" ? r.items || [] : [];
+          })
+        : Promise.resolve([]);
+    Promise.all([localP, chainP]).then(function (pair) {
+      var localRows = pair[0] || [];
+      var chainRows = pair[1] || [];
+      list.textContent = "";
+      var seen = {};
+      var merged = [];
+      var n;
+      for (n = 0; n < localRows.length; n++) {
+        var lr = localRows[n];
+        var lh = String(lr.tx_hash || "").toLowerCase();
+        if (lh) {
+          seen[lh] = true;
         }
-        var n;
-        for (n = 0; n < rows.length; n++) {
-          var row = rows[n];
-          var txHref = explorerTxUrl(row.chain_id, row.tx_hash);
-          var line = document.createElement(txHref ? "a" : "p");
-          line.className = "block px-4 py-3 text-sm text-cream-100 ring-1 ring-inset ring-white/10";
-          if (txHref) {
-            line.href = txHref;
-            line.target = "_blank";
-            line.rel = "noopener noreferrer";
-            line.className += " text-ember-400";
-          }
-          var when = row.at ? new Date(Number(row.at)).toISOString().slice(0, 19).replace("T", " ") + " UTC" : "";
-          var label = (row.kind || "tx") + " · " + (row.symbol || "") + " · " + String(row.tx_hash || "").slice(0, 10) + "…";
-          line.textContent = when ? when + " · " + label : label;
-          list.appendChild(line);
+        merged.push({
+          chain_id: lr.chain_id,
+          tx_hash: lr.tx_hash,
+          kind: lr.kind || "tx",
+          at: lr.at,
+          source: "local",
+        });
+      }
+      for (n = 0; n < chainRows.length; n++) {
+        var cr = chainRows[n];
+        var ch = String(cr.tx_hash || "").toLowerCase();
+        if (!ch || seen[ch]) {
+          continue;
         }
-      })
-      .catch(function () {
-        list.textContent = "";
-        var fail = document.createElement("p");
-        fail.className = "px-4 py-3 text-sm text-cream-500";
-        fail.textContent = "Could not read local broadcasts.";
-        list.appendChild(fail);
-      });
+        seen[ch] = true;
+        merged.push({
+          chain_id: 8453,
+          tx_hash: cr.tx_hash,
+          kind: "base",
+          at: 0,
+          source: "chain",
+        });
+      }
+      if (session.watch && !merged.length) {
+        var watchNote = document.createElement("p");
+        watchNote.className = "px-4 py-3 text-sm text-cream-500";
+        watchNote.textContent = "Watch address. This device does not broadcast.";
+        list.appendChild(watchNote);
+        return;
+      }
+      if (!merged.length) {
+        var none = document.createElement("p");
+        none.className = "px-4 py-3 text-sm text-cream-500";
+        none.textContent = "No broadcasts from this device yet.";
+        list.appendChild(none);
+        return;
+      }
+      for (n = 0; n < merged.length; n++) {
+        var row = merged[n];
+        var txHref = explorerTxUrl(row.chain_id, row.tx_hash);
+        var line = document.createElement(txHref ? "a" : "p");
+        line.className = "block px-4 py-3 text-sm text-cream-100 ring-1 ring-inset ring-white/10";
+        if (txHref) {
+          line.href = txHref;
+          line.target = "_blank";
+          line.rel = "noopener noreferrer";
+          line.className += " text-ember-400";
+        }
+        var when = row.at ? new Date(Number(row.at)).toISOString().slice(0, 19).replace("T", " ") + " UTC" : "";
+        var label = (row.kind || "tx") + " · " + String(row.tx_hash || "").slice(0, 10) + "…";
+        line.textContent = when ? when + " · " + label : label;
+        list.appendChild(line);
+      }
+    });
   }
 
   var copyResetTimer = null;

@@ -427,6 +427,30 @@
   /* Metadata for an arbitrary ERC-20 the user added by address — the edge reads
    * symbol()/decimals() so the client never ships a table of every token.
    * { state: "ok", token } | { state: "unknown", reason }. */
+  function getBaseActivity(address, fetchFn) {
+    fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
+    if (!fetchFn) {
+      return Promise.resolve({ state: "unknown", items: [], reason: "no-fetch" });
+    }
+    var q = "address=" + encodeURIComponent(String(address || "")) + "&chain=base";
+    return fetchFn(apiUrl("/api/wallet/activity?" + q))
+      .then(function (res) {
+        return res.json().then(function (body) {
+          return { ok: res.ok, status: res.status, body: body };
+        });
+      })
+      .then(function (r) {
+        var items = r.body && Array.isArray(r.body.items) ? r.body.items : [];
+        if (!r.ok) {
+          return { state: "unknown", items: [], reason: (r.body && r.body.error) || "HTTP " + r.status };
+        }
+        return { state: "ok", items: items };
+      })
+      .catch(function () {
+        return { state: "unknown", items: [], reason: "edge-unreachable" };
+      });
+  }
+
   function getTokenMeta(chainId, address, fetchFn) {
     fetchFn = fetchFn || (typeof fetch === "function" ? fetch : null);
     if (!fetchFn) {
@@ -875,6 +899,7 @@
     listPendingSigns: listPendingSigns,
     broadcastRaw: broadcastRaw,
     getTokenMeta: getTokenMeta,
+    getBaseActivity: getBaseActivity,
     estimateValue: estimateValue,
     splitHoldings: splitHoldings,
     mineHoldings: mineHoldings,
