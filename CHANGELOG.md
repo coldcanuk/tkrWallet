@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.34 — 2026-09-20
+
+### Fixed
+- Empty this chain requires Connect (same as Swap), names the selected chain
+  in the confirm, and shows `no_session` instead of failing silently. The
+  Chrome popup must stay open until it says Emptied.
+
 ## 0.10.33 — 2026-09-20
 
 ### Changed

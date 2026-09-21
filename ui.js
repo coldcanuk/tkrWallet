@@ -2312,6 +2312,12 @@
       openGate("unlock");
       return;
     }
+    if (!edgeConnected) {
+      pendingEmpty = null;
+      setText(el("send-note"), "Connect to Scratchpost first. Nothing was signed.");
+      setWalletStatus("Unlock and Connect first.");
+      return;
+    }
     var chainId = Number((el("send-chain") || {}).value || 1);
     var to = String((el("send-to") || {}).value || "").trim();
     if (!to) {
@@ -2322,10 +2328,12 @@
     var plan = planEmptyChain(uiData.lastHoldings, chainId);
     if (!plan.length) {
       pendingEmpty = null;
-      setText(el("send-note"), "No holdings on this chain to empty.");
+      setText(el("send-note"), "No holdings on this chain to empty. Check the Chain selector.");
       return;
     }
     var key = Number(chainId) + ":" + to.toLowerCase();
+    var chainMeta = root.tkrWalletData && root.tkrWalletData.CHAINS[chainId];
+    var chainName = (chainMeta && chainMeta.name) || ("chain " + chainId);
     if (!pendingEmpty || pendingEmpty.key !== key) {
       pendingEmpty = { key: key, chainId: chainId, to: to, plan: plan };
       var names = plan
@@ -2341,9 +2349,11 @@
           (plan.length === 1 ? "" : "s") +
           " (" +
           names +
-          ") to " +
+          ") on " +
+          chainName +
+          " to " +
           shortAddress(to) +
-          ". Tokens first, then native. This cannot be undone."
+          ". Tokens first, then native. Keep this window open. This cannot be undone."
       );
       return;
     }
@@ -2356,7 +2366,7 @@
       if (i >= steps.length) {
         setText(
           el("send-note"),
-          "Emptied " + steps.length + " holding" + (steps.length === 1 ? "" : "s") + " on this chain."
+          "Emptied " + steps.length + " holding" + (steps.length === 1 ? "" : "s") + " on " + chainName + "."
         );
         setWalletStatus("Sent. Key stayed on this device.");
         refreshBalances();
@@ -2366,12 +2376,17 @@
       i += 1;
       setText(
         el("send-note"),
-        "Emptying " + i + " of " + steps.length + " (" + (step.symbol || step.token) + ")\u2026"
+        "Emptying " + i + " of " + steps.length + " (" + (step.symbol || step.token) + ") on " + chainName + "\u2026"
       );
       return broadcastSend(cid, dest, "max", step.token).then(next);
     }
-    withBusy(next, "Emptying this chain on Scratchpost\u2026").catch(function () {
-      setText(el("send-note"), "Empty this chain stopped. Nothing further was signed off-device.");
+    withBusy(next, "Emptying " + chainName + " on Scratchpost\u2026").catch(function (err) {
+      var why = err && err.message ? String(err.message) : "";
+      if (why === "no_session") {
+        setText(el("send-note"), "Connect to Scratchpost first. Nothing was signed.");
+        return;
+      }
+      setText(el("send-note"), "Empty this chain stopped (" + (why || "send failed") + "). Nothing further was signed off-device.");
     });
   }
 
@@ -5479,7 +5494,10 @@
     }
     if (sendTo) {
       sendTo.addEventListener("input", function () {
-        pendingEmpty = null;
+        var now = String(sendTo.value || "").trim().toLowerCase();
+        if (pendingEmpty && String(pendingEmpty.to || "").toLowerCase() !== now) {
+          pendingEmpty = null;
+        }
       });
     }
     var receiveChain = el("receive-chain");
