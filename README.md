@@ -89,10 +89,10 @@ and remediations): [`docs/reviews/2026-09-14-technical-review.md`](docs/reviews/
 - Service worker: network-first shell, offline fallback, same-origin only,
   `/api/*` never cached.
 - Swap pipeline: **Quote** → review the in-app sheet → **Accept quote** →
-  **Swap Now**. Confirmation stays inside the wallet chrome (no top-layer
-  `<dialog>`), so the Chrome extension popup works. Swap Now stays disabled
-  until the quote is accepted and greys out when it expires. Activity is
-  device-local (the chain nodes are pruned).
+  **Swap Now**. The Swap screen lists Quote / Accept / Build / Sign / Broadcast.
+  Failures name the step and the Scratchpost error. Confirmation stays inside
+  the wallet chrome (no top-layer dialog). Swap Now stays disabled until Accept
+  and greys out when the quote expires. Activity is device-local.
 
 ## Wallet custody model
 
