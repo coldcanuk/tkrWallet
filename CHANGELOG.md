@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.40 — 2026-09-21
+
+### Added
+- Account labels on New Wallet, Import, and Watch. Groups organise wallets;
+  the launch group is **unassigned**. Delete a group to move its wallets back
+  to unassigned. A wallet is in one group.
+- Settings **Download configuration** writes a YAML file of public addresses,
+  groups, labels, and preferences. Keys stay on this device.
+
+### Changed
+- Toolbar popup width is **540px** (432px + 25%). Height stays 580px.
+
 ## 0.10.39 — 2026-09-21
 
 ### Fixed
