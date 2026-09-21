@@ -587,7 +587,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.35") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.36") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -1027,7 +1027,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v32"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v33"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -1795,8 +1795,42 @@ test("connect/sign: unlocked RAM holds the phrase; viewing session and IndexedDB
   assert.ok(wallet.indexOf("/api/wallet/session") !== -1, "wallet.js posts the signature to the same origin");
   assert.ok(wallet.indexOf("/api/wallet/broadcast") !== -1, "wallet.js broadcasts raw to the same origin");
   assert.ok(wallet.indexOf("/api/wallet/pending-signs") !== -1, "wallet.js polls IcePike-requested unsigned txs");
+  assert.ok(wallet.indexOf("/api/wallet/me") !== -1, "wallet.js reads Connect IPs from /me");
+  assert.ok(wallet.indexOf("/api/wallet/ip") !== -1, "wallet.js exposes whatismyip for agents");
   assert.ok(wallet.indexOf("tkrwallet.scratchpost.ai") !== -1);
   assert.ok(wallet.indexOf("18899") === -1, "client never dials the origin loopback");
+});
+
+test("Connect IP line is public addresses only", function () {
+  const ui = require("./ui.js");
+  assert.strictEqual(ui.formatConnectIp("203.0.113.9", "2001:db8::1"), "Connect: 203.0.113.9,2001:db8::1");
+  assert.strictEqual(ui.formatConnectIp("", null), "Connect: \u2014,\u2014");
+  const html = readFile("index.html");
+  assert.ok(html.indexOf('id="connect-ip"') !== -1);
+  assert.ok(/Connect:/.test(html));
+  const src = readFile("ui.js");
+  assert.ok(src.indexOf("getSessionMe") !== -1);
+  assert.ok(src.indexOf("refreshConnectIp") !== -1);
+});
+
+test("getClientIp hits /api/wallet/ip with credentials", function () {
+  const wallet = require("./wallet.js");
+  const calls = [];
+  return wallet.getClientIp(function (url, opts) {
+    calls.push({ url: url, credentials: opts && opts.credentials, method: opts && opts.method });
+    return Promise.resolve({
+      ok: true,
+      json: function () {
+        return Promise.resolve({ ok: true, address: "0xabc", ipv4: "203.0.113.9", ipv6: null });
+      },
+    });
+  }).then(function (got) {
+    assert.ok(String(calls[0].url).indexOf("/api/wallet/ip") !== -1);
+    assert.strictEqual(calls[0].credentials, "include");
+    assert.strictEqual(got.ok, true);
+    assert.strictEqual(got.ipv4, "203.0.113.9");
+    assert.strictEqual(got.ipv6, null);
+  });
 });
 
 test("dev-edge nonce is single-use and session recovers the signer", function () {

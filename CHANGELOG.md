@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.36 — 2026-09-21
+
+### Added
+- Settings shows **Connect: ipv4,ipv6** from Scratchpost after Connect (the
+  addresses this session used). Agents use `GET /api/wallet/ip` with the
+  session cookie or `Authorization: Bearer`.
+
 ## 0.10.35 — 2026-09-20
 
 ### Added
