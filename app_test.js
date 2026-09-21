@@ -86,7 +86,7 @@ function readFile(rel) {
 
 test("ui.js exports the shell API", function () {
   const ui = require("./ui.js");
-  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings", "accounts", "detail", "send", "receive", "airdrops"]);
+  assert.deepStrictEqual(ui.SCREENS, ["home", "swap", "activity", "search", "settings", "accounts", "consolidate", "detail", "send", "receive", "airdrops"]);
   assert.strictEqual(typeof ui.renderTokens, "function");
   assert.strictEqual(typeof ui.setWalletValue, "function");
   assert.strictEqual(typeof ui.renderDetail, "function");
@@ -105,6 +105,7 @@ test("route parsing is strict and never throws", function () {
   assert.strictEqual(ui.parseRoute("#/ACTIVITY?x=1"), "activity");
   assert.strictEqual(ui.parseRoute("#/settings"), "settings");
   assert.strictEqual(ui.parseRoute("#/accounts"), "accounts");
+  assert.strictEqual(ui.parseRoute("#/consolidate"), "consolidate");
 });
 
 test("account drawer labels and selectedIndex restore the last HD account", function () {
@@ -586,7 +587,7 @@ test("extension popup keeps scrolling inside the shell, never on the document", 
   assert.ok(htmlBoot.indexOf('src="./shell.js"') !== -1, "popup class must land before CSS");
   assert.ok(htmlBoot.indexOf("./shell.js") < htmlBoot.indexOf("./app.css"), "shell.js must precede app.css");
   assert.ok(/<html[^>]*class="[^"]*extension-popup/.test(htmlBoot), "popup size must be in the HTML, not after JS");
-  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.34") !== -1, "home/settings must show the running build");
+  assert.ok(htmlBoot.indexOf("tkrWallet 0.10.35") !== -1, "home/settings must show the running build");
   assert.ok(/height:\s*580px/.test(css), "popup document must stay under Chromium's 600 clamp");
   assert.ok(
     /html,\s*body\s*\{[^}]*overflow:\s*hidden;/s.test(css),
@@ -686,6 +687,7 @@ test("wallet CLI routes commands and refuses secrets", function () {
 
 test("native gas reserve and spendable percent math", function () {
   const ui = require("./ui.js");
+  ui.setLeaveGasBuffer(true);
   assert.strictEqual(ui.nativeGasReserve(1, true), 0.003);
   assert.strictEqual(ui.nativeGasReserve(8453, true), 0.0002);
   assert.strictEqual(ui.nativeGasReserve(4663, true), 0.0002);
@@ -700,6 +702,11 @@ test("native gas reserve and spendable percent math", function () {
   assert.strictEqual(ui.formatSwapInput(0.24925, 8), "0.24925");
   assert.strictEqual(ui.formatSwapInput(1, 8), "1");
   assert.strictEqual(ui.formatSwapInput(0, 8), "");
+  ui.setLeaveGasBuffer(false);
+  assert.strictEqual(ui.nativeGasReserve(1, true), 0.001);
+  assert.strictEqual(ui.nativeGasReserve(8453, true), 0.00005);
+  assert.ok(ui.nativeGasReserve(1, true) < 0.003);
+  ui.setLeaveGasBuffer(true);
 });
 
 test("Send Max is the literal max; empty-this-chain sends tokens then native", function () {
@@ -749,6 +756,14 @@ test("Send Max is the literal max; empty-this-chain sends tokens then native", f
   assert.ok(uiSrc.indexOf("Connect to Scratchpost first") !== -1, "empty-chain must require Connect like Swap");
   assert.ok(uiSrc.indexOf("on \" + chainName") !== -1, "confirm must name the selected chain");
   assert.ok(uiSrc.indexOf("no_session") !== -1, "empty-chain must explain a missing Scratchpost session");
+  assert.deepStrictEqual(ui.runCliCommand("swap leftover off").action, { type: "leave-gas", on: false });
+  assert.deepStrictEqual(ui.runCliCommand("swap leftover on").action, { type: "leave-gas", on: true });
+  assert.deepStrictEqual(ui.runCliCommand("consolidate").action, { type: "go", screen: "consolidate" });
+  const cons = html.split('data-screen="consolidate"')[1].split('data-screen="detail"')[0];
+  assert.ok(cons.indexOf('id="consolidate-run"') !== -1);
+  assert.ok(cons.indexOf('id="consolidate-sources"') !== -1);
+  assert.ok(/Swap each source/.test(cons));
+  assert.ok(html.indexOf('id="swap-leave-gas"') !== -1);
 });
 
 test("swap CLI verbs cover You Pay controls; bare swap still navigates", function () {
@@ -1012,7 +1027,7 @@ test("service worker never caches API responses", function () {
   const sw = readFile("sw.js");
   // Balances/prices must never come out of a cache — a stale balance is a lie.
   assert.ok(sw.indexOf('url.pathname.indexOf("/api/") === 0') !== -1, "missing /api/ bypass");
-  assert.ok(sw.indexOf('"tkrwallet-v31"') !== -1, "cache version must bump so the new worker activates");
+  assert.ok(sw.indexOf('"tkrwallet-v32"') !== -1, "cache version must bump so the new worker activates");
   assert.ok(sw.indexOf("./shell.js") !== -1, "sw must precache shell.js");
 });
 
@@ -2623,6 +2638,7 @@ test("Scratchpost waits show a busy strip and disable hammer buttons", function 
     "onSwapSubmit",
     "onSendSubmit",
     "onEmptyChain",
+    "continueConsolidate",
     "onPoolBuild",
     "onPoolSearch",
     "addToken",

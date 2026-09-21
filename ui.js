@@ -13,11 +13,12 @@
 (function (root) {
   "use strict";
 
-  var SCREENS = ["home", "swap", "activity", "search", "settings", "accounts", "detail", "send", "receive", "airdrops"];
+  var SCREENS = ["home", "swap", "activity", "search", "settings", "accounts", "consolidate", "detail", "send", "receive", "airdrops"];
   var ACCOUNT_COLORS = ["#e8a33d", "#a8a29e", "#4ade80", "#cfc8b8", "#d98a1f"];
   var DEFAULT_SCREEN = "home";
   var CURRENCIES = ["usd", "cad", "mxn"];
   var STORAGE_KEY = "tkrwallet.currency";
+  var LEAVE_GAS_KEY = "tkrwallet.leave-gas-buffer";
   var AUTOLOCK_KEY = "tkrwallet.autolock";
   var CONNECT_AT_LAUNCH_KEY = "tkrwallet.connectAtLaunch";
   var VIEW_SESSION_KEY = "tkrwallet.view-session";
@@ -110,6 +111,13 @@
     900001: 0.01,
     728126428: 15,
   };
+  var SWAP_GAS_TIGHT = {
+    1: 0.001,
+    8453: 0.00005,
+    4663: 0.00005,
+    900001: 0.004,
+    728126428: 8,
+  };
   var SWAP_PCT_CMD = /^(25|50|75)%$/;
 
   var EXPLORER_ORIGIN = {
@@ -141,11 +149,40 @@
     return origin + "/tx/" + tx;
   }
 
+  var leaveGasBuffer = true;
+  try {
+    if (root.localStorage && root.localStorage.getItem(LEAVE_GAS_KEY) === "0") {
+      leaveGasBuffer = false;
+    }
+  } catch (e) {
+    leaveGasBuffer = true;
+  }
+
+  function readLeaveGasBuffer() {
+    return leaveGasBuffer !== false;
+  }
+
+  function setLeaveGasBuffer(on) {
+    leaveGasBuffer = !!on;
+    try {
+      if (root.localStorage) {
+        root.localStorage.setItem(LEAVE_GAS_KEY, on ? "1" : "0");
+      }
+    } catch (e) {
+      /* session-only */
+    }
+    var box = el("swap-leave-gas");
+    if (box) {
+      box.checked = !!on;
+    }
+  }
+
   function nativeGasReserve(chainId, isNative) {
     if (!isNative) {
       return 0;
     }
-    var n = SWAP_GAS_RESERVE[Number(chainId)];
+    var table = readLeaveGasBuffer() ? SWAP_GAS_RESERVE : SWAP_GAS_TIGHT;
+    var n = table[Number(chainId)];
     return typeof n === "number" && isFinite(n) ? n : 0;
   }
 
@@ -254,6 +291,8 @@
     "send              open send",
     "send 25%|50%|75%|max  fill amount (max empties after gas)",
     "send empty        empty this chain (tap again to confirm)",
+    "swap leftover on|off  extra native gas buffer on Max",
+    "consolidate       open consolidate",
     "connect           connect to Scratchpost",
     "disconnect        end the Scratchpost session",
     "connect-at-launch [on|off]  connect when the wallet unlocks",
@@ -327,7 +366,7 @@
       out.action = { type: "dock" };
       return out;
     }
-    if (cmd === "home" || cmd === "settings" || cmd === "accounts" || cmd === "activity") {
+    if (cmd === "home" || cmd === "settings" || cmd === "accounts" || cmd === "activity" || cmd === "consolidate") {
       out.action = { type: "go", screen: cmd };
       out.lines.push("opening " + cmd + ".");
       return out;
@@ -429,6 +468,16 @@
       if (sub === "flip") {
         out.action = { type: "swap-flip" };
         out.lines.push("flipping pair.");
+        return out;
+      }
+      if (sub === "leftover") {
+        var leftoverFlag = String(subRest || "").toLowerCase();
+        if (leftoverFlag !== "on" && leftoverFlag !== "off") {
+          out.lines.push("swap leftover on | off");
+          return out;
+        }
+        out.action = { type: "leave-gas", on: leftoverFlag === "on" };
+        out.lines.push("leave extra gas " + leftoverFlag + ".");
         return out;
       }
       out.lines.push("unknown swap command. type help.");
@@ -807,6 +856,10 @@
       }
       applySendCliAction(action);
     }
+    if (action.type === "leave-gas") {
+      setLeaveGasBuffer(action.on);
+      appendTerminalLine("out", "leave extra gas " + (action.on ? "on" : "off") + ".");
+    }
   }
 
   function submitTerminal() {
@@ -913,6 +966,9 @@
       } else {
         sections[i].setAttribute("hidden", "");
       }
+    }
+    if (next === "consolidate") {
+      paintConsolidateVaults();
     }
 
     var tabs = document.querySelectorAll("[data-nav]");
@@ -1651,6 +1707,7 @@
     "swap-flip",
     "send-submit",
     "send-empty-chain",
+    "consolidate-run",
     "pool-add",
     "pool-search",
     "pool-refresh",
@@ -2401,6 +2458,316 @@
     if (action.type === "send-empty-chain") {
       onEmptyChain();
     }
+  }
+
+  var consolidateJob = null;
+  var consolidateArmed = false;
+
+  function consolidateNote(msg) {
+    setText(el("consolidate-note"), msg || "");
+  }
+
+  function paintConsolidateVaults() {
+    var destSel = el("consolidate-dest-vault");
+    var box = el("consolidate-sources");
+    var s = store();
+    if (!s || typeof s.listVaults !== "function") {
+      return;
+    }
+    s.listVaults()
+      .then(function (rows) {
+        if (destSel) {
+          var keep = destSel.value;
+          destSel.textContent = "";
+          var blank = document.createElement("option");
+          blank.value = "";
+          blank.textContent = "Paste address below";
+          destSel.appendChild(blank);
+          (rows || []).forEach(function (row, n) {
+            var opt = document.createElement("option");
+            opt.value = String(row.id || "");
+            opt.setAttribute("data-address", row.evmAddress || "");
+            opt.textContent = "Wallet " + (n + 1) + " " + shortAddress(row.evmAddress || "");
+            destSel.appendChild(opt);
+          });
+          if (keep) {
+            destSel.value = keep;
+          }
+        }
+        if (!box) {
+          return;
+        }
+        while (box.firstChild) {
+          box.removeChild(box.firstChild);
+        }
+        (rows || []).forEach(function (row, n) {
+          var lab = document.createElement("label");
+          lab.className = "flex min-h-11 items-center gap-3 text-sm text-cream-300";
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.className = "size-4 shrink-0";
+          cb.setAttribute("data-consolidate-source", String(row.id || ""));
+          cb.checked = true;
+          var span = document.createElement("span");
+          span.textContent = "Wallet " + (n + 1) + " " + shortAddress(row.evmAddress || "");
+          lab.appendChild(cb);
+          lab.appendChild(span);
+          box.appendChild(lab);
+        });
+      })
+      .catch(function () {
+        consolidateNote("Could not list wallets on this device.");
+      });
+  }
+
+  function readConsolidateDest() {
+    var paste = String((el("consolidate-dest") || {}).value || "").trim();
+    var sel = el("consolidate-dest-vault");
+    var vid = sel && sel.value ? String(sel.value) : "";
+    if (vid && sel.selectedIndex >= 0) {
+      var opt = sel.options[sel.selectedIndex];
+      var addr = opt ? String(opt.getAttribute("data-address") || "").trim() : "";
+      return { vaultId: vid, address: addr || paste };
+    }
+    return { vaultId: "", address: paste };
+  }
+
+  function readConsolidateSources(destVaultId) {
+    var nodes = document.querySelectorAll("[data-consolidate-source]");
+    var out = [];
+    Array.prototype.forEach.call(nodes, function (cb) {
+      if (!cb.checked) {
+        return;
+      }
+      var id = String(cb.getAttribute("data-consolidate-source") || "");
+      if (!id || (destVaultId && id === String(destVaultId))) {
+        return;
+      }
+      out.push({ id: id });
+    });
+    return out;
+  }
+
+  function runQuotedEvmSwap(fromChain, fromMint, toChain, toMint, amountHuman) {
+    var wallet = root.tkrWalletData;
+    var c = crypto();
+    var fromTok = fromMint && fromMint !== "native" ? fromMint : "native";
+    var toTok = toMint && toMint !== "native" ? toMint : "native";
+    var atomic = wallet.toAtomicAmount(amountHuman, sendTokenDecimals(fromChain, fromTok));
+    if (!atomic) {
+      return Promise.reject(new Error("invalid-amount"));
+    }
+    if (!isScratchpostSwapPair(fromChain, toChain)) {
+      return Promise.reject(new Error("no-route"));
+    }
+    return wallet
+      .quoteSwap({
+        chain_id: fromChain,
+        from_chain_id: fromChain,
+        to_chain_id: toChain,
+        input_mint: fromTok,
+        output_mint: toTok,
+        amount: atomic,
+      })
+      .then(function (body) {
+        if (!body || body.ok === false || !body.quote) {
+          throw new Error((body && body.error) || "quote-failed");
+        }
+        function signBuilt(built) {
+          if (!built || built.ok === false) {
+            throw new Error((built && built.error) || "build-failed");
+          }
+          var signChain = Number(built.chain_id || fromChain);
+          if (built.needs_approval && built.tx) {
+            var approved = c.signAndBroadcastPayload(session.phrase, session.index, built.tx);
+            return wallet.broadcastRaw({ raw: approved.raw, chain_id: approved.chainId }).then(function (sent) {
+              if (!sent || sent.ok === false) {
+                throw new Error((sent && sent.error) || "broadcast");
+              }
+              return wallet.buildSwap({ chain_id: signChain, quote: body.quote }).then(signBuilt);
+            });
+          }
+          var tx = built.tx || built.unsigned_tx;
+          if (!tx) {
+            throw new Error("build-failed");
+          }
+          var signed = c.signAndBroadcastPayload(session.phrase, session.index, tx);
+          return wallet.broadcastRaw({ raw: signed.raw, chain_id: signed.chainId });
+        }
+        function buildStep(quote, stepChain) {
+          return wallet.buildSwap({ chain_id: stepChain, quote: quote }).then(signBuilt);
+        }
+        var q = body.quote || {};
+        var first;
+        if (q.route === "hop_then_lifi") {
+          first = buildStep({ route: "hop_then_lifi", step: "hop", hop: q.hop, lifi: q.lifi }, fromChain).then(
+            function (sent) {
+              if (!sent || sent.ok === false) {
+                throw new Error((sent && sent.error) || "broadcast");
+              }
+              return buildStep({ route: "hop_then_lifi", step: "lifi", hop: q.hop, lifi: q.lifi }, fromChain);
+            }
+          );
+        } else if (q.route === "lifi_then_hop") {
+          var lifiChain = Number((q.lifi && q.lifi.from_chain) || fromChain);
+          var hopChain = Number((q.hop && q.hop.chain_id) || 8453);
+          first = buildStep({ route: "lifi_then_hop", step: "lifi", hop: q.hop, lifi: q.lifi }, lifiChain).then(
+            function (sent) {
+              if (!sent || sent.ok === false) {
+                throw new Error((sent && sent.error) || "broadcast");
+              }
+              return buildStep({ route: "lifi_then_hop", step: "hop", hop: q.hop, lifi: q.lifi }, hopChain);
+            }
+          );
+        } else {
+          first = buildStep(q, fromChain);
+        }
+        return first.then(function (sent) {
+          if (!sent || sent.ok === false) {
+            throw new Error((sent && sent.error) || "broadcast");
+          }
+          noteBroadcast(sent, "swap", { chain_id: fromChain });
+          return sent;
+        });
+      });
+  }
+
+  function consolidateSwapThenSend(job) {
+    var chainId = job.chainId;
+    var target = job.token;
+    var dest = job.dest;
+    var holdings = planEmptyChain(uiData.lastHoldings, chainId);
+    var targetNative = isNativeSendToken(target);
+    var swaps = holdings.filter(function (h) {
+      if (targetNative) {
+        return !h.native;
+      }
+      return String(h.token || "").toLowerCase() !== String(target).toLowerCase();
+    });
+    function nextSwap(i) {
+      if (i >= swaps.length) {
+        return broadcastSend(chainId, dest, "max", targetNative ? "native" : target);
+      }
+      var h = swaps[i];
+      var hold = holdingFor(chainId, h.native ? null : h.token);
+      if (!hold || !(Number(hold.amount) > 0)) {
+        return nextSwap(i + 1);
+      }
+      var amt = spendableAmount(hold.amount, chainId, h.native);
+      if (!(amt > 0)) {
+        return nextSwap(i + 1);
+      }
+      var human = formatSwapInput(amt, 8);
+      return runQuotedEvmSwap(
+        chainId,
+        h.native ? "native" : h.token,
+        chainId,
+        targetNative ? "native" : target,
+        human
+      ).then(function () {
+        return nextSwap(i + 1);
+      });
+    }
+    return nextSwap(0);
+  }
+
+  function continueConsolidate() {
+    if (!consolidateJob || consolidateJob.busy) {
+      return;
+    }
+    var job = consolidateJob;
+    if (job.i >= job.sources.length) {
+      consolidateJob = null;
+      consolidateArmed = false;
+      consolidateNote("Consolidate finished. Key stayed on this device.");
+      setWalletStatus("Consolidate finished. Key stayed on this device.");
+      refreshBalances();
+      return;
+    }
+    var src = job.sources[job.i];
+    if (String(session.walletId || "") !== String(src.id)) {
+      consolidateNote("Unlock source " + (job.i + 1) + " of " + job.sources.length + ".");
+      session.pendingWalletId = src.id;
+      openGate("unlock");
+      return;
+    }
+    if (!sessionCanSign()) {
+      openGate("unlock");
+      return;
+    }
+    if (!edgeConnected) {
+      consolidateNote("Connect source " + (job.i + 1) + " of " + job.sources.length + ".");
+      onConnect();
+      return;
+    }
+    job.busy = true;
+    consolidateNote("Source " + (job.i + 1) + " of " + job.sources.length + "…");
+    withBusy(function () {
+      return refreshBalances().then(function () {
+        if (job.mode === "swap-to") {
+          return consolidateSwapThenSend(job);
+        }
+        return broadcastSend(job.chainId, job.dest, "max", job.token);
+      });
+    }, "Consolidating on Scratchpost…")
+      .then(function () {
+        job.i += 1;
+        job.busy = false;
+        continueConsolidate();
+      })
+      .catch(function (err) {
+        job.busy = false;
+        consolidateJob = null;
+        consolidateArmed = false;
+        var why = err && err.message ? String(err.message) : "send failed";
+        consolidateNote("Stopped (" + why + "). Remaining sources were not signed.");
+      });
+  }
+
+  function onConsolidateRun() {
+    var dest = readConsolidateDest();
+    if (!dest.address) {
+      consolidateArmed = false;
+      consolidateNote("Pick a destination wallet or paste an address.");
+      return;
+    }
+    var chainId = Number((el("consolidate-chain") || {}).value || 8453);
+    var token = String((el("consolidate-token") || {}).value || "native").trim() || "native";
+    var modeEl = document.querySelector('input[name="consolidate-mode"]:checked');
+    var mode = modeEl && modeEl.value === "swap-to" ? "swap-to" : "asset";
+    var sources = readConsolidateSources(dest.vaultId);
+    if (!sources.length) {
+      consolidateArmed = false;
+      consolidateNote("Check at least one source wallet (not the destination).");
+      return;
+    }
+    var key = mode + ":" + chainId + ":" + token + ":" + dest.address.toLowerCase() + ":" + sources.map(function (s) { return s.id; }).join(",");
+    if (!consolidateArmed || !consolidateJob || consolidateJob.key !== key) {
+      consolidateArmed = true;
+      consolidateJob = {
+        key: key,
+        dest: dest.address,
+        mode: mode,
+        chainId: chainId,
+        token: token,
+        sources: sources,
+        i: 0,
+        busy: false,
+      };
+      consolidateNote(
+        "Tap Review consolidate again to move " +
+          sources.length +
+          " source" +
+          (sources.length === 1 ? "" : "s") +
+          " → " +
+          shortAddress(dest.address) +
+          " (" +
+          mode +
+          "). Keep this window open."
+      );
+      return;
+    }
+    continueConsolidate();
   }
 
   function onPoolAdd() {
@@ -3664,6 +4031,10 @@
     renderAccountDrawer();
     renderAccountsManage();
     maybeConnectAfterUnlock();
+    paintConsolidateVaults();
+    if (consolidateJob) {
+      continueConsolidate();
+    }
     return w;
   }
 
@@ -4387,6 +4758,9 @@
         setAccount(session.address);
         setWalletStatus("Connected as " + (sess.address || session.address) + ". Keys stayed on this device.");
         refreshPendingSigns();
+        if (consolidateJob) {
+          continueConsolidate();
+        }
       })
       .catch(function () {
         setWalletStatus("Connect failed. Nothing was broadcast.");
@@ -5480,6 +5854,17 @@
         onEmptyChain();
       });
     }
+    var leaveGas = el("swap-leave-gas");
+    if (leaveGas) {
+      leaveGas.checked = readLeaveGasBuffer();
+      leaveGas.addEventListener("change", function () {
+        setLeaveGasBuffer(!!leaveGas.checked);
+        setText(
+          el("swap-note"),
+          leaveGas.checked ? "Max will keep a native gas buffer." : "Max will leave only this swap's gas."
+        );
+      });
+    }
     var sendPctBtns = document.querySelectorAll("[data-send-pct]");
     Array.prototype.forEach.call(sendPctBtns, function (btn) {
       btn.addEventListener("click", function (event) {
@@ -5728,6 +6113,34 @@
       walletImport.addEventListener("click", function () {
         onWalletImport();
       });
+    }
+    var accountsConsolidate = el("accounts-consolidate");
+    if (accountsConsolidate) {
+      accountsConsolidate.addEventListener("click", function () {
+        go("consolidate");
+      });
+    }
+    var settingsConsolidate = el("settings-consolidate");
+    if (settingsConsolidate) {
+      settingsConsolidate.addEventListener("click", function () {
+        go("consolidate");
+      });
+    }
+    var consolidateBack = el("consolidate-back");
+    if (consolidateBack) {
+      consolidateBack.addEventListener("click", function () {
+        go("accounts");
+      });
+    }
+    var consolidateImport = el("consolidate-import");
+    if (consolidateImport) {
+      consolidateImport.addEventListener("click", function () {
+        onWalletImport();
+      });
+    }
+    var consolidateRun = el("consolidate-run");
+    if (consolidateRun) {
+      consolidateRun.addEventListener("click", onConsolidateRun);
     }
     var walletRemove = el("wallet-remove");
     if (walletRemove) {
@@ -6082,6 +6495,8 @@
     explorerAddressUrl: explorerAddressUrl,
     explorerTxUrl: explorerTxUrl,
     spendableAmount: spendableAmount,
+    readLeaveGasBuffer: readLeaveGasBuffer,
+    setLeaveGasBuffer: setLeaveGasBuffer,
     isMaxAmount: isMaxAmount,
     planEmptyChain: planEmptyChain,
     percentOfSpendable: percentOfSpendable,
