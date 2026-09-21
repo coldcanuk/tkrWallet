@@ -9,7 +9,8 @@
 # Later pack:
 #   ./scripts/checkout-crx-key.sh
 # Chrome → Extensions → Pack extension → private key file = the printed path.
-# Press Enter. The file is shredded even on Ctrl-C.
+# Waits 5 minutes, then shreds the checkout and
+# $HOME/tkrWallet-chrome-extension-<id>.pem. Ctrl-C still shreds.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -18,6 +19,8 @@ VAULT_OPS="${VAULT_OPS:-/opt/repo/thePlatform/blockchain-infrastructure/host/vau
 VAULT_PATH="${VAULT_PATH:-tkrwallet/crx/key.pem}"
 ATHENA_HOST="${ATHENA_HOST:-athena.local}"
 OUTFILE="${OUTFILE:-/dev/shm/tkrwallet-crx-key.$$.pem}"
+CRX_ID="kfgmpcgplemjepolfpdbodmakceacook"
+CHROME_PEM="$HOME/tkrWallet-chrome-extension-${CRX_ID}.pem"
 
 die() { echo "error: $*" >&2; exit 1; }
 info() { echo "→ $*" >&2; }
@@ -25,6 +28,9 @@ info() { echo "→ $*" >&2; }
 scrub() {
   if [[ -e "$OUTFILE" ]]; then
     shred -u "$OUTFILE" 2>/dev/null || rm -f "$OUTFILE"
+  fi
+  if [[ -e "$CHROME_PEM" ]]; then
+    shred -u "$CHROME_PEM" 2>/dev/null || rm -f "$CHROME_PEM"
   fi
 }
 trap scrub EXIT
@@ -71,10 +77,12 @@ echo
 echo "Pack extension"
 echo "  root: $(realpath "$ROOT")"
 echo "  private key file: $OUTFILE"
+echo "  Chrome UI PEM (if created): $CHROME_PEM"
 echo
 echo "Do not pack this git worktree if it contains actions-runner or node_modules."
-echo "After Chrome finishes, press Enter. Ctrl-C still shreds the PEM."
-read -r _
+echo "Waiting 5 minutes, then shredding $OUTFILE and $CHROME_PEM."
+echo "Ctrl-C still shreds both."
+sleep 300
 
 info "shredding checkout"
 # trap EXIT runs scrub

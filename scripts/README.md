@@ -46,5 +46,7 @@ trading wallets.
 ## Chrome CRX private key
 
 Run `pack-crx.sh` on **kiff**. It SSHs to ATHENA for Vault unseal/checkout,
-packs with local Brave (Pop Shop deb or Flathub), writes `/dev/shm/tkrwallet.crx`,
-and shreds the PEM.
+packs with local Brave (Pop Shop deb or Flathub), writes `$HOME/tkrwallet.crx`,
+and shreds the Vault checkout PEM on exit. Chrome UI may also write
+`$HOME/tkrWallet-chrome-extension-kfgmpcgplemjepolfpdbodmakceacook.pem`; the
+script sleeps 5 minutes then `shred -u` that exact file.
