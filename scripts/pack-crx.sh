@@ -17,6 +17,9 @@ KEY="$PACK/key.pem"
 PUB="$PACK/pub.der"
 PACK_PROFILE="$PACK/pack-profile"
 HOME_CRX="$HOME/tkrwallet.crx"
+# Chrome UI "Pack extension" writes this exact name next to $HOME.
+CRX_ID="kfgmpcgplemjepolfpdbodmakceacook"
+CHROME_PEM="$HOME/tkrWallet-chrome-extension-${CRX_ID}.pem"
 PACK_CMD=()
 CHROME_UI=()
 BRAVE_UI=()
@@ -229,5 +232,15 @@ echo "Install in Brave"
 echo "  1. Developer mode on"
 echo "  2. Drag $HOME_CRX onto brave://extensions"
 echo
-echo "Same file, both browsers. ID stays kfgmpcgplemjepolfpdbodmakceacook."
+echo "Same file, both browsers. ID stays ${CRX_ID}."
 echo "Do not pick /opt/repo in any file dialog."
+echo
+# Vault checkout PEM is shredded on EXIT. Chrome UI pack writes CHROME_PEM;
+# keep that exact file 5 minutes, then shred it.
+echo "Chrome PEM: $CHROME_PEM"
+echo "Shredding that file in 5 minutes."
+sleep 300
+if [[ -e "$CHROME_PEM" ]]; then
+  shred -u "$CHROME_PEM"
+  echo "shredded $CHROME_PEM"
+fi
