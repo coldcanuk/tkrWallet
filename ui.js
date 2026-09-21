@@ -108,14 +108,14 @@
     1: 0.003,
     8453: 0.0002,
     4663: 0.0002,
-    900001: 0.01,
+    900001: 0.05,
     728126428: 15,
   };
   var SWAP_GAS_TIGHT = {
     1: 0.001,
     8453: 0.00005,
     4663: 0.00005,
-    900001: 0.004,
+    900001: 0.02,
     728126428: 8,
   };
   var SWAP_PCT_CMD = /^(25|50|75)%$/;
@@ -2000,7 +2000,7 @@
         bar.setAttribute("hidden", "");
       }
     }
-    if (label && on && message) {
+    if (label && on && message && busyCount === 1) {
       setText(label, message);
     }
     if (card && card.classList) {
@@ -3538,14 +3538,15 @@
       return new Promise(function (resolve) {
         root.setTimeout(resolve, 2000);
       }).then(function () {
-        return refreshBalances().then(function () {
+        return refreshBalances({ skipPrices: true }).then(function () {
           return again(attempt + 1);
         });
       });
     });
   }
 
-  function refreshBalances() {
+  function refreshBalances(opts) {
+    opts = opts || {};
     var wallet = root.tkrWalletData;
     if (!wallet || !session.address) {
       return Promise.resolve(null);
@@ -3604,6 +3605,9 @@
             );
           } else {
             setWalletStatus("Balances may be incomplete. " + chainProblems(res));
+          }
+          if (opts.skipPrices) {
+            return res;
           }
           return refreshPrices();
         }
@@ -6165,6 +6169,9 @@
       var why = err && err.message ? String(err.message) : "broadcast";
       if (why === "broadcast") {
         why = "broadcast-failed";
+      }
+      if (why === "swap_failed") {
+        why = "the chain rejected the swap (often not enough native SOL left for a token account). Funds besides the network fee stay here";
       }
       paintSwapProgress("fail", "Failed at " + (swapProgressStep || "broadcast") + ": " + why);
       setText(
