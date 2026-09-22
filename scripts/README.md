@@ -14,6 +14,7 @@ are the same files.
 | `new_tron_wallet.sh` | `~/.config/tron/lifi-trading.json` |
 | `new_stellar_wallet.sh` | `~/.config/stellar/lifi-trading.json` |
 | `generate-platform-fee-wallet.sh` | none — JSON goes to ATHENA Vault, never git |
+| `generate_lesou_evm.sh` | `~/.lesou/wallet/backup/current/wp101-l3-<role>.json` plus pass `ae/lesou/wp101/l3/<role>` |
 
 Override the outfile with `OUTFILE=` for a per-user EVM wallet:
 
@@ -42,6 +43,21 @@ The public address is published at
 Until skim is live the ciphertext sits in Vault and no route sends it tokens.
 Do not import this key into a customer tkrWallet. Do not reuse ATA rails or
 trading wallets.
+
+## LeSou L3 EVM wallets
+
+`generate_lesou_evm.sh` creates BIP-39 EVM accounts for LeSou L3 genesis roles
+(`mn1`, `mn2`, `mn3`, `treasury`). One EVM key works on every EVM chain,
+including LeSou L3 (603148) and Base; distinct roles still get distinct keys.
+
+```sh
+./scripts/generate_lesou_evm.sh --all
+./scripts/generate_lesou_evm.sh mn1
+```
+
+The script verifies private-key→address, mnemonic→address, and a sign/verify
+round-trip before writing pass. It prints **only the public address** and
+storage paths. Refuse to overwrite an existing pass leaf or backup file.
 
 ## Chrome CRX private key
 
