@@ -3564,7 +3564,7 @@
         uiData.lastBalances = {
           state: "unknown",
           reason: "edge-unreachable",
-          detail: "Brave site access is off for tkrwallet.scratchpost.ai. Open the extension card → Site access → allow that host.",
+          detail: "Brave site access is off for wallet.scratchpost.ai. Open the extension card → Site access → allow that host.",
         };
         renderBalancesNotice();
         return null;
@@ -6981,7 +6981,7 @@
   }
 
   function edgeHostPermission() {
-    return { origins: ["https://tkrwallet.scratchpost.ai/*"] };
+    return { origins: ["https://wallet.scratchpost.ai/*"] };
   }
 
   /** Brave/Chrome "Site access: On click" blocks every edge fetch. */

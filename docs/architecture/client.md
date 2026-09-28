@@ -28,7 +28,7 @@ icons/              shape-only SVG source + PNG 16/32/48/128.
 
 1. **The shell never fetches.** `ui.js` has zero network sinks (tested). Any
    data the UI needs is returned by `wallet.js`.
-2. **One origin.** `wallet.js` declares `BASE_URL = "https://tkrwallet.scratchpost.ai"`
+2. **One origin.** `wallet.js` declares `BASE_URL = "https://wallet.scratchpost.ai"`
    and nothing else. A test greps every shipped file and fails on any other
    `https://` origin.
 3. **Unknown ≠ zero.** Every value in the system is

@@ -75,7 +75,7 @@ at rest (IndexedDB db `tkrwallet`, store `vault`):
   `I saved my recovery phrase` before ciphertext is written.
 - An unlocked wallet's balances come from the wallet edge
   (`GET /api/wallet/balances`, `GET /api/wallet/prices`, `GET /api/wallet/token` —
-  see `docs/specs/edge-server.md`). Production is `https://tkrwallet.scratchpost.ai`
+  see `docs/specs/edge-server.md`). Production is `https://wallet.scratchpost.ai`
   (same origin as the PWA). `npm run dev` is a local stand-in of that contract,
   not a second allowed host. Current posture: [`2026-09-14-security-audit.md`](./2026-09-14-security-audit.md).
 - EVM signing is implemented and vector-verified. Solana signing is **not**

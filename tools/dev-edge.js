@@ -4,7 +4,7 @@
  * (connect-src 'self') is satisfied, exactly as in production. Balances are
  * read SERVER-SIDE from public chain RPCs — the wallet itself never talks to
  * them. Dev tooling only: production serves the same contract from
- * https://tkrwallet.scratchpost.ai.
+ * https://wallet.scratchpost.ai.
  *
  * Run: npm run dev   (or node tools/dev-edge.js; PORT=8899 by default)
  *

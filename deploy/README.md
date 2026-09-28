@@ -1,12 +1,12 @@
 # Deploying the tkrWallet edge
 
 The wallet's counterparty is the icehut edge. `nginx/tkrwallet-edge.conf.template`
-is the hardened vhost for `https://tkrwallet.scratchpost.ai`, carrying every fix
+is the hardened vhost for `https://wallet.scratchpost.ai`, carrying every fix
 from `docs/security/security-audit.md` (R-1…R-12).
 
 ## Prerequisites (on icehut)
 
-1. Cloudflare proxied for `tkrwallet.scratchpost.ai`, with **Authenticated
+1. Cloudflare proxied for `wallet.scratchpost.ai`, with **Authenticated
    Origin Pulls** enabled — the vhost rejects any peer that is not Cloudflare.
 2. `{{CLOUDFLARE_RANGES}}` from <https://www.cloudflare.com/ips/>.
 3. An origin certificate for the host, and the Cloudflare origin-pull CA file.
@@ -33,13 +33,13 @@ nginx -t && systemctl reload nginx
 
 ```bash
 # headers on the static shell
-curl -sI https://tkrwallet.scratchpost.ai/ | grep -iE 'strict-transport|content-security|x-content'
+curl -sI https://wallet.scratchpost.ai/ | grep -iE 'strict-transport|content-security|x-content'
 # preflight for the extension origin (handled by the facade)
-curl -s -X OPTIONS https://tkrwallet.scratchpost.ai/api/wallet/connect \
+curl -s -X OPTIONS https://wallet.scratchpost.ai/api/wallet/connect \
   -H "Origin: chrome-extension://kfgmpcgplemjepolfpdbodmakceacook" \
   -H "Access-Control-Request-Method: POST" -o /dev/null -w '%{http_code}\n'
 # healthz without auth
-curl -s https://tkrwallet.scratchpost.ai/healthz
+curl -s https://wallet.scratchpost.ai/healthz
 ```
 
 ## Do not do

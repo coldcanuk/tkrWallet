@@ -5,7 +5,7 @@
 > `coldcanuk.github.io/tkrWallet`, `app.js`, the tkrpik/tkrSwap funnel, an
 > injected EIP-1193 provider, and a direct public Solana RPC. None of that is in
 > this repository any more — the app is `index.html` + `ui.js` + `wallet.js`,
-> served from `https://tkrwallet.scratchpost.ai`, with every chain read going
+> served from `https://wallet.scratchpost.ai`, with every chain read going
 > through that one edge. This is finding **F14** in
 > `docs/reviews/technical-review.md`. For current truth read `README.md`,
 > `docs/architecture/client.md` and `docs/specs/edge-server.md`.

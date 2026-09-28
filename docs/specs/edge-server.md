@@ -1,4 +1,4 @@
-# Edge server specification — `tkrwallet.scratchpost.ai`
+# Edge server specification — `wallet.scratchpost.ai`
 
 **Audience:** whoever tailors the edge.
 **Status:** requirements from the wallet side. Nothing here is implemented yet.
@@ -24,7 +24,7 @@ browser** rather than trusted:
 2. **`connect-src 'self'` in the CSP.** The browser then refuses any request
    from the wallet to another origin. A future contributor cannot add an the chain host
    call by accident — it fails in dev, not in production.
-3. **`host_permissions` in the extension** lists exactly `tkrwallet.scratchpost.ai`.
+3. **`host_permissions` in the extension** lists exactly `wallet.scratchpost.ai`.
 
 So "never talks to the chain host" becomes a property of the shipped artifact instead of a
 promise in a README. That is the main reason I would keep this hostname
@@ -36,9 +36,9 @@ same-origin with its API (§2).
 
 | Item | Value |
 |---|---|
-| Hostname | `tkrwallet.scratchpost.ai` |
+| Hostname | `wallet.scratchpost.ai` |
 | DNS / registrar | Cloudflare |
-| Wallet origin | `https://tkrwallet.scratchpost.ai` |
+| Wallet origin | `https://wallet.scratchpost.ai` |
 | API origin | **the same origin** — `/api/*` on the same host |
 | HTTP :80 | 301 → HTTPS, no content served |
 | HSTS | `max-age=31536000; includeSubDomains; preload` |
@@ -61,7 +61,7 @@ ARCHITECTURE}.md` and `theticker/README.md`, so it is load-bearing.
 
 Do **not** remove it. Add exactly one named exception and leave the guard up:
 
-> `scratchpost.ai` is used **only** for `tkrwallet.scratchpost.ai`, the tkrWallet
+> `scratchpost.ai` is used **only** for `wallet.scratchpost.ai`, the tkrWallet
 > customer UA. Every other `scratchpost.ai` hostname remains unauthorised, and
 > there is still no Scratchpost portal.
 
@@ -333,7 +333,7 @@ Deliberately short, because each omission is a security win:
 - **No WebSocket** in v1. `eth_subscribe` on the chain host is unusable from a browser
   anyway — the endpoints are plain `ws://` on a LAN bind, and an HTTPS page and
   a `chrome-extension://` page are both secure contexts that refuse insecure
-  WebSockets. If live updates are wanted later: `wss://tkrwallet.scratchpost.ai/ws`
+  WebSockets. If live updates are wanted later: `wss://wallet.scratchpost.ai/ws`
   on 443, proxied, never `ws://` to a node.
 - **No SSE** in v1. `/events` is inert in production anyway — `the backend host/api`
   `main.ts` never passes `uiReader`, so the bridge returns immediately and only
@@ -446,7 +446,7 @@ users, which is the argument for the per-session limits above.
 
 ## 10. Decisions I need from you
 
-1. **Proxied or DNS-only** for `tkrwallet.scratchpost.ai`?
+1. **Proxied or DNS-only** for `wallet.scratchpost.ai`?
 2. **Who terminates TLS** — Cloudflare with an Origin Certificate, or the edge
    with Let's Encrypt? (If proxied, Authenticated Origin Pulls is what makes
    `CF-Connecting-IP` trustworthy.)
@@ -464,7 +464,7 @@ users, which is the argument for the per-session limits above.
 
 If you want the short version, the wallet needs exactly five things:
 
-1. Serve static files at `tkrwallet.scratchpost.ai` with the caching in §2.
+1. Serve static files at `wallet.scratchpost.ai` with the caching in §2.
 2. Four auth endpoints (§3.1) and an `HttpOnly` session cookie.
 3. One prices endpoint with **USD and CAD** (§3.2).
 4. Solana token reads, or drop Solana (§3.3).
