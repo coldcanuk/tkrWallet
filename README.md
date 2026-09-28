@@ -8,7 +8,7 @@ it never holds keys, never auto-executes, and never shops vendors.
 
 ```
 Browser (mobile-first PWA + MV3 extension)
-        │  https://tkrwallet.scratchpost.ai — same origin for app and API
+        │  https://wallet.scratchpost.ai — same origin for app and API
         ▼
    Edge Server     the edge. TLS, static hosting, /api/*, rate limits.
                    Holds backend credentials server-side. No RPC passthrough.
@@ -24,7 +24,7 @@ brain, not a public RPC. This is enforced, not promised:
 - `connect-src 'self'` in the page CSP and `extension_pages` CSP in
   `manifest.json` — the browser refuses any other origin.
 - No RPC passthrough exists at the edge, so no node is reachable through it.
-- `host_permissions` grants exactly `https://tkrwallet.scratchpost.ai/*`, and a
+- `host_permissions` grants exactly `https://wallet.scratchpost.ai/*`, and a
   test greps every shipped file and fails on any other origin.
 
 EVM balances for an unlocked wallet arrive from the wallet edge — they are not
@@ -155,7 +155,7 @@ Load unpacked → `/home/chuck/tkrWallet-unpacked`. Do not pick `/opt/repo`
 in the file dialog.
 
 The home card must read **tkrWallet 0.10.40**. If it does not, the browser
-is not this tree. Site access for `tkrwallet.scratchpost.ai` must not be
+is not this tree. Site access for `wallet.scratchpost.ai` must not be
 “On click”.
 
 `manifest.json` is Manifest V3, with a pinned `key` so the extension ID

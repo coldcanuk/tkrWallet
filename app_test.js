@@ -10,7 +10,7 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = __dirname;
-const ALLOWED_ORIGIN = "https://tkrwallet.scratchpost.ai";
+const ALLOWED_ORIGIN = "https://wallet.scratchpost.ai";
 const ALLOWED_EXPLORERS = {
   "https://etherscan.io": true,
   "https://basescan.org": true,
@@ -1962,7 +1962,7 @@ test("connect/sign: unlocked RAM holds the phrase; viewing session and IndexedDB
   assert.ok(wallet.indexOf("/api/wallet/pending-signs") !== -1, "wallet.js polls IcePike-requested unsigned txs");
   assert.ok(wallet.indexOf("/api/wallet/me") !== -1, "wallet.js reads Connect IPs from /me");
   assert.ok(wallet.indexOf("/api/wallet/ip") !== -1, "wallet.js exposes whatismyip for agents");
-  assert.ok(wallet.indexOf("tkrwallet.scratchpost.ai") !== -1);
+  assert.ok(wallet.indexOf("wallet.scratchpost.ai") !== -1);
   assert.ok(wallet.indexOf("18899") === -1, "client never dials the origin loopback");
 });
 

@@ -13,7 +13,7 @@
 (function (root) {
   "use strict";
 
-  var BASE_URL = "https://tkrwallet.scratchpost.ai";
+  var BASE_URL = "https://wallet.scratchpost.ai";
 
   /* The API base for a path.
    *
